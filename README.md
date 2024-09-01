@@ -94,8 +94,12 @@ We welcome contributions from the community! Whether you're looking to improve o
 
 ## License
 
-This project is licensed under the XXXXX License - see the ![LICENSE](link_to_license)  file for details.
+This project is licensed under the XXXXX License - see the ![MIT LICENSE](LICENSE) file for details.
 
 ## Contact
 
-If you have any questions or would like to discuss the project, please reach out to us at xxxx@example.com.
+If you have any questions or would like to discuss the project, please reach out to us at dylandrummey22@gmail.com or c.marcano@balldatalab.com. You can also follow us on Twitter/X to stay updated:
+
+- Dylan Drummey: [@drummeydylan](https://x.com/DrummeyDylan)
+- Carlos Marcano: [@camarcano](https://x.com/camarcano)
+
