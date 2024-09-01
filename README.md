@@ -52,7 +52,9 @@ Below are some examples showcasing our models in action. These include both imag
 The above image demonstrates our YOLO model detecting a pitcher, hitter, and catcher during a game broadcast.
 
 ### Video Example
-![Watch Video Detection](assets/ball_tracking_example_prediction.mp4)
+![Watch Video Detection](https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e)
+
+
 
 This video showcases our model's ability to track multiple objects, including the ball and mound, in real-time.
 
