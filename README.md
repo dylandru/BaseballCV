@@ -17,11 +17,17 @@ We provide open-source datasets containing images and corresponding annotations 
 - Pitcher's Glove
 - Other objects of interest
 
-Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines.
+Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines. 
 
 **Download datasets**:
 
-- [YOLO-format dataset](datasets)
+- [YOLO-format dataset](datasets/yolo)
+
+If you are interested in creating your own dataset, we have a variety of images and tools you can use to get started.
+
+**Download raw photos**:
+
+- [Raw photos dataset](datasets/raw_photos)
 
 ### 2. Pre-trained Models
 We offer pre-trained YOLO models for object detection. The models are trained to detect the aforementioned objects with high accuracy.
@@ -41,14 +47,14 @@ Below are some examples showcasing our models in action. These include both imag
 
 ### Image Example
 
-![Example Detection](link_to_image_example)
+![Example Detection](assets/phc_example_prediction.jpg)
 
-The above image demonstrates our YOLO model detecting a pitcher, hitter, and catcher during a live broadcast.
+The above image demonstrates our YOLO model detecting a pitcher, hitter, and catcher during a game broadcast.
 
 ### Video Example
-[Watch Video Detection](link_to_video_example)
+![Watch Video Detection](assets/ball_tracking_example_prediction.mp4)
 
-This video showcases our model's ability to track multiple objects, including the ball and pitcher's glove, in real-time.
+This video showcases our model's ability to track multiple objects, including the ball and mound, in real-time.
 
 ## Example Code
 
