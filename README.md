@@ -21,7 +21,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 
 **Download datasets**:
 
-- [YOLO-format dataset](link_to_dataset)
+- [YOLO-format dataset](datasets)
 
 ### 2. Pre-trained Models
 We offer pre-trained YOLO models for object detection. The models are trained to detect the aforementioned objects with high accuracy.
@@ -52,10 +52,16 @@ This video showcases our model's ability to track multiple objects, including th
 
 ## Example Code
 
+### Inference Example
+
 Here's an example of how to use our pre-trained YOLO models to run inference on an image or video.
 
 ```python
+from ultralytics import YOLO
+model = YOLO("models/ball_tracking/model_weights/ball_tracking.pt")
+model.predict("example_baseball_broadcast.jpg")
 ```
+
 
 ## Installation and Setup
 
