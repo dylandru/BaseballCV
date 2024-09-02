@@ -59,6 +59,9 @@ https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
 ### Video Example 2
 https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
 
+### You can run this inference example at:
+
+![Ball Inference Example](notebooks/ball_inference_YOLOv9.ipynb)
 
 
 This video showcases our model's ability to track multiple objects, including the ball and mound, in real-time.
