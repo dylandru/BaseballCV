@@ -53,8 +53,11 @@ Below are some examples showcasing our models in action. These include both imag
 
 The above image demonstrates our YOLO model detecting a pitcher, hitter, and catcher during a game broadcast.
 
-### Video Example
+### Video Example 1
 https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
+
+### Video Example 2
+https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
 
 
 
