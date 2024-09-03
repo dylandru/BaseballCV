@@ -33,7 +33,7 @@ def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_
 
     return extracted_frames
 
-def clone_savant_video_scraper(dir: str ='datasets/raw_photos/photo_functions') -> None:
+def clone_savant_video_scraper(dir: str ='datasets/functions/photo_functions') -> None:
     '''
     Clones the Baseball Savant Video Scraper into a specific directory and updates the import statement to reference the directory correctly inside of
     this repository.
@@ -62,7 +62,7 @@ def clone_savant_video_scraper(dir: str ='datasets/raw_photos/photo_functions') 
                     "from .savant_video_utils import" #adds reference to parent directory to ensure module is identified correctly in running script within repo
                     ), end='')
         
-        print(f"Repository '{repo_name}' cloned successfully into '{dir}' with update.")
+        print(f"Repository '{repo_name}' cloned successfully with update.")
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred while cloning the repository: {e}")
+        print(f"Error while cloning repo: {e}")
         return None
