@@ -1,7 +1,7 @@
 import os
 from collections import defaultdict
 import concurrent.futures
-from function_utils.utils import clone_savant_video_scraper, extract_frames_from_video
+from function_utils import clone_savant_video_scraper, extract_frames_from_video, cleanup_savant_videos
 
 def generate_photo_dataset(output_frames_folder: str = "cv_dataset", 
                            video_download_folder: str = "raw_videos",
@@ -9,7 +9,8 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
                            max_num_frames: int = 6000,
                            start_date: str = "2024-05-22",
                            end_date: str = "2024-05-25",
-                           max_workers: int = 10) -> None:
+                           max_workers: int = 10,
+                           delete_savant_videos: bool = True) -> None:
     """
     Extracts random frames for a given number of plays from a folder of scraped Baseball Savant broadcast videos to create a photo dataset for a 
     Computer Vision model.
@@ -23,7 +24,8 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
         start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-22".
         end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-25".
         max_workers (int): Number of worker processes to use for frame extraction. Default is 10.
-    
+        delete_savant_videos (bool): Whether or not to delete scraped savant videos after frames are extracted. Default is True.
+
     Returns:
         None: Returns nothing. Creates a folder of photos from the videos frames to use.
     """
@@ -75,5 +77,14 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
             except Exception as e:
                 print(f"Error with {video_path}: {str(e)}")
 
-    print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos from {len(games)} games.")
+    print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos from {len(games)} games. Videos now deleting...")
+    
+    if delete_savant_videos:
+        cleanup_savant_videos(video_download_folder)
+
+    else:
+        return None
+    
+
+        
 

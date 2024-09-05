@@ -3,6 +3,7 @@ import fileinput
 import os
 import cv2
 import random
+import shutil
 
 def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_to_extract) -> list[str]:
     '''
@@ -33,7 +34,7 @@ def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_
 
     return extracted_frames
 
-def clone_savant_video_scraper(dir: str ='datasets/functions') -> None:
+def clone_savant_video_scraper(dir: str ='scripts') -> None:
     '''
     Clones the Baseball Savant Video Scraper into a specific directory and updates the import statement to reference the directory correctly inside of
     this repository.
@@ -66,9 +67,20 @@ def clone_savant_video_scraper(dir: str ='datasets/functions') -> None:
     except subprocess.CalledProcessError as e:
         print(f"Error while cloning repo: {e}")
         return None
+
+def cleanup_savant_videos(folder_path: str) -> None:
+    if os.path.exists(folder_path):
+        try:
+            shutil.rmtree(folder_path)
+            print(f"Deleted {folder_path}")
+        except Exception as e:
+            print(f"Error deleting {folder_path}: {e}")
+            
+        return None
     
 model_aliases = {
     'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v2.txt',
     'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
     'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
 }
+
