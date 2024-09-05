@@ -1,1 +1,2 @@
-from .utils import model_aliases, delete_savant_videos, cleanup_savant_videos, extract_frames_from_video, clone_savant_video_scraper
+from .savant_scraper import BaseballSavVideoScraper
+from .utils import extract_frames_from_video

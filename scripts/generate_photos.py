@@ -1,14 +1,15 @@
 import os
 from collections import defaultdict
 import concurrent.futures
-from function_utils import clone_savant_video_scraper, extract_frames_from_video, cleanup_savant_videos
+from function_utils import extract_frames_from_video, BaseballSavVideoScraper
 
 def generate_photo_dataset(output_frames_folder: str = "cv_dataset", 
                            video_download_folder: str = "raw_videos",
                            max_plays: int = 10, 
                            max_num_frames: int = 6000,
+                           max_videos_per_game: int = 10,
                            start_date: str = "2024-05-22",
-                           end_date: str = "2024-05-25",
+                           end_date: str = "2024-07-25",
                            max_workers: int = 10,
                            delete_savant_videos: bool = True) -> None:
     """
@@ -21,6 +22,7 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
         max_plays (int): Maximum number of plays for scraper to download videos. Default is 10.
         max_num_frames (int): Maximum number of frames to extract across all videos. May be less if not enough frames exist from plays. Default 
                               is 6000.
+        max_videos_per_game (int): Max number of videos to pull for single game to increase variety. Defaults to 10.
         start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-22".
         end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-25".
         max_workers (int): Number of worker processes to use for frame extraction. Default is 10.
@@ -30,18 +32,16 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
         None: Returns nothing. Creates a folder of photos from the videos frames to use.
     """
 
-    clone_savant_video_scraper()
+    savant_scraper = BaseballSavVideoScraper()
 
-    from BSav_Scraper_Vid.MainScraper import run_statcast_pull_scraper
-
-    run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
-                              download_folder=video_download_folder, max_videos=max_plays)
+    savant_scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
+                              download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game)
             
     os.makedirs(output_frames_folder, exist_ok=True)
     video_files = [f for f in os.listdir(video_download_folder) if f.endswith(('.mp4', '.mov'))]
     
     if not video_files:
-        print("No video files found in the specified folder.") #ensure video files are downloaded from scraper
+        print("No video files found in the specified folder.") 
         return
     
     games = defaultdict(list) #group videos by given game for increased variety
@@ -80,11 +80,14 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
     print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos from {len(games)} games. Videos now deleting...")
     
     if delete_savant_videos:
-        cleanup_savant_videos(video_download_folder)
+        savant_scraper.cleanup_savant_videos(video_download_folder)
 
     else:
         return None
     
+
+if __name__ == "__main__":
+    generate_photo_dataset()
 
         
 
