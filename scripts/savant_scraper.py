@@ -161,4 +161,3 @@ class BaseballSavVideoScraper:
                 print(f"Error deleting {folder_path}: {e}")
                 
             return None
-    

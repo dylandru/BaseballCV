@@ -1,2 +1,1 @@
-from .savant_scraper import BaseballSavVideoScraper
-from .utils import extract_frames_from_video
+from .utils import extract_frames_from_video, model_aliases
