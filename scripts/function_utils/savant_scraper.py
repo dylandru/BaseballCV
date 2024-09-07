@@ -1,22 +1,13 @@
-import os
-import requests
-from bs4 import BeautifulSoup
-from pybaseball import statcast
 import pandas as pd
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+from bs4 import BeautifulSoup
 import time
+from pybaseball import statcast
 import shutil
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
-
-import pandas as pd
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import os
-from bs4 import BeautifulSoup
-import time
-from pybaseball import statcast
-from datetime import datetime
 
 class BaseballSavVideoScraper:
     def __init__(self):
@@ -170,3 +161,4 @@ class BaseballSavVideoScraper:
                 print(f"Error deleting {folder_path}: {e}")
                 
             return None
+    

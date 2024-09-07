@@ -1,7 +1,9 @@
 import os
+import random
 from collections import defaultdict
 import concurrent.futures
 from function_utils import extract_frames_from_video, BaseballSavVideoScraper
+import shutil
 
 def generate_photo_dataset(output_frames_folder: str = "cv_dataset", 
                            video_download_folder: str = "raw_videos",
@@ -77,17 +79,29 @@ def generate_photo_dataset(output_frames_folder: str = "cv_dataset",
             except Exception as e:
                 print(f"Error with {video_path}: {str(e)}")
 
-    print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos from {len(games)} games. Videos now deleting...")
+    random.shuffle(extracted_frames)
+    
+    for i, frame_path in enumerate(extracted_frames):
+        frame_name = f"{i+1:06d}{os.path.splitext(frame_path)[1]}"
+        new_path = os.path.join(output_frames_folder, frame_name)
+        shutil.move(frame_path, new_path) 
+
+
+    existing_files = set(os.listdir(output_frames_folder))
+    extracted_file_names = set(f"{i+1:06d}{os.path.splitext(frame)[1]}" for i, frame in enumerate(extracted_frames))
+    files_to_remove = existing_files - extracted_file_names
+    for file in files_to_remove:
+        os.remove(os.path.join(output_frames_folder, file))
+    
+    print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos over {len(games)} games.")
     
     if delete_savant_videos:
         savant_scraper.cleanup_savant_videos(video_download_folder)
-
     else:
         return None
     
 
-if __name__ == "__main__":
-    generate_photo_dataset()
+# '''EXAMPLE CALL'''
 
-        
-
+# if __name__ == "__main__":
+#     generate_photo_dataset(max_plays=5000, max_num_frames=10000, max_videos_per_game=10, start_date="2024-05-01", end_date="2024-07-31", delete_savant_videos=True)
