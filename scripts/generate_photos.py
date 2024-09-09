@@ -2,7 +2,7 @@ import os
 import random
 from collections import defaultdict
 import concurrent.futures
-from savant_scraper import BaseballSavVideoScraper
+from scripts.savant_scraper import BaseballSavVideoScraper
 from scripts.function_utils.utils import extract_frames_from_video
 import shutil
 
