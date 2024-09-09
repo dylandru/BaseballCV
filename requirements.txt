@@ -4,3 +4,4 @@ opencv-python==4.10.0.84
 pip==24.0
 pybaseball==2.2.7
 pytest==8.3.2
+ultralytics>=8.2.90
