@@ -3,7 +3,7 @@ import random
 from collections import defaultdict
 import concurrent.futures
 from savant_scraper import BaseballSavVideoScraper
-from function_utils.utils import extract_frames_from_video
+from scripts.function_utils.utils import extract_frames_from_video
 import shutil
 
 def generate_photo_dataset(output_frames_folder: str = "cv_dataset", 

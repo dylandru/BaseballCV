@@ -1,6 +1,6 @@
 import os
 import pytest
-from function_utils.utils import extract_frames_from_video, model_aliases
+from scripts.function_utils.utils import extract_frames_from_video, model_aliases
 
 @pytest.fixture
 def video_path(tmp_path):

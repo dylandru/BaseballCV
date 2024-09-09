@@ -3,7 +3,7 @@ import os
 from tqdm import tqdm
 import zipfile
 import io
-from function_utils import model_aliases
+from scripts.function_utils import model_aliases
 
 def load_model(model_alias: str, model_type = 'YOLO') -> str:
     '''
