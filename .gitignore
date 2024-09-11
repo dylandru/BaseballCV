@@ -11,3 +11,5 @@ __pycache__/
 # Ignore .pytest_cache folders
 .pytest_cache/
 
+# Ignore __MACOSX folders
+__MACOSX/
