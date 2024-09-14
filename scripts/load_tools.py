@@ -3,7 +3,7 @@ import os
 from tqdm import tqdm
 import zipfile
 import io
-from function_utils import model_aliases
+from scripts.function_utils import model_aliases
 
 def load_model(model_alias: str, model_type = 'YOLO') -> str:
     '''
@@ -82,11 +82,10 @@ def load_dataset(txt_file_path: str) -> None:
         os.makedirs(dir_name, exist_ok=True)
 
         with zipfile.ZipFile(content) as zip_ref:
-            zip_ref.extractall(dir_name)
+            for file in zip_ref.namelist():
+                if not file.startswith('__MACOSX') and not file.startswith('._'): #prevents extracting MACOSX files from zip
+                    zip_ref.extract(file, dir_name)
         
         print(f"Dataset downloaded and extracted to {dir_name}.")
     else:
         print(f"Failed to download. Status code: {response.status_code}")
-
-
-

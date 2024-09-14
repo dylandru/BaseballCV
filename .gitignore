@@ -6,3 +6,10 @@ __pycache__/
 
 #Ignore .pyc files
 *.pyc
+
+
+# Ignore .pytest_cache folders
+.pytest_cache/
+
+# Ignore __MACOSX folders
+__MACOSX/

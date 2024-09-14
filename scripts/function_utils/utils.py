@@ -1,9 +1,6 @@
-import subprocess
-import fileinput
 import os
 import cv2
 import random
-import shutil
 
 def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_to_extract) -> list[str]:
     '''
@@ -33,50 +30,6 @@ def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_
     cap.release()
 
     return extracted_frames
-
-def clone_savant_video_scraper(dir: str ='scripts') -> None:
-    '''
-    Clones the Baseball Savant Video Scraper into a specific directory and updates the import statement to reference the directory correctly inside of
-    this repository.
-    '''
-    try:
-        sav_url = "https://github.com/dylandru/BSav_Scraper_Vid.git"
-        repo_name = sav_url.split('/')[-1].replace('.git', '')
-        
-        if not dir:
-            dir = os.getcwd()
-        
-        clone_path = f"{dir}/{repo_name}"
-        
-        if os.path.exists(clone_path):
-            print(f"Repository '{repo_name}' already exists in the specified directory.")
-            return None
-        
-        subprocess.run(['git', 'clone', sav_url, clone_path], check=True)
-
-        main_scraper_path = os.path.join(clone_path, 'MainScraper.py')
-        
-        with fileinput.FileInput(main_scraper_path, inplace=True) as file:
-            for line in file:
-                print(line.replace(
-                    "from savant_video_utils import", 
-                    "from .savant_video_utils import" #adds reference to parent directory to ensure module is identified correctly in running script within repo
-                    ), end='')
-        
-        print(f"Repository '{repo_name}' cloned successfully with update.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error while cloning repo: {e}")
-        return None
-
-def cleanup_savant_videos(folder_path: str) -> None:
-    if os.path.exists(folder_path):
-        try:
-            shutil.rmtree(folder_path)
-            print(f"Deleted {folder_path}")
-        except Exception as e:
-            print(f"Error deleting {folder_path}: {e}")
-            
-        return None
     
 model_aliases = {
     'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v2.txt',
