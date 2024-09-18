@@ -32,7 +32,7 @@ def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_
     return extracted_frames
     
 model_aliases = {
-    'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v2.txt',
+    'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v3.txt',
     'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
     'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
     'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
