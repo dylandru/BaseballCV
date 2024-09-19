@@ -27,6 +27,10 @@ def load_model(model_alias: str, model_type = 'YOLO') -> str:
 
         model_weights_path = f"{os.path.dirname(model_txt_path)}/{os.path.splitext(os.path.basename(model_txt_path))[0]}.pt"
 
+        if os.path.exists(model_weights_path):
+            print(f"Model found at {model_weights_path}")
+            return model_weights_path
+
         response = requests.get(link, stream=True)
 
         if response.status_code == 200:
