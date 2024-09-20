@@ -138,8 +138,7 @@ for r in results: #loop through each frame
     print(f"Confidence: {box.conf}") #print confidence of the box
     print(f"Track ID: {box.id}") #print track id of the box (may not exist)
     print(f"Class Value: {box.cls}") #print class value of the box
-
-
+```
 
 ## Notebooks
 
