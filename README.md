@@ -119,6 +119,28 @@ model.predict("example_baseball_broadcast.jpg", show=True)
 # Run inference on video
 model.predict("assets/example_broadcast_video.mp4", show=True)
 ```
+
+### Extraction Example
+```python
+from ultralytics import YOLO
+
+model = YOLO("models/ball_tracking/model_weights/ball_tracking.pt")
+
+# assign inference on video to results
+results = model.predict("assets/example_broadcast_video.mp4", show=True)
+
+
+for r in results: #loop through each frame
+  for box in r.boxes.cpu().numpy(): #loop through each box in each frame
+    print(f"XYXY: {box.xyxy}") #print xyxy coordinates of the box
+    print(f"XYWHN (Normalized XYWH): {box.xywh}") #print xywh coordinates of the box
+    print(f"XYXYN (Normalized XYXY): {box.xyxyn}") #print normalized xyxy coordinates of the box
+    print(f"Confidence: {box.conf}") #print confidence of the box
+    print(f"Track ID: {box.id}") #print track id of the box (may not exist)
+    print(f"Class Value: {box.cls}") #print class value of the box
+
+
+
 ## Notebooks
 
 Along with our datasets and models, we have provided a few notebooks to help you get started with our repo. These are designed to help you understand the application of our models to real-world baseball videos, which are all accessible in the `notebooks` folder.
