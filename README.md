@@ -94,8 +94,10 @@ The above image demonstrates our YOLO model detecting a pitcher, hitter, and cat
 
 ### Video Examples
 
-1. [Ball Tracking Example](https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e)
-2. [Glove Tracking Example](https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20)
+https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
+
+https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
+
 
 These videos showcase our models' ability to track multiple objects, including the ball, glove, and other elements in real-time.
 
@@ -117,7 +119,13 @@ model.predict("example_baseball_broadcast.jpg", show=True)
 # Run inference on video
 model.predict("assets/example_broadcast_video.mp4", show=True)
 ```
+## Notebooks
 
+Along with our datasets and models, we have provided a few notebooks to help you get started with our repo. These are designed to help you understand the application of our models to real-world baseball videos, which are all accessible in the `notebooks` folder.
+
+- `ball_inference_YOLOv9.ipynb`: A notebook to get you started with our ball tracking model.
+- `Glove_tracking.ipynb`: A notebook to get you started with our glove tracking model and extracting predictions.
+- `YOLO_PHC_detection_extraction.ipynb`: A notebook to get you started with our pitcher, hitter, catcher detection model along with utilizing these predictions.
 
 ## Installation and Setup
 
