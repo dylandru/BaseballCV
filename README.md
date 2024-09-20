@@ -10,38 +10,77 @@ Our goal is to provide access to high-quality datasets and computer vision model
 ## Available Assets
 
 ### 1. Datasets
-We provide open-source datasets containing images and corresponding annotations from baseball broadcasts and other video sources. These datasets are curated and annotated with bounding boxes and labels for:
+We provide open-source datasets containing images and corresponding annotations from baseball broadcasts and other video sources. These datasets are curated and annotated with bounding boxes and labels for various baseball objects. These datasets are designed to detect:
 
 - Pitchers
 - Hitters
 - Catchers
 - Baseball
 - Pitcher's Glove
+- Bat
 - Other objects of interest
 
-Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines. 
+Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines. Our current datasets include:
 
-**Download datasets**:
+**Available Pre-Annotated Datasets (currently only YOLO)**:
 
-- [YOLO-format dataset](datasets/yolo)
+- `baseball_rubber_home_glove.txt`: A comprehensive MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
+- `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
 
-If you are interested in creating your own dataset, we have a variety of images and tools you can use to get started.
+**Available Raw Photos Datasets**: 
 
-**Download raw photos**:
+- `broadcast_10k_frames.txt`: A collection of 10,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
+- `broadcast_15k_frames.txt`: A collection of 15,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
 
-- [Raw photos dataset](datasets/raw_photos)
+
+**Downloading Datasets**
+
+If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
+
+```python
+ from scripts.load_tools import load_dataset
+
+# Download images, .txt file annotations and .yaml file into folder
+ load_dataset("datasets/yolo/baseball_rubber_home_glove.txt")
+```
+If you are interested in creating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
+
+```python
+ from scripts.load_tools import load_dataset
+
+# Download images into unlabeled_ folder
+ load_dataset("datasets/raw_photos/broadcast_10k_frames.txt")
+```
+
+More datasets will likely be added in the future, so check back!
 
 ### 2. Pre-trained Models
 We offer pre-trained YOLO models for object detection. The models are trained to detect the aforementioned objects with high accuracy.
 
 **Available YOLO Models**:
 
-- `bat_tracking.pt`: Trained to detect bat movement.
-- `ball_tracking.pt`: Trained to detect the baseball from the pitcher's hand to home.
-- `pitcher_hitter_catcher.pt`: Trained to detect the pitcher, hitter and catcher.
+- `bat_tracking.pt`: Trained to detect bat movement from a broadcast feed
+- `ball_tracking.pt`: Trained to detect the baseball from the pitcher's hand to home from a broadcast feed.
+- `pitcher_hitter_catcher.pt`: Trained to detect the pitcher, hitter and catcher from a broadcast feed.
+- `glove_tracking.pt`: Trained to detect and track the catcher's glove, the ball, homeplate, and the pitcher's rubber from a broadcast feed.
 
-**Download model weights**:
+**Downloading Models**:
 
+To download a model, you can use the following lines of code:
+
+```python
+from scripts.load_tools import load_model
+from ultralytics import YOLO
+
+# Load model from .txt file path
+model_path = load_model("models/bat_tracking/model_weights/bat_tracking.txt")
+
+# Load model from alias
+model_path = load_model("bat_tracking")
+
+# Initialize model with YOLO class
+model = YOLO(model_path)
+```
 
 ## Examples
 
@@ -53,18 +92,12 @@ Below are some examples showcasing our models in action. These include both imag
 
 The above image demonstrates our YOLO model detecting a pitcher, hitter, and catcher during a game broadcast.
 
-### Video Example 1
-https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
+### Video Examples
 
-### Video Example 2
-https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
+1. [Ball Tracking Example](https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e)
+2. [Glove Tracking Example](https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20)
 
-### You can run this inference example at:
-
-![Ball Inference Example](notebooks/ball_inference_YOLOv9.ipynb)
-
-
-This video showcases our model's ability to track multiple objects, including the ball and mound, in real-time.
+These videos showcase our models' ability to track multiple objects, including the ball, glove, and other elements in real-time.
 
 ## Example Code
 
@@ -74,8 +107,15 @@ Here's an example of how to use our pre-trained YOLO models to run inference on 
 
 ```python
 from ultralytics import YOLO
+
+# Assuming model is already downloaded from .txt file 
 model = YOLO("models/ball_tracking/model_weights/ball_tracking.pt")
-model.predict("example_baseball_broadcast.jpg")
+
+# Run inference on image
+model.predict("example_baseball_broadcast.jpg", show=True)
+
+# Run inference on video
+model.predict("assets/example_broadcast_video.mp4", show=True)
 ```
 
 
