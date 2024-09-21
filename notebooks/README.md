@@ -45,7 +45,7 @@ The `YOLO_PHC_detection_extraction.ipynb` notebook demonstrates how to:
 
 ### Glove Tracking 2D Transposing Notebook
 
-The `Glove_tracking.ipynb` notebook shows how to:
+The `glove_framing_tracking.ipynb` notebook shows how to:
 - Load the glove tracking detection model
 - Perform inference on video
 - Extract predictions from inference for use
