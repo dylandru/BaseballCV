@@ -149,6 +149,8 @@ Along with our datasets and models, we have provided a few notebooks to help you
 - `Glove_tracking.ipynb`: A notebook to get you started with our glove tracking model and extracting predictions.
 - `YOLO_PHC_detection_extraction.ipynb`: A notebook to get you started with our pitcher, hitter, catcher detection model along with utilizing these predictions.
 
+- `glove_framing_tracking.ipynb`: A notebook to get you started with our glove tracking model which also transposes the predictions to a 2D plane, while also extracting the predictions.
+
 ## Installation and Setup
 
 To get started with our datasets and models, follow these steps:
