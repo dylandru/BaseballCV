@@ -98,7 +98,7 @@ https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
 
 https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
 
-![2D Transposed Glove Detection](assets/glove_2D_tracking.mp4)
+https://github.com/user-attachments/assets/962973c8-514b-4f39-ac02-ca9f82bf2b59
 
 These videos showcase our models' ability to track multiple objects, including the ball, glove, and other elements in real-time.
 
