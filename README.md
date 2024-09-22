@@ -159,7 +159,7 @@ To get started with our datasets and models, follow these steps:
 
 ```python
 !git clone https://github.com/dylandru/BaseballCV.git
-!cd BaseballCV
+%cd BaseballCV
 ```
 
 ### 2. Install Dependencies
