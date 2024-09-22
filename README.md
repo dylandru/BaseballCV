@@ -158,8 +158,8 @@ To get started with our datasets and models, follow these steps:
 ### 1. Clone the Repository
 
 ```python
-git clone https://github.com/your_username/BaseballCV.git
-cd BaseballCV
+!git clone https://github.com/dylandru/BaseballCV.git
+!cd BaseballCV
 ```
 
 ### 2. Install Dependencies
