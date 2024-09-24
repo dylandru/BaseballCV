@@ -13,3 +13,6 @@ __pycache__/
 
 # Ignore __MACOSX folders
 __MACOSX/
+
+# Ignore virtual environment folders
+venv/
