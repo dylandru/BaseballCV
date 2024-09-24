@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import time
 from pybaseball import statcast
 import shutil
+import warnings
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -131,6 +132,7 @@ class BaseballSavVideoScraper:
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
+        warnings.filterwarnings("ignore", category=FutureWarning, module="pybaseball") #PyBaseball is outdated and has FutureWarnings - this can be ignored until utilizing Stats API
         statcast_df = statcast(start_dt=start_date, end_dt=end_date, team=team)
         game_pks = statcast_df['game_pk'].unique()
 
