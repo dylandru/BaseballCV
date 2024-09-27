@@ -52,4 +52,12 @@ The `glove_framing_tracking.ipynb` notebook shows how to:
 - Transpose the glove predictions to a 2D reference plane.
 - Visualize the results of glove tracking
 
+### OKD / NOKD Classifier Notebook
+
+The `okd_nokd_classifier.ipynb` notebook shows how to:
+- Load the OKD / NOKD dataset
+- Extract pose data from the dataset
+- Train a classifier model to predict if a catcher is in a one-knee down position
+- Visualize the results of the classification
+
 These notebooks should guide the user in using the BaseballCV tools in their own projects.
