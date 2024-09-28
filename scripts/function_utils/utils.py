@@ -38,3 +38,11 @@ model_aliases = {
     'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
 }
 
+dataset_aliases = {
+    'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
+    'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
+    'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
+    'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
+    'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt'
+}
+
