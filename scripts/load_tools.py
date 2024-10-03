@@ -8,17 +8,13 @@ from typing import Optional, Union
 
 class LoadTools:
     """
-    Class dedicated to downloading models and datasets from either the BallDataLab API or specified text files.
-
-    This class provides methods to download and load models and datasets
-    either from a specified URL or from the BallDataLab API. It supports
-    downloading both individual files (for models) and zip archives (for datasets).
+    Class dedicated to downloading / loading models and datasets from either the BallDataLab API or specified text files.
 
     Attributes:
-        session (requests.Session): A session object for making HTTP requests.
-        chunk_size (int): The size of chunks to use when downloading files.
-        BDL_MODEL_API (str): The base URL for the BallDataLab model API.
-        BDL_DATASET_API (str): The base URL for the BallDataLab dataset API.
+        session (requests.Session): Session object for making requests.
+        chunk_size (int): Size of chunks to use when downloading files.
+        BDL_MODEL_API (str): Base URL for the BallDataLab model API.
+        BDL_DATASET_API (str): Base URL for the BallDataLab dataset API.
 
     Methods:
         load_model(model_alias: str, model_type: str = 'YOLO', use_bdl_api: Optional[bool] = True) -> str:
@@ -75,39 +71,63 @@ class LoadTools:
             with open(txt_path, 'r') as file:
                 return file.read().strip()
 
-    def load_model(self, model_alias: str, model_type: str = 'YOLO', use_bdl_api: Optional[bool] = True) -> str:
-        if model_type == 'YOLO':
-            model_txt_path = model_aliases.get(model_alias)
-            if not model_txt_path:
-                raise ValueError(f"This is not a model alias: {model_alias}")
+    def load_model(self, model_alias: str, model_type: str = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
+        '''
+        Loads a given baseball computer vision model into the repository.
 
-            model_weights_path = f"{os.path.dirname(model_txt_path)}/{os.path.splitext(os.path.basename(model_txt_path))[0]}.pt"
+        Args:
+            model_alias (str): Alias of the model to load.
+            model_type (str): The type of the model to utilize. Defaults to YOLO.
+            use_bdl_api (Optional[bool]): Whether to use the BallDataLab API.
+            model_txt_path (Optional[str]): Path to .txt file containing download link to model weights. 
+                                            Only used if use_bdl_api is specified as False.
 
-            if os.path.exists(model_weights_path):
-                print(f"Model found at {model_weights_path}")
-                return model_weights_path
-
-            url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
-            self._download_files(url, model_weights_path)
-        else:
+        Returns:
+            model_weights_path (str):  Path to where the model weights are saved within the repo.
+        '''
+        if model_type != 'YOLO':
             raise ValueError(f"Invalid Model Type... Only 'YOLO' is supported (right now).")
+
+        model_txt_path = model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        if not model_txt_path:
+            raise ValueError(f"Invalid alias: {model_alias}")
+
+        model_weights_path = f"{os.path.dirname(model_txt_path)}/{os.path.splitext(os.path.basename(model_txt_path))[0]}.pt"
+
+        if os.path.exists(model_weights_path):
+            print(f"Model found at {model_weights_path}")
+            return model_weights_path
+
+        url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
+        self._download_files(url, model_weights_path)
         
         return model_weights_path
 
-    def load_dataset(self, dataset_alias: str, file_txt_path: Optional[str] = None, use_bdl_api: Optional[bool] = True) -> str:
-        if file_txt_path is None:
-            file_txt_path = dataset_aliases.get(dataset_alias)
-            if file_txt_path is None:
-                raise ValueError(f"This is not a dataset alias.")
+    def load_dataset(self, dataset_alias: str, use_bdl_api: Optional[bool] = True, file_txt_path: Optional[str] = None) -> str:
+        '''
+        Loads a zipped dataset and extracts it to a folder.
 
-        base = os.path.splitext(os.path.basename(file_txt_path))[0]
+        Args:
+            dataset_alias (str): Alias of the dataset to load that corresponds to a dataset folder to download
+            use_bdl_api (Optional[bool]): Whether to use the BallDataLab API. Defaults to True.
+            file_txt_path (Optional[str]): Path to .txt file containing download link to zip file containing dataset. 
+                                           Only used if use_bdl_api is specified as False.
+
+        Returns:
+            dir_name (str): Path to the folder containing the dataset.
+        '''
+        txt_path = dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
+        if not txt_path:
+            raise ValueError(f"Invalid alias or missing path: {dataset_alias}")
+
+        base = os.path.splitext(os.path.basename(txt_path))[0]
         dir_name = "unlabeled_" + base if 'raw_photos' in base or 'frames' in base or 'frames' in dataset_alias else base
 
         if os.path.exists(dir_name):
             print(f"Dataset found at {dir_name}")
             return dir_name
 
-        url = self._get_url(dataset_alias, file_txt_path, use_bdl_api, self.BDL_DATASET_API)
+        url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
         os.makedirs(dir_name, exist_ok=True)
         self._download_files(url, dir_name, is_dataset=True)
 
