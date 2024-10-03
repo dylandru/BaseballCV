@@ -4,15 +4,21 @@ This directory contains the scripts used in the project.
 
 ## Main Scripts
 
-- `load_tools.py`: Contains functions for both loading the raw and annotated datasets as well as the available models
-- `generate_photos.py`: Script to utilize to generate one's own raw photos for the creation of a dataset
-- `function_utils/utils.py`: Contains utility functions used across the project
+- `load_tools.py`: Contains a class LoadTools containing functions for both loading the raw and annotated datasets as well as the available models.
+- `generate_photos.py`: Script to utilize to generate one's own raw photos for the creation of a dataset.
+- `function_utils/utils.py`: Contains utility functions used across the project.
 
 ### load_tools.py
 
-Key functions:
-- `load_dataset(dataset_path)`: Loads a dataset from a specified text file storing the link to the images / annotations
-- `load_model(model_alias / .txt file path)`: Loads one of the pre-trained models available using either its alias or .txt file path
+Key class:
+
+- Main Scripts in `LoadTools` class
+
+-- `load_dataset(dataset_alias: str, use_bdl_api: Optional[bool] = True, file_txt_path: Optional[str] = None) -> str`: 
+  Loads a zipped dataset and extracts it to a folder. It can use either a dataset alias or a file path to a text file containing the download link.
+
+-- `load_model(model_alias: str, model_type: str = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str`: 
+  Loads a given baseball computer vision model into the repository. It can use either a model alias or a file path to a text file containing the download link.
 
 ### generate_photos.py
 

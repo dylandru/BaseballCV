@@ -38,18 +38,31 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
 
 ```python
- from scripts.load_tools import load_dataset
+  from scripts.load_tools import LoadTools
 
-# Download images, .txt file annotations and .yaml file into folder
- load_dataset("datasets/yolo/baseball_rubber_home_glove.txt")
+  # Initialize LoadTools class
+  load_tools = LoadTools()
+
+  # Download images, .txt file annotations and .yaml file into folder using .txt file path
+  dataset_path = load_tools.load_dataset("datasets/yolo/baseball_rubber_home_glove.txt")
+  
+  # Download images, .txt file annotations and .yaml file into folder using alias
+  dataset_path = load_tools.load_dataset("baseball_rubber_home_glove")
+
 ```
 If you are interested in creating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
 
 ```python
- from scripts.load_tools import load_dataset
+  from scripts.load_tools import LoadTools
 
-# Download images into unlabeled_ folder
- load_dataset("datasets/raw_photos/broadcast_10k_frames.txt")
+  # Initialize LoadTools class
+  load_tools = LoadTools()
+
+  # Download images into unlabeled_ folder using .txt file path
+  dataset_path = load_tools.load_dataset("datasets/raw_photos/broadcast_10k_frames.txt")
+
+  # Download images into unlabeled_ folder using alias
+  dataset_path = load_tools.load_dataset("broadcast_10k_frames")
 ```
 
 More datasets will likely be added in the future, so check back!
@@ -69,14 +82,17 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 To download a model, you can use the following lines of code:
 
 ```python
-from scripts.load_tools import load_model
+from scripts.load_tools import LoadTools
 from ultralytics import YOLO
 
+# Initialize LoadTools class
+load_tools = LoadTools()
+
 # Load model from .txt file path
-model_path = load_model("models/bat_tracking/model_weights/bat_tracking.txt")
+model_path = load_tools.load_model("models/bat_tracking/model_weights/bat_tracking.txt")
 
 # Load model from alias
-model_path = load_model("bat_tracking")
+model_path = load_tools.load_model("bat_tracking")
 
 # Initialize model with YOLO class
 model = YOLO(model_path)
