@@ -1,6 +1,11 @@
-# Ignore all .DS_Store files
+# Ignore all .DS_Store -
+# macOS specific files
 .DS_Store
-**/.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.TemporaryItems
 
 # Ignore __pycache__ folders 
 __pycache__/
