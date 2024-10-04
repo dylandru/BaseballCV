@@ -15,7 +15,7 @@ The model weights can be downloaded using the following links:
 
 - Pitcher Hitter Catcher Detector: [pitcher_hitter_catcher_detector_v3.pt](https://data.balldatalab.com/index.php/s/SciCLNYR5QGkjfK/download/pitcher_hitter_catcher_detector_v3.pt)
 - Glove Tracking: [glove_tracking_v1.pt](https://data.balldatalab.com/index.php/s/QHmGwgYnwwbXybx/download/glove_tracking_v1.pt)
-- Ball Tracking: [ball_tracking_v2-YOLOv9.pt](https://data.balldatalab.com/index.php/s/dczeCqJyTaQX7aq/download/ball_tracking_v2-YOLOv9.pt)
+- Ball Tracking: [ball_tracking_v3-YOLOv11.pt](https://data.balldatalab.com/index.php/s/xdaTeMtmnpx8NbE/download/ball_tracking_v3-YOLOv11.pt)
 - Bat Tracking: [bat_tracking.pt](https://data.balldatalab.com/index.php/s/SqMzsxKkCrzojSF/download/bat_tracking.pt)
 
 ## Usage
@@ -23,11 +23,18 @@ The model weights can be downloaded using the following links:
 If you prefer to load the model directly using built-in functions versus downloading the model weights, you can use the `load_model` function from `scripts.load_tools`:
 
 ```python
-from scripts.load_tools import load_model
+from scripts.load_tools import LoadTools
+from ultralytics import YOLO
+
+# Initialize LoadTools class
+load_tools = LoadTools()
 
 #Download from .txt file
-model = YOLO(load_model("models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v3.txt"))
+model_path = load_tools.load_model("models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v3.txt")
 
 #Download from alias
-model = YOLO(load_model("pitcher_hitter_catcher_detector"))
+model_path = load_tools.load_model("pitcher_hitter_catcher_detector")
+
+# Initialize model with YOLO
+model = YOLO(model_path)
 ```
