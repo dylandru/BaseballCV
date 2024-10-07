@@ -30,7 +30,7 @@ from ultralytics import YOLO
 load_tools = LoadTools()
 
 #Download from .txt file
-model_path = load_tools.load_model("models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v3.txt")
+model_path = load_tools.load_model("models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt")
 
 #Download from alias
 model_path = load_tools.load_model("pitcher_hitter_catcher_detector")
