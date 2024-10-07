@@ -1,0 +1,1 @@
+https://data.balldatalab.com/index.php/s/NGnY8p8rWAqjHoC/download/pitcher_hitter_catcher_detector_v4.pt
