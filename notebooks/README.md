@@ -8,6 +8,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `Glove_tracking.ipynb`: Shows how to use the glove tracking model and extract predictions from the video
 - `YOLO_PHC_detection_extraction.ipynb`: Demonstrates pitcher, hitter, catcher detection and prediction extraction (future use-cases will be integrated)
 - `glove_framing_tracking.ipynb`: Demonstrates how to extract the glove tracking model coordinates and transpose them to a 2D plane and plots the result.
+- `model_fine_tuning.ipynb`: Demonstrates how to auto fine tune our models, using the glove tracking model as an example.
 
 ## Usage
 
