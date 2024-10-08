@@ -1,1 +1,1 @@
-https://data.balldatalab.com/index.php/s/QHmGwgYnwwbXybx/download/glove_tracking_v1.pt
+https://data.balldatalab.com/index.php/s/d8PHgse5zYB9nZz/download/glove_tracking_v2_YOLOv11.pt
