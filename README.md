@@ -1,6 +1,6 @@
 # BaseballCV
 
-**Created By: Dylan Drummey [@drummeydylan](https://x.com/DrummeyDylan) and Carlos Marcano [@camarcano](https://x.com/camarcano)
+**Created By: Dylan Drummey ([@drummeydylan](https://x.com/DrummeyDylan)) and Carlos Marcano ([@camarcano](https://x.com/camarcano))  
 Maintained By: Carlos Marcano**
 
 ![BaseballCV Logo](assets/baseballcvlogo.png)
