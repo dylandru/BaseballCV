@@ -3,7 +3,6 @@ import os
 from tqdm import tqdm
 import zipfile
 import io
-from scripts.function_utils import model_aliases, dataset_aliases
 from typing import Optional, Union
 import shutil
 
@@ -33,6 +32,19 @@ class LoadTools:
         self.chunk_size = 1024
         self.BDL_MODEL_API = "https://balldatalab.com/api/models/"
         self.BDL_DATASET_API = "https://balldatalab.com/api/datasets/"
+        self.model_aliases = {
+            'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
+            'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
+            'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
+            'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
+        }
+        self.dataset_aliases = {
+            'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
+            'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
+            'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
+            'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
+            'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt'
+        }
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_dataset: bool = False, is_labeled: bool = False) -> None:
         response = self.session.get(url, stream=True)
@@ -105,7 +117,7 @@ class LoadTools:
         if model_type != 'YOLO':
             raise ValueError(f"Invalid Model Type... Only 'YOLO' is supported (right now).")
 
-        model_txt_path = model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        model_txt_path = self.model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         if not model_txt_path:
             raise ValueError(f"Invalid alias: {model_alias}")
 
@@ -133,7 +145,7 @@ class LoadTools:
         Returns:
             dir_name (str): Path to the folder containing the dataset.
         '''
-        txt_path = dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
+        txt_path = self.dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
         if not txt_path:
             raise ValueError(f"Invalid alias or missing path: {dataset_alias}")
 
