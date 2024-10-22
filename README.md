@@ -166,6 +166,7 @@ Along with our datasets and models, we have provided a few notebooks to help you
 - `YOLO_PHC_detection_extraction.ipynb`: A notebook to get you started with our pitcher, hitter, catcher detection model along with utilizing these predictions.
 - `okd_nokd_classifier.ipynb`: A notebook to get you started with our OKD_NOKD dataset.
 - `glove_framing_tracking.ipynb`: A notebook to get you started with our glove tracking model which also transposes the predictions to a 2D plane, while also extracting the predictions.
+- `autolabeling_semisupervised.ipynb`: A notebook that shows how to create a base dataset of raw images, auto annotate it and then view the results for manual filtering.
 
 ## Installation and Setup
 
