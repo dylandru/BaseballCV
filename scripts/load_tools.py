@@ -5,6 +5,7 @@ import zipfile
 import io
 from scripts.function_utils import model_aliases, dataset_aliases
 from typing import Optional, Union
+import shutil
 
 class LoadTools:
     """
@@ -33,24 +34,40 @@ class LoadTools:
         self.BDL_MODEL_API = "https://balldatalab.com/api/models/"
         self.BDL_DATASET_API = "https://balldatalab.com/api/datasets/"
 
-    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_dataset: bool = False) -> None:
+    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_dataset: bool = False, is_labeled: bool = False) -> None:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
             progress_bar = tqdm(total=total_size, unit='iB', unit_scale=True, desc=f"Downloading {os.path.basename(dest)}")
             
-            if is_dataset:
+            if is_dataset: 
                 content = io.BytesIO()
                 for data in response.iter_content(chunk_size=self.chunk_size):
                     size = content.write(data)
                     progress_bar.update(size)
                 
                 progress_bar.close()
-                
+
                 with zipfile.ZipFile(content) as zip_ref:
                     for file in zip_ref.namelist():
                         if not file.startswith('__MACOSX') and not file.startswith('._'):
-                            zip_ref.extract(file, dest)
+                            if is_labeled:
+                                zip_ref.extract(file, dest)
+                            else:
+                                if '/' in file:
+                                    filename = file.split('/')[-1]
+                                    if filename:
+                                        with zip_ref.open(file) as source, open(os.path.join(dest, filename), 'wb') as target:
+                                            shutil.copyfileobj(source, target)
+                                else:
+                                    zip_ref.extract(file, dest)
+                
+                if not is_labeled:
+                    for root, dirs, files in os.walk(dest, topdown=False):
+                        for dir in dirs:
+                            dir_path = os.path.join(root, dir)
+                            if not os.listdir(dir_path):
+                                os.rmdir(dir_path)
                 
                 print(f"Dataset downloaded and extracted to {dest}")
             else:

@@ -10,6 +10,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `glove_framing_tracking.ipynb`: Demonstrates how to extract the glove tracking model coordinates and transpose them to a 2D plane and plots the result.
 - `model_fine_tuning.ipynb`: Demonstrates how to auto fine tune our models, using the glove tracking model as an example.
 - `okd_nkd`: Creates a model through a classifier to detect One Knee Down postion, or others.
+- `autolabeling_semisupervised.ipynb`: Demonstrates how to use DataTools class for auto annotating images using the BaseballCV pipeline, in a semisupervised manner.
 
 ## Usage
 
@@ -61,5 +62,12 @@ The `okd_nokd_classifier.ipynb` notebook shows how to:
 - Extract pose data from the dataset
 - Train a classifier model to predict if a catcher is in a one-knee down position
 - Visualize the results of the classification
+
+### Semi-supervised Auto-Labeling Notebook
+
+The `autolabeling_semisupervised.ipynb` notebook shows how to:
+- Create a base dataset
+- Auto annotate it
+- View the results for manual filtering
 
 These notebooks should guide the user in using the BaseballCV tools in their own projects.
