@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import time
 from pybaseball import statcast
 import shutil
-import warnings
+import datetime
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -15,11 +15,11 @@ class BaseballSavVideoScraper:
         self.session = requests.Session()
 
     def run_statcast_pull_scraper(self,
-                          start_date: str, 
-                          end_date: str, 
-                          download_folder: str, 
-                          max_workers: int = 5, 
-                          team: str = None, 
+                          start_date: pd.Timestamp = pd.Timestamp('2024-05-01'),
+                          end_date: pd.Timestamp = pd.Timestamp('2024-06-01'),
+                          download_folder: str = 'savant_videos',
+                          max_workers: int = 5,
+                          team: str = None,
                           pitch_call: str = None,
                           max_videos: int = None,
                           max_videos_per_game: int = None) -> pd.DataFrame:
@@ -27,8 +27,8 @@ class BaseballSavVideoScraper:
         Run scraper from Statcast Pull of Play IDs. Retrieves data and processes each row in parallel.
 
         Args:
-            start_date (str): Start date for pull in 'YYYY-MM-DD' format.
-            end_date (str): End date for pull in 'YYYY-MM-DD' format.
+            start_date (pd.Timestamp): Start date for pull.
+            end_date (pd.Timestamp): End date for pull.
             download_folder (str): Folder path where videos are downloaded.
             max_workers (int, optional): Max number of concurrent workers. Defaults to 5.
             team (str, optional): Team filter for which videos are scraped. Defaults to None.
@@ -122,18 +122,20 @@ class BaseballSavVideoScraper:
         """Process game data and filter by pitch_call if provided."""
         team_home_data = game_data.get('team_home', [])
         df = pd.json_normalize(team_home_data)
-        for entry in df:
-            df['game_pk'] = df['game_pk']
+        df['game_pk'] = game_data.get('game_pk')
         if pitch_call:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
 
-    def playids_for_date_range(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None):
+    def playids_for_date_range(self, start_date, end_date, team: str = None, pitch_call: str = None):
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
-        warnings.filterwarnings("ignore", category=FutureWarning, module="pybaseball") #PyBaseball is outdated and has FutureWarnings - this can be ignored until utilizing Stats API
-        statcast_df = statcast(start_dt=start_date, end_dt=end_date, team=team)
+
+        statcast_df = (pd.read_parquet("hf://datasets/Jensen-holm/statcast-era-pitches/data/statcast_era_pitches.parquet") #Reads continually updated Statcast Data - consult Jensen's repo for more info: https://github.com/Jensen-holm/statcast-era-pitches
+                       .pipe(lambda x: x[(x['game_date'] >= start_date) & (x['game_date'] <= end_date)])
+                       .pipe(lambda x: x[(x['home_team'] == team) | (x['away_team'] == team)] if team else x)
+                       )
         game_pks = statcast_df['game_pk'].unique()
 
         dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
