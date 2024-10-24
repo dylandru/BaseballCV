@@ -4,9 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from bs4 import BeautifulSoup
 import time
-from pybaseball import statcast
 import shutil
-import datetime
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -27,9 +25,9 @@ class BaseballSavVideoScraper:
         Run scraper from Statcast Pull of Play IDs. Retrieves data and processes each row in parallel.
 
         Args:
-            start_date (pd.Timestamp): Start date for pull.
-            end_date (pd.Timestamp): End date for pull.
-            download_folder (str): Folder path where videos are downloaded.
+            start_date (pd.Timestamp): Timestamp of start date for pull. Defaults to 2024-05-01.
+            end_date (pd.Timestamp): Timestamp of end date for pull. Defaults to 2024-06-01.
+            download_folder (str): Folder path where videos are downloaded. Defaults to 'savant_videos'.
             max_workers (int, optional): Max number of concurrent workers. Defaults to 5.
             team (str, optional): Team filter for which videos are scraped. Defaults to None.
             pitch_call (str, optional): Pitch call filter for which videos are scraped. Defaults to None.
@@ -44,6 +42,7 @@ class BaseballSavVideoScraper:
         
         """
         try:
+            print("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call) #retrieves Play IDs to scrape
 
             if not df.empty and 'play_id' in df.columns:
@@ -152,9 +151,9 @@ class BaseballSavVideoScraper:
                 save_path = os.path.join(download_folder, f"{game_pk}_{play_id}.mp4") #Video currently named for Play ID
                 self.download_video(video_url, save_path)
             else:
-                print(f"No video found for playId {play_id}")
+                print(f"No video found for playId {play_id}. Please check that the playId is correct or that the video exists at baseballsavant.mlb.com/sporty-videos?playId={play_id}.")
         except Exception as e:
-            print("Unable to complete request.")
+            print(f"Unable to complete request. Error: {e}")
 
     def cleanup_savant_videos(self, folder_path: str) -> None:
         if os.path.exists(folder_path):
