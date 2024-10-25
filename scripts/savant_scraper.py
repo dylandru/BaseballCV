@@ -4,9 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from bs4 import BeautifulSoup
 import time
-from pybaseball import statcast
 import shutil
-import warnings
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -15,11 +13,11 @@ class BaseballSavVideoScraper:
         self.session = requests.Session()
 
     def run_statcast_pull_scraper(self,
-                          start_date: str, 
-                          end_date: str, 
-                          download_folder: str, 
-                          max_workers: int = 5, 
-                          team: str = None, 
+                          start_date: pd.Timestamp = pd.Timestamp('2024-05-01'),
+                          end_date: pd.Timestamp = pd.Timestamp('2024-06-01'),
+                          download_folder: str = 'savant_videos',
+                          max_workers: int = 5,
+                          team: str = None,
                           pitch_call: str = None,
                           max_videos: int = None,
                           max_videos_per_game: int = None) -> pd.DataFrame:
@@ -27,9 +25,9 @@ class BaseballSavVideoScraper:
         Run scraper from Statcast Pull of Play IDs. Retrieves data and processes each row in parallel.
 
         Args:
-            start_date (str): Start date for pull in 'YYYY-MM-DD' format.
-            end_date (str): End date for pull in 'YYYY-MM-DD' format.
-            download_folder (str): Folder path where videos are downloaded.
+            start_date (pd.Timestamp): Timestamp of start date for pull. Defaults to 2024-05-01.
+            end_date (pd.Timestamp): Timestamp of end date for pull. Defaults to 2024-06-01.
+            download_folder (str): Folder path where videos are downloaded. Defaults to 'savant_videos'.
             max_workers (int, optional): Max number of concurrent workers. Defaults to 5.
             team (str, optional): Team filter for which videos are scraped. Defaults to None.
             pitch_call (str, optional): Pitch call filter for which videos are scraped. Defaults to None.
@@ -44,6 +42,7 @@ class BaseballSavVideoScraper:
         
         """
         try:
+            print("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call) #retrieves Play IDs to scrape
 
             if not df.empty and 'play_id' in df.columns:
@@ -122,18 +121,20 @@ class BaseballSavVideoScraper:
         """Process game data and filter by pitch_call if provided."""
         team_home_data = game_data.get('team_home', [])
         df = pd.json_normalize(team_home_data)
-        for entry in df:
-            df['game_pk'] = df['game_pk']
+        df['game_pk'] = game_data.get('game_pk')
         if pitch_call:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
 
-    def playids_for_date_range(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None):
+    def playids_for_date_range(self, start_date, end_date, team: str = None, pitch_call: str = None):
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
-        warnings.filterwarnings("ignore", category=FutureWarning, module="pybaseball") #PyBaseball is outdated and has FutureWarnings - this can be ignored until utilizing Stats API
-        statcast_df = statcast(start_dt=start_date, end_dt=end_date, team=team)
+
+        statcast_df = (pd.read_parquet("hf://datasets/Jensen-holm/statcast-era-pitches/data/statcast_era_pitches.parquet") #Reads continually updated Statcast Data - consult Jensen's repo for more info: https://github.com/Jensen-holm/statcast-era-pitches
+                       .pipe(lambda x: x[(x['game_date'] >= start_date) & (x['game_date'] <= end_date)])
+                       .pipe(lambda x: x[(x['home_team'] == team) | (x['away_team'] == team)] if team else x)
+                       )
         game_pks = statcast_df['game_pk'].unique()
 
         dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
@@ -150,9 +151,9 @@ class BaseballSavVideoScraper:
                 save_path = os.path.join(download_folder, f"{game_pk}_{play_id}.mp4") #Video currently named for Play ID
                 self.download_video(video_url, save_path)
             else:
-                print(f"No video found for playId {play_id}")
+                print(f"No video found for playId {play_id}. Please check that the playId is correct or that the video exists at baseballsavant.mlb.com/sporty-videos?playId={play_id}.")
         except Exception as e:
-            print("Unable to complete request.")
+            print(f"Unable to complete request. Error: {e}")
 
     def cleanup_savant_videos(self, folder_path: str) -> None:
         if os.path.exists(folder_path):
