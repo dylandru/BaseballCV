@@ -2,7 +2,6 @@ import os
 import streamlit as st
 from PIL import ImageDraw
 import json
-import html
 from streamlit_image_coordinates import streamlit_image_coordinates
 from .annotation_manager import AnnotationManager
 from .image_manager import ImageManager
@@ -32,12 +31,11 @@ class AppPages:
             FileTools.save_json(task_queue_data, task_queue_file)
         
         self.image_manager = ImageManager(project_dir=self.project_dir)
-        self.annotation_manager = AnnotationManager()
+        self.manager = AnnotationManager()
         self.task_manager = TaskManager(project_dir=self.project_dir)
         self.project_data = None
         
     def show_welcome_page(self):
-        # Remove default streamlit margins
         st.markdown("""
             <style>
             .block-container {
@@ -187,7 +185,7 @@ class AppPages:
         project_types = ["Detection", "Keypoint"]
         for project_type in project_types:
             st.header(f":gray[{project_type} Projects]", divider="gray")
-            projects_path = f"streamlit2/projects/{project_type}"
+            projects_path = f"streamlit/annotation_app/projects/{project_type}"
             if not os.path.exists(projects_path):
                 continue
                 
@@ -224,14 +222,14 @@ class AppPages:
             st.error("No project selected")
             return
             
-        st.title(f"Project: {st.session_state.selected_project}")
+        st.markdown(f"<h1 style='color: orange; text-align: center'>Project: {st.session_state.project_type}</h1>", unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("""
                 <div class='action-card'>
-                    <h3>Add Content</h3>
+                    <h3>:white[Add Content]</h3>
                     <p>Upload new images or videos to annotate</p>
                 </div>
             """, unsafe_allow_html=True)
@@ -242,7 +240,7 @@ class AppPages:
         with col2:
             st.markdown("""
                 <div class='action-card'>
-                    <h3>Start Annotating</h3>
+                    <h3>:white[Start Annotating]</h3>
                     <p>Begin or continue annotation work</p>
                 </div>
             """, unsafe_allow_html=True)
@@ -555,6 +553,7 @@ class AppPages:
             });
             </script>
         """)
+
 
 
 
