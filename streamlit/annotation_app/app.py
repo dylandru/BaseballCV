@@ -1,5 +1,5 @@
 import streamlit as st
-from app_utils import AppPages
+from app_utils import AppPages, FileTools, TaskManager, ImageManager, AnnotationManager, DefaultTools
 
 
 def main():
@@ -8,6 +8,9 @@ def main():
         page_title="Baseball Annotation Tool",
         page_icon="⚾"
     )
+    
+    # Initialize project structure at startup
+    DefaultTools.init_project_structure()
     
     # Initialize session state
     if 'page' not in st.session_state:
@@ -40,8 +43,11 @@ def main():
             email = st.text_input("Enter your email:")
             if user_id and email:
                 st.session_state.user_id = user_id
-                st.session_state.email = email
-                st.rerun()
+                if str(email).endswith(".com"):
+                    st.session_state.email = email
+                    st.rerun()
+                else:
+                    st.error("Invalid Email Address!")
         st.markdown("""
             <div style='text-align: center; padding: 7 rem; color: white;'>
                 <h1 style='color: white; font-size: 5
