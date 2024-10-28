@@ -1,12 +1,5 @@
 import streamlit as st
-from app_utils import (
-    AppPages,
-    FileTools,
-    TaskManager,
-    ImageManager,
-    AnnotationManager,
-    DefaultTools
-)
+from app_utils import AppPages
 
 
 def main():
@@ -34,34 +27,35 @@ def main():
     if 'current_image' not in st.session_state:
         st.session_state.current_image = None
 
-    # Create instance of AppPages
+
     app_pages = AppPages()
     app_pages.app_style()
     
-    # Handle user authentication
-    if not st.session_state.user_id:
+    if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
-            st.title("⚾ Baseball CV")
+            st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
             st.markdown("---")
             st.markdown("### User Login")
-            user_id = st.text_input("Enter your username")
-            if user_id:
+            user_id = st.text_input("Enter your username:")
+            email = st.text_input("Enter your email:")
+            if user_id and email:
                 st.session_state.user_id = user_id
+                st.session_state.email = email
                 st.rerun()
         st.markdown("""
-            <div style='text-align: center; padding: 2rem;'>
-                <h1>⚾ Baseball Annotation Tool</h1>
-                <p style='font-size: 1.2rem; color: #FF6B00;'>
-                    Please enter Username in the sidebar to continue
+            <div style='text-align: center; padding: 7 rem; color: white;'>
+                <h1 style='color: white; font-size: 5
+                    rem;'>BaseballCV Annotation Tool</h1>
+                <p style='font-size: 2rem; color: #FF6B00;'>
+                    Please enter Username and Email in the Sidebar to Continue...
                 </p>
             </div>
         """, unsafe_allow_html=True)
         return
     
-    # Add navigation in sidebar
     with st.sidebar:
-        st.title("Baseball CV")
-        st.markdown(f"**User:** {st.session_state.user_id}")
+        st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color: black; text-align: center'>User: {st.session_state.user_id}</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
         if st.session_state.page != "welcome":
@@ -71,10 +65,9 @@ def main():
                 st.rerun()
             
             if st.session_state.selected_project:
-                st.markdown(f"**Current Project:** {st.session_state.selected_project}")
+                st.markdown(f"<h3 style='color: black; text-align: center'>Current Project: {st.session_state.selected_project}</h3>", unsafe_allow_html=True)
                 st.markdown("---")
                 
-                # Project navigation
                 if st.button("Project Dashboard", key="nav_dashboard"):
                     st.session_state.page = "project_dashboard"
                     st.rerun()
@@ -88,7 +81,6 @@ def main():
                     st.session_state.page = "progress"
                     st.rerun()
         
-        # Add logout button
         st.markdown("---")
         if st.button("Logout", key="logout"):
             st.session_state.user_id = None
@@ -96,7 +88,6 @@ def main():
             st.session_state.selected_project = None
             st.rerun()
     
-    # Page routing using instance methods
     if st.session_state.page == "welcome":
         app_pages.show_welcome_page()
     elif st.session_state.page == "create_project":

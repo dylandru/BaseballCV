@@ -91,26 +91,28 @@ class AppPages:
                 st.rerun()
 
     def create_project_screen(self):
-        st.title("Create New Project")
+        st.markdown("<h1 style='text-align: center; color: white'>Create New Project</h1>", unsafe_allow_html=True)
         
-        project_type = st.radio("Project Type", ["Detection", "Keypoints"])
-        project_name = st.text_input("Project Name")
-        project_description = st.text_area("Project Description")
+        project_type = st.radio(":orange[Project Type]", [":orange[Detection]", ":orange[Keypoints]"], key="project_type", label_visibility="visible")
+        
+        project_name = st.text_input(":orange[Project Name]", key="project_name")
+        
+        project_description = st.text_area(":orange[Project Description]", key="project_desc")
         
         if project_type == "Detection":
-            st.markdown("### Available Categories")
+            st.markdown("<h3 style='text-align: center; color: white'>Available Categories</h3>", unsafe_allow_html=True)
             categories = DefaultTools.init_baseball_categories()["detection"]
             selected_categories = st.multiselect(
-                "Select categories to include",
+                ":orange[Select categories to include]",
                 options=[cat["name"] for cat in categories],
                 default=[cat["name"] for cat in categories]
             )
             
         else:
-            st.markdown("### Keypoint Presets")
+            st.markdown("<h3 style='text-align: center; color: white'>Keypoint Presets</h3>", unsafe_allow_html=True)
             keypoint_presets = DefaultTools.init_baseball_categories()["keypoints"]
             selected_preset = st.selectbox(
-                "Select keypoint configuration",
+                ":orange[Select keypoint configuration]",
                 options=list(keypoint_presets.keys())
             )
         
@@ -151,6 +153,35 @@ class AppPages:
             st.rerun()
 
     def show_project_selection(self):
+        # Remove top padding and add bottom padding
+        st.markdown("""
+            <style>
+            .block-container {
+                padding-top: 0rem !important;
+                padding-bottom: 3rem !important;
+            }
+            
+            /* Hide Streamlit header */
+            header {display: none !important;}
+            
+            /* Project card styling */
+            .project-card {
+                background-color: #252525;
+                padding: 1.5rem;
+                border-radius: 10px;
+                margin-bottom: 1rem;
+                border: 1px solid #333;
+            }
+            
+            /* Header styling */
+            .stMarkdown h1 {
+                margin-top: 0 !important;
+                padding-top: 0 !important;
+                color: #FF6B00;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
         st.title(":orange[Select Project]")
         
         project_types = ["Detection", "Keypoint"]
@@ -524,5 +555,6 @@ class AppPages:
             });
             </script>
         """)
+
 
 

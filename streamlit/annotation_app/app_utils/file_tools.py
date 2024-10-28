@@ -8,19 +8,16 @@ __all__ = ['FileTools']
 class FileTools:
     @staticmethod
     def save_json(data, filepath):
-        """Save data to JSON file"""
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=4)
 
     @staticmethod
     def load_json(filepath):
-        """Load data from JSON file"""
         with open(filepath, 'r') as f:
             return json.load(f)
 
     @staticmethod
     def extract_frames(video_file, output_dir, frame_interval=1):
-        """Extract frames from video file"""
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
