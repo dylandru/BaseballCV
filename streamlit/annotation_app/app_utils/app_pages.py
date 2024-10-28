@@ -8,19 +8,20 @@ from .image_manager import ImageManager
 from .task_manager import TaskManager
 from .default_tools import DefaultTools
 from .file_tools import FileTools
+from datetime import datetime
 
 class AppPages:
     def __init__(self):
-        self.project_dir = os.path.join('streamlit', 'annotation_app', 'projects')
-        if not os.path.exists(self.project_dir):
-            os.makedirs(self.project_dir)
+        self.base_project_dir = os.path.join('streamlit', 'annotation_app', 'projects')
+        if not os.path.exists(self.base_project_dir):
+            os.makedirs(self.base_project_dir)
             
         for project_type in ["Detection", "Keypoint"]:
-            type_dir = os.path.join(self.project_dir, project_type)
+            type_dir = os.path.join(self.base_project_dir, project_type)
             if not os.path.exists(type_dir):
                 os.makedirs(type_dir)
         
-        task_queue_file = os.path.join(self.project_dir, "task_queue.json")
+        task_queue_file = os.path.join(self.base_project_dir, "task_queue.json")
         if not os.path.exists(task_queue_file):
             task_queue_data = {
                 "available_images": [],
@@ -30,9 +31,9 @@ class AppPages:
             }
             FileTools.save_json(task_queue_data, task_queue_file)
         
-        self.image_manager = ImageManager(project_dir=self.project_dir)
+        self.image_manager = ImageManager(project_dir=self.base_project_dir)
         self.manager = AnnotationManager()
-        self.task_manager = TaskManager(project_dir=self.project_dir)
+        self.task_manager = TaskManager(project_dir=self.base_project_dir)
         self.project_data = None
         
     def show_welcome_page(self):
@@ -91,11 +92,9 @@ class AppPages:
     def create_project_screen(self):
         st.markdown("<h1 style='text-align: center; color: white'>Create New Project</h1>", unsafe_allow_html=True)
         
-        project_type = st.radio(":orange[Project Type]", [":orange[Detection]", ":orange[Keypoints]"], key="project_type", label_visibility="visible")
-        
-        project_name = st.text_input(":orange[Project Name]", key="project_name")
-        
-        project_description = st.text_area(":orange[Project Description]", key="project_desc")
+        project_type = st.radio(":orange[Project Type]", ["Detection", "Keypoints"])
+        project_name = st.text_input(":orange[Project Name]")
+        project_description = st.text_area(":orange[Project Description]")
         
         if project_type == "Detection":
             st.markdown("<h3 style='text-align: center; color: white'>Available Categories</h3>", unsafe_allow_html=True)
@@ -105,7 +104,6 @@ class AppPages:
                 options=[cat["name"] for cat in categories],
                 default=[cat["name"] for cat in categories]
             )
-            
         else:
             st.markdown("<h3 style='text-align: center; color: white'>Keypoint Presets</h3>", unsafe_allow_html=True)
             keypoint_presets = DefaultTools.init_baseball_categories()["keypoints"]
@@ -119,36 +117,33 @@ class AppPages:
                 st.error("Please fill in both project name and description")
                 return
                 
-            project_dir = f"streamlit/annotation_app/projects/{project_type}/{project_name}"
-            if project_type == "Detection":
-                config = {
-                    "info": {
-                        "description": project_description,
-                        "type": "detection",
-                        "date_created": st.session_state.get("date_created", "")
-                    },
-                    "categories": [cat for cat in categories if cat["name"] in selected_categories]
-                }
-            else:
-                config = {
-                    "info": {
-                        "description": project_description,
-                        "type": "keypoint",
-                        "date_created": st.session_state.get("date_created", "")
-                    },
-                    "categories": [{
-                        "id": 1,
-                        "name": selected_preset,
-                        "keypoints": keypoint_presets[selected_preset]["keypoints"],
-                        "skeleton": keypoint_presets[selected_preset]["skeleton"]
-                    }]
-                }
+            # Use self.base_project_dir for consistent paths
+            project_dir = os.path.join(self.base_project_dir, project_type, project_name)
+            st.write(f"Creating project in: {project_dir}")  # Debug print
+            
+            config = {
+                "info": {
+                    "description": project_description,
+                    "type": "detection" if project_type == "Detection" else "keypoint",
+                    "date_created": datetime.now().isoformat()
+                },
+                "categories": [cat for cat in categories if cat["name"] in selected_categories] if project_type == "Detection" else [{
+                    "id": 1,
+                    "name": selected_preset,
+                    "keypoints": keypoint_presets[selected_preset]["keypoints"],
+                    "skeleton": keypoint_presets[selected_preset]["skeleton"]
+                }]
+            }
 
-            self.manager._create_project_structure(project_name, config)
-            st.success("Project created successfully!")
-            st.session_state.selected_project = project_name
-            st.session_state.page = "add_media"
-            st.rerun()
+            try:
+                self.manager._create_project_structure(project_name, config)
+                st.success(f"Project created successfully in {project_dir}")
+                st.session_state.selected_project = project_name
+                st.session_state.project_type = project_type
+                st.session_state.page = "add_media"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error creating project: {str(e)}")
 
     def show_project_selection(self):
         # Remove top padding and add bottom padding
@@ -158,25 +153,6 @@ class AppPages:
                 padding-top: 0rem !important;
                 padding-bottom: 3rem !important;
             }
-            
-            /* Hide Streamlit header */
-            header {display: none !important;}
-            
-            /* Project card styling */
-            .project-card {
-                background-color: #252525;
-                padding: 1.5rem;
-                border-radius: 10px;
-                margin-bottom: 1rem;
-                border: 1px solid #333;
-            }
-            
-            /* Header styling */
-            .stMarkdown h1 {
-                margin-top: 0 !important;
-                padding-top: 0 !important;
-                color: #FF6B00;
-            }
             </style>
         """, unsafe_allow_html=True)
         
@@ -185,13 +161,19 @@ class AppPages:
         project_types = ["Detection", "Keypoint"]
         for project_type in project_types:
             st.header(f":gray[{project_type} Projects]", divider="gray")
-            projects_path = f"streamlit/annotation_app/projects/{project_type}"
+            
+            # Use self.base_project_dir which was set in __init__
+            projects_path = os.path.join(self.base_project_dir, project_type)
+            
             if not os.path.exists(projects_path):
                 continue
                 
             projects = [p for p in os.listdir(projects_path) 
                        if os.path.isdir(os.path.join(projects_path, p))]
             
+            if not projects:
+                continue
+                
             for project in projects:
                 config_path = os.path.join(projects_path, project, "annotations.json")
                 if os.path.exists(config_path):
@@ -222,29 +204,28 @@ class AppPages:
             st.error("No project selected")
             return
             
-        st.markdown(f"<h1 style='color: orange; text-align: center'>Project: {st.session_state.project_type}</h1>", unsafe_allow_html=True)
-        
+        st.markdown(f"<h1 style='color: orange; text-align: center; padding: 3rem; font-size: 3.5rem'>Project: {st.session_state.project_type}</h1>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("""
-                <div class='action-card'>
-                    <h3>:white[Add Content]</h3>
-                    <p>Upload new images or videos to annotate</p>
+                <div class='action-card' style='display: flex; flex-direction: column; align-items: center; justify-content: center; margin: auto; width: 80%;'>
+                    <h3 style='color: orange; text-align: center;'>Add Content</h3>
+                    <p style='text-align: center;'>Upload new images or videos to annotate</p>
                 </div>
             """, unsafe_allow_html=True)
-            if st.button("Upload Media"):
+            if st.button("Upload Media", use_container_width=True):
                 st.session_state.page = "add_media"
                 st.rerun()
 
         with col2:
             st.markdown("""
-                <div class='action-card'>
-                    <h3>:white[Start Annotating]</h3>
-                    <p>Begin or continue annotation work</p>
+                <div class='action-card' style='display: flex; flex-direction: column; align-items: center; justify-content: center; margin: auto; width: 80%;'>
+                    <h3 style='color: orange; text-align: center;'>Start Annotating</h3>
+                    <p style='text-align: center;'>Begin or continue annotation work</p>
                 </div>
             """, unsafe_allow_html=True)
-            if st.button("Open Annotator"):
+            if st.button("Open Annotator", use_container_width=True):
                 st.session_state.page = "annotate"
                 st.rerun()
 
@@ -553,6 +534,10 @@ class AppPages:
             });
             </script>
         """)
+
+
+
+
 
 
 
