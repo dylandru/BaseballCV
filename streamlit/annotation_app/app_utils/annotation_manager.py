@@ -7,13 +7,13 @@ from PIL import ImageDraw
 
 class AnnotationManager:
     def __init__(self):
+        self.base_project_dir = os.path.join("streamlit", "annotation_app", "projects")
         self.init_projects()
         
     def init_projects(self):
         for project_type in ["Detection", "Keypoint"]:
-            base_dir = os.path.join("streamlit", "projects", project_type)
-            if not os.path.exists(base_dir):
-                os.makedirs(base_dir)
+            type_dir = os.path.join(self.base_project_dir, project_type)
+            os.makedirs(type_dir, exist_ok=True)
                 
     def normalize_coordinates(self, x, y, width, height):
         return x / width, y / height
@@ -87,11 +87,11 @@ class AnnotationManager:
     
     def _create_project_structure(self, project_name, config):
         project_type = "Detection" if config["info"]["type"] == "detection" else "Keypoint"
-        project_dir = os.path.join("streamlit2", "projects", project_type, project_name)
+        project_dir = os.path.join(self.base_project_dir, project_type, project_name)
         
         if not os.path.exists(project_dir):
-            os.makedirs(project_dir)
-            os.makedirs(os.path.join(project_dir, "images"))
+            os.makedirs(project_dir, exist_ok=True)
+            os.makedirs(os.path.join(project_dir, "images"), exist_ok=True)
             
             coco_data = {
                 "info": config["info"],
@@ -199,14 +199,22 @@ class AnnotationManager:
         return frames
     
     def get_task_manager(self, project_name):
-        project_path = self._get_project_path(project_name)
-        if not project_path:
-            raise ValueError(f"Project {project_name} not found")
-        return TaskManager(project_path)
+        """Get task manager for a specific project"""
+        # First check Detection folder
+        detection_path = os.path.join(self.base_project_dir, 'Detection', project_name)
+        if os.path.exists(detection_path):
+            return TaskManager(project_dir=detection_path)
+        
+        # Then check Keypoint folder
+        keypoint_path = os.path.join(self.base_project_dir, 'Keypoint', project_name)
+        if os.path.exists(keypoint_path):
+            return TaskManager(project_dir=keypoint_path)
+        
+        raise ValueError(f"Project {project_name} not found in either Detection or Keypoint directories")
     
     def _get_project_path(self, project_name):
         for project_type in ["Detection", "Keypoint"]:
-            path = os.path.join("streamlit2", "projects", project_type, project_name)
+            path = os.path.join(self.base_project_dir, project_type, project_name)
             if os.path.exists(path):
                 return path
         return None

@@ -21,12 +21,10 @@ class FileTools:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
-        # Save video to temporary file
         temp_path = os.path.join(output_dir, "temp_video.mp4")
         with open(temp_path, "wb") as f:
             f.write(video_file.read())
         
-        # Open video file
         cap = cv2.VideoCapture(temp_path)
         frame_count = 0
         saved_frames = []
