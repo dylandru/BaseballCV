@@ -5,6 +5,7 @@ import os
 from bs4 import BeautifulSoup
 import time
 import shutil
+import statcast_pitches
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -131,10 +132,19 @@ class BaseballSavVideoScraper:
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
 
-        statcast_df = (pd.read_parquet("hf://datasets/Jensen-holm/statcast-era-pitches/data/statcast_era_pitches.parquet") #Reads continually updated Statcast Data - consult Jensen's repo for more info: https://github.com/Jensen-holm/statcast-era-pitches
-                       .pipe(lambda x: x[(x['game_date'] >= start_date) & (x['game_date'] <= end_date)])
-                       .pipe(lambda x: x[(x['home_team'] == team) | (x['away_team'] == team)] if team else x)
-                       )
+        # this could be changed to only select needed columns
+        statcast_query = f"""
+            SELECT *
+            FROM pitches
+            WHERE 
+                game_date >= '{start_date}'
+                AND game_date <= '{end_date}'
+                AND (home_team = '{team}' OR away_team = '{team}');
+            """
+
+        # statcast_pitches repository: https://github.com/Jensen-holm/statcast-era-pitches
+        statcast_df = statcast_pitches.load(query=statcast_query, pandas=True) 
+
         game_pks = statcast_df['game_pk'].unique()
 
         dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
