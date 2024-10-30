@@ -5,3 +5,4 @@ pip==24.0
 pybaseball==2.2.7
 pytest==8.3.2
 ultralytics>=8.2.90
+git+https://github.com/Jensen-holm/statcast-era-pitches.git
