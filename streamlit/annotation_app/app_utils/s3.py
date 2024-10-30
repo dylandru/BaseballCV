@@ -125,3 +125,19 @@ class S3Manager:
         except ClientError as e:
             print("Error:", e)
 
+    def download_file(self, s3_key: str, local_path: str) -> None:
+        """
+        Download a file from the S3 bucket to the local file system.
+        
+        Args:
+            s3_key (str): The S3 key of the file to download.
+            local_path (str): The local path where the file will be saved.
+        
+        Raises:
+            ClientError: If there's an error downloading the file.
+        """
+        try:
+            self.s3_client.download_file(self.bucket_name, s3_key, local_path)
+            print(f"File '{s3_key}' downloaded to '{local_path}'.")
+        except ClientError as e:
+            print("Error:", e)
