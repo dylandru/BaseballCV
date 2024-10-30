@@ -4,6 +4,10 @@ from botocore.exceptions import ClientError
 import json
 from datetime import datetime
 
+AWS_ACCESS = os.getenv('AWS_ACCESS_KEY')
+AWS_SECRET = os.getenv('AWS_SECRET_KEY')
+AWS_REG = os.getenv('AWS_REGION')
+
 class S3Manager:
     """
     A class to manage interactions with Amazon S3, including creating buckets,
@@ -24,9 +28,9 @@ class S3Manager:
         self.bucket_name = bucket_name
         self.s3_client = boto3.client(
             "s3",
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-            region_name=AWS_REGION
+            aws_access_key_id=AWS_ACCESS,
+            aws_secret_access_key=AWS_SECRET,
+            region_name=AWS_REG
         )
 
     def create_bucket(self) -> None:
@@ -37,12 +41,12 @@ class S3Manager:
             ClientError: If there's an error creating the bucket.
         """
         try:
-            if AWS_REGION == "us-east-1":
+            if AWS_REG == "us-east-1":
                 self.s3_client.create_bucket(Bucket=self.bucket_name)
             else:
                 self.s3_client.create_bucket(
                     Bucket=self.bucket_name,
-                    CreateBucketConfiguration={"LocationConstraint": AWS_REGION}
+                    CreateBucketConfiguration={"LocationConstraint": AWS_REG}
                 )
             print(f"Bucket '{self.bucket_name}' created successfully.")
         except ClientError as e:
