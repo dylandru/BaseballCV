@@ -2,7 +2,6 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 import json
-from datetime import datetime
 
 AWS_ACCESS = os.getenv('AWS_ACCESS_KEY')
 AWS_SECRET = os.getenv('AWS_SECRET_KEY')
