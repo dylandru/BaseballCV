@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 import statcast_pitches
+from tqdm import tqdm
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -45,6 +46,7 @@ class BaseballSavVideoScraper:
         try:
             print("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call) #retrieves Play IDs to scrape
+            print(df.head())
 
             if not df.empty and 'play_id' in df.columns:
                 os.makedirs(download_folder, exist_ok=True)
@@ -54,15 +56,20 @@ class BaseballSavVideoScraper:
 
                 if max_videos is not None:
                     df = df.head(max_videos)
-                    
+                
+                pbar = tqdm(total=len(df), desc="Downloading Videos")
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_play_id = {executor.submit(self.get_video_for_play_id, row['play_id'], row['game_pk'], download_folder): row for _, row in df.iterrows()} #sets futures to download videos for given Play IDs 
                     for future in as_completed(future_to_play_id):
                         play_id = future_to_play_id[future]
                         try:
                             future.result()
+                            pbar.update(1)  # Update the progress bar
                         except Exception as e:
                             print(f"Error processing Play ID {play_id['play_id']}: {str(e)}")
+                            pbar.update(1)  # Update the progress bar even on error
+
+                pbar.close()  # Close the progress bar
                 return df
             else:
                 print("Play ID column not in Statcast pull or DataFrame is empty")
@@ -137,13 +144,19 @@ class BaseballSavVideoScraper:
             SELECT *
             FROM pitches
             WHERE 
-                game_date >= '{start_date}'
-                AND game_date <= '{end_date}'
-                AND (home_team = '{team}' OR away_team = '{team}');
-            """
+                game_date >=? AND game_date <=?
+        """
+        
+        if team is not None:
+            statcast_query += f" AND (home_team =? OR away_team =?)"
 
         # statcast_pitches repository: https://github.com/Jensen-holm/statcast-era-pitches
-        statcast_df = statcast_pitches.load(query=statcast_query, pandas=True) 
+        params = (start_date, end_date) if team is None else (start_date, end_date, team)
+        statcast_df = statcast_pitches.load(
+            query=f"{statcast_query};", 
+            params=params,
+            pandas=True,
+        ) 
 
         game_pks = statcast_df['game_pk'].unique()
 
