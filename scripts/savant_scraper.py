@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 import statcast_pitches
-from tqdm import tqdm
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -57,19 +56,14 @@ class BaseballSavVideoScraper:
                 if max_videos is not None:
                     df = df.head(max_videos)
                 
-                pbar = tqdm(total=len(df), desc="Downloading Videos")
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_play_id = {executor.submit(self.get_video_for_play_id, row['play_id'], row['game_pk'], download_folder): row for _, row in df.iterrows()} #sets futures to download videos for given Play IDs 
                     for future in as_completed(future_to_play_id):
                         play_id = future_to_play_id[future]
                         try:
                             future.result()
-                            pbar.update(1)  # Update the progress bar
                         except Exception as e:
                             print(f"Error processing Play ID {play_id['play_id']}: {str(e)}")
-                            pbar.update(1)  # Update the progress bar even on error
-
-                pbar.close()  # Close the progress bar
                 return df
             else:
                 print("Play ID column not in Statcast pull or DataFrame is empty")
@@ -152,14 +146,9 @@ class BaseballSavVideoScraper:
 
         # statcast_pitches repository: https://github.com/Jensen-holm/statcast-era-pitches
         params = (start_date, end_date) if team is None else (start_date, end_date, team)
-        statcast_df = statcast_pitches.load(
-            query=f"{statcast_query};", 
-            params=params,
-            pandas=True,
-        ) 
+        statcast_df = statcast_pitches.load(query=f"{statcast_query};", params=params).to_pandas()
 
         game_pks = statcast_df['game_pk'].unique()
-
         dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
 
         play_id_df = pd.concat(dfs, ignore_index=True)
