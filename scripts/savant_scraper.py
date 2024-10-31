@@ -145,7 +145,7 @@ class BaseballSavVideoScraper:
             statcast_query += f" AND (home_team =? OR away_team =?)"
 
         # statcast_pitches repository: https://github.com/Jensen-holm/statcast-era-pitches
-        params = (start_date, end_date) if team is None else (start_date, end_date, team)
+        params = (start_date, end_date) if team is None else (start_date, end_date, team, team)
         statcast_df = statcast_pitches.load(query=f"{statcast_query};", params=params).to_pandas()
 
         game_pks = statcast_df['game_pk'].unique()
