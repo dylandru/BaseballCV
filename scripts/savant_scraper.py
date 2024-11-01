@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 import statcast_pitches
+import polars as pl
+import pybaseball
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -45,6 +47,7 @@ class BaseballSavVideoScraper:
         try:
             print("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call) #retrieves Play IDs to scrape
+            print(df.head())
 
             if not df.empty and 'play_id' in df.columns:
                 os.makedirs(download_folder, exist_ok=True)
@@ -54,7 +57,7 @@ class BaseballSavVideoScraper:
 
                 if max_videos is not None:
                     df = df.head(max_videos)
-                    
+                
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_play_id = {executor.submit(self.get_video_for_play_id, row['play_id'], row['game_pk'], download_folder): row for _, row in df.iterrows()} #sets futures to download videos for given Play IDs 
                     for future in as_completed(future_to_play_id):
@@ -127,26 +130,22 @@ class BaseballSavVideoScraper:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
 
-    def playids_for_date_range(self, start_date, end_date, team: str = None, pitch_call: str = None):
+    def playids_for_date_range(self, start_date: pd.Timestamp, end_date: pd.Timestamp, team: str = None, pitch_call: str = None):
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
 
-        # this could be changed to only select needed columns
-        statcast_query = f"""
-            SELECT *
-            FROM pitches
-            WHERE 
-                game_date >= '{start_date}'
-                AND game_date <= '{end_date}'
-                AND (home_team = '{team}' OR away_team = '{team}');
-            """
-
-        # statcast_pitches repository: https://github.com/Jensen-holm/statcast-era-pitches
-        statcast_df = statcast_pitches.load(query=statcast_query, pandas=True) 
+        statcast_df = (statcast_pitches.load()
+                        .filter(
+                            (pl.col("game_date").dt.date() >= start_date) & 
+                            (pl.col("game_date") <= start_date),
+                            (pl.col("home_team") == team) |
+                            (pl.col("away_team") == team) 
+                            if team is not None else pl.lit(True))
+                        .collect()
+                        .to_pandas())
 
         game_pks = statcast_df['game_pk'].unique()
-
         dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
 
         play_id_df = pd.concat(dfs, ignore_index=True)
