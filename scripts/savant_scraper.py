@@ -125,7 +125,8 @@ class BaseballSavVideoScraper:
         """Process game data and filter by pitch_call if provided."""
         team_home_data = game_data.get('team_home', [])
         df = pd.json_normalize(team_home_data)
-        df['game_pk'] = game_data.get('game_pk')
+        for entry in df:
+            df['game_pk'] = df['game_pk']
         if pitch_call:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
