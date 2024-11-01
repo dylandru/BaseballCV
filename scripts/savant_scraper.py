@@ -121,11 +121,11 @@ class BaseballSavVideoScraper:
                 attempt += 1
                 time.sleep(2)  # Wait for 2 seconds before retrying
 
-    def process_game_data(self, game_data, pitch_call=None):
+    def process_game_data(self, game_pk: int, game_data, pitch_call=None):
         """Process game data and filter by pitch_call if provided."""
         team_home_data = game_data.get('team_home', [])
         df = pd.json_normalize(team_home_data)
-        df['game_pk'] = game_data.get('game_pk')
+        df["game_pk"] = game_pk 
         if pitch_call:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
@@ -134,20 +134,27 @@ class BaseballSavVideoScraper:
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
-
-        statcast_df = (statcast_pitches.load()
+        game_pks = (statcast_pitches.load()
+                        .select("game_date", "home_team", "away_team", "game_pk")
                         .filter(
                             (pl.col("game_date").dt.date() >= start_date) & 
                             (pl.col("game_date") <= start_date),
                             (pl.col("home_team") == team) |
                             (pl.col("away_team") == team) 
                             if team is not None else pl.lit(True))
+                        .select("game_pk").unique()
                         .collect()
-                        .to_pandas())
+                        .to_pandas()["game_pk"]
+                        .to_list())
 
-        game_pks = statcast_df['game_pk'].unique()
-        dfs = [self.process_game_data(self.fetch_game_data(game_pk), pitch_call=pitch_call) for game_pk in game_pks]
-
+        dfs = [
+            self.process_game_data(
+                game_pk=gpk,
+                game_data=self.fetch_game_data(gpk),
+                pitch_call=pitch_call,
+            )
+            for gpk in game_pks
+        ]
         play_id_df = pd.concat(dfs, ignore_index=True)
         return play_id_df
         
