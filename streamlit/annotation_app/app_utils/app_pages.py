@@ -9,21 +9,18 @@ from .task_manager import TaskManager
 from .default_tools import DefaultTools
 from .file_tools import FileTools
 from datetime import datetime
+from .s3 import S3Manager
 
 class AppPages:
     def __init__(self):
-        # Define base project directory
         self.base_project_dir = os.path.join('streamlit', 'annotation_app', 'projects')
         
-        # Create base project directory if it doesn't exist
         os.makedirs(self.base_project_dir, exist_ok=True)
         
-        # Create project type subdirectories
         for project_type in ["Detection", "Keypoint"]:
             type_dir = os.path.join(self.base_project_dir, project_type)
             os.makedirs(type_dir, exist_ok=True)
         
-        # Initialize task queue file if it doesn't exist
         task_queue_file = os.path.join(self.base_project_dir, "task_queue.json")
         if not os.path.exists(task_queue_file):
             task_queue_data = {
@@ -34,10 +31,10 @@ class AppPages:
             }
             FileTools.save_json(task_queue_data, task_queue_file)
         
-        # Initialize managers
         self.image_manager = ImageManager(project_dir=self.base_project_dir)
         self.manager = AnnotationManager()
         self.task_manager = TaskManager(project_dir=self.base_project_dir)
+        self.s3_manager = S3Manager("baseballcv-annotations")
         self.project_data = None
         
     def show_welcome_page(self):
@@ -121,9 +118,8 @@ class AppPages:
                 st.error("Please fill in both project name and description")
                 return
                 
-            # Use self.base_project_dir for consistent paths
             project_dir = os.path.join(self.base_project_dir, project_type, project_name)
-            st.write(f"Creating project in: {project_dir}")  # Debug print
+            st.write(f"Creating project in: {project_dir}")
             
             config = {
                 "info": {
@@ -236,13 +232,13 @@ class AppPages:
             st.error("No project selected")
             return
             
-        st.title("Add Media")
+        st.title(":orange[Add Media]")
         
-        tab1, tab2 = st.tabs(["Upload Images", "Upload Video"])
+        tab1, tab2, tab3 = st.tabs(["Upload Images", "Upload Video", "Use our Images"])
         
         with tab1:
             uploaded_files = st.file_uploader(
-                "Upload Images",
+                ":orange[Upload Images]",
                 type=["jpg", "jpeg", "png"],
                 accept_multiple_files=True
             )
@@ -261,9 +257,9 @@ class AppPages:
                         st.error(f"Error adding images: {str(e)}")
 
         with tab2:
-            video_file = st.file_uploader("Upload Video", type=["mp4", "avi", "mov"])
+            video_file = st.file_uploader(":orange[Upload Video]", type=["mp4", "avi", "mov"])
             if video_file:
-                frame_interval = st.slider("Extract every nth frame", 1, 30, 5)
+                frame_interval = st.slider("Extract every nth frame", 1, 60, 5)
                 if st.button("Process Video"):
                     try:
                         frames = self.manager.handle_video_upload(
@@ -277,8 +273,29 @@ class AppPages:
                     except Exception as e:
                         st.error(f"Error processing video: {str(e)}")
 
+        with tab3:
+            st.markdown(":orange[Use our Images]")
+            num_images = st.number_input("How many images would you like to download?", 
+                                       min_value=1, 
+                                       max_value=1000,
+                                       value=10,
+                                       help="Choose between 1-1000 images to download for annotation")
+            
+            if st.button("Download Images"):
+                try:
+                    s3_folder = os.path.join(st.session_state.project_type, st.session_state.selected_project)
+                    self.s3_manager.retrieve_raw_photos(
+                        s3_folder_name=s3_folder,
+                        local_path=os.path.join(self.base_project_dir, st.session_state.project_type, st.session_state.selected_project, "images"),
+                        max_images=num_images
+                    )
+                    st.success(f"Successfully downloaded {num_images} images")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error downloading images: {str(e)}")
+
     def show_progress_page(self):
-        st.title("Project Progress")
+        st.markdown("<h1 style='color: white;'>Project Progress</h1>", unsafe_allow_html=True)
         
         if not st.session_state.selected_project:
             st.error("No project selected")
@@ -297,21 +314,20 @@ class AppPages:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Images", total_images)
+            st.metric(":orange[Total Images]", total_images)
         with col2:
-            st.metric("Completed", completed)
+            st.metric(":orange[Completed]", completed) 
         with col3:
             completion_rate = (completed / total_images * 100) if total_images > 0 else 0
-            st.metric("Completion Rate", f"{completion_rate:.1f}%")
+            st.metric(":orange[Completion Rate]", f"{completion_rate:.1f}%")
 
     def show_annotation_interface(self):
         if not st.session_state.selected_project or not st.session_state.project_type:
             st.error("No project selected")
             return
                 
-        # Load project data using the correct project type path
         self.project_dir = os.path.join(self.base_project_dir, 
-                                        st.session_state.project_type,  # Use project_type from session state
+                                        st.session_state.project_type,
                                         st.session_state.selected_project)
         
         try:
@@ -321,7 +337,6 @@ class AppPages:
             st.error(f"Error loading project data: {str(e)}")
             return
 
-        # Initialize session states
         if 'current_image' not in st.session_state:
             st.session_state.current_image = None
         if 'annotations' not in st.session_state:
@@ -331,10 +346,8 @@ class AppPages:
         if 'rotation' not in st.session_state:
             st.session_state.rotation = 0
 
-        # CSS for minimal spacing and optimal layout
         st.markdown("""
             <style>
-            /* Reset container padding and margins */
             .block-container {
                 padding: 0 !important;
                 margin: 0 !important;
@@ -345,7 +358,6 @@ class AppPages:
                 margin: 0 !important;
             }
             
-            /* Top controls bar */
             .top-controls {
                 background: #1E1E1E;
                 border-bottom: 1px solid #333;
@@ -355,7 +367,6 @@ class AppPages:
                 align-items: center;
             }
             
-            /* Image workspace */
             .image-workspace {
                 background: #2D2D2D;
                 display: flex;
@@ -366,14 +377,12 @@ class AppPages:
                 min-height: calc(100vh - 120px);
             }
             
-            /* Center align image container */
             .stImage {
                 display: flex !important;
                 justify-content: center !important;
                 align-items: center !important;
             }
             
-            /* Image info overlay */
             .image-info {
                 position: absolute;
                 top: 10px;
@@ -386,7 +395,6 @@ class AppPages:
                 z-index: 100;
             }
             
-            /* Annotation label */
             .annotation-label {
                 background: #FF6B00;
                 color: white;
@@ -395,25 +403,21 @@ class AppPages:
                 font-size: 12px;
             }
             
-            /* Button styling */
             .stButton button {
                 padding: 2px 8px !important;
                 height: 30px !important;
                 min-height: 30px !important;
             }
             
-            /* Remove selectbox label spacing */
             .stSelectbox label {
                 display: none !important;
             }
             
-            /* Hide streamlit extras */
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             </style>
         """, unsafe_allow_html=True)
 
-        # Top Controls
         cols = st.columns([1, 1, 1, 1, 1, 1, 2])
         
         with cols[0]:
@@ -440,7 +444,6 @@ class AppPages:
                 label_visibility="collapsed"
             )
 
-        # Main Image Area
         if not st.session_state.current_image:
             next_task = self.manager.get_task_manager(st.session_state.selected_project).get_next_task(
                 st.session_state.user_id
@@ -452,45 +455,37 @@ class AppPages:
                 return
 
         if st.session_state.current_image:
-            # Load and process image
             image = Image.open(st.session_state.current_image)
             orig_w, orig_h = image.size
             
-            # Calculate optimal display size
             max_width = 1200
             max_height = 700
             scale = min(max_width/orig_w, max_height/orig_h) * st.session_state.zoom_level
             new_size = (int(orig_w * scale), int(orig_h * scale))
             
-            # Apply transformations
             image = image.resize(new_size)
             if st.session_state.rotation:
                 image = image.rotate(st.session_state.rotation, expand=True)
 
-            # Prepare drawing surface
             img_draw = image.copy()
             if img_draw.mode != 'RGB':
                 img_draw = img_draw.convert('RGB')
             draw = ImageDraw.Draw(img_draw)
 
-            # Draw existing annotations
             for ann in st.session_state.annotations:
                 if 'bbox' in ann:
                     x, y, width, height = ann['bbox']
                     x1, y1 = x*scale, y*scale
                     x2, y2 = (x+width)*scale, (y+height)*scale
                     
-                    # Draw box
                     draw.rectangle([x1, y1, x2, y2], outline='#FF6B00', width=3)
                     
-                    # Get and draw category name
                     category_name = next(
                         (cat["name"] for cat in self.project_data.get("categories", [])
                         if cat["id"] == ann["category_id"]),
                         "Unknown"
                     )
                     
-                    # Draw label background and text
                     text_width = len(category_name) * 6
                     draw.rectangle([x1, y1-20, x1+text_width+4, y1], fill='#FF6B00')
                     draw.text((x1+2, y1-18), category_name, fill='white')
@@ -502,7 +497,6 @@ class AppPages:
                         fill='#FF6B00'
                     )
 
-            # Draw current box
             if st.session_state.get('bbox_start'):
                 start_x, start_y = st.session_state.bbox_start
                 current_x = st.session_state.get('current_point', (start_x, start_y))[0]
@@ -513,7 +507,6 @@ class AppPages:
                     width=2
                 )
 
-            # Display image filename and dimensions
             st.markdown(f"""
                 <div class="image-info">
                     {os.path.basename(st.session_state.current_image)}<br/>
@@ -521,13 +514,11 @@ class AppPages:
                 </div>
             """, unsafe_allow_html=True)
 
-            # Handle image clicks
             clicked = streamlit_image_coordinates(img_draw, key="annotator")
             if clicked and clicked != st.session_state.get('last_click'):
                 st.session_state.last_click = clicked
                 self.handle_annotation_click(clicked, self.project_data, (scale, scale))
 
-        # Bottom Controls
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.button("⬅️ Previous", use_container_width=True)
@@ -590,23 +581,13 @@ class AppPages:
             st.rerun()
 
     def save_current_annotations(self):
-        """Save annotations to project directory"""
         try:
-            # Debug prints
-            print(f"Current image: {st.session_state.current_image}")
-            print(f"Project dir: {self.project_dir}")
-            print(f"Current annotations: {st.session_state.annotations}")
-            
-            # Save to annotations.json
             annotations_file = os.path.join(self.project_dir, "annotations.json")
-            print(f"Loading annotations from: {annotations_file}")
             
             with open(annotations_file, "r") as f:
                 data = json.load(f)
             
-            # Get image ID
             image_filename = os.path.basename(st.session_state.current_image)
-            print(f"Looking for image: {image_filename}")
             
             matching_images = [img for img in data["images"] 
                              if img["file_name"] == image_filename]
@@ -616,9 +597,7 @@ class AppPages:
                 return False
             
             image_id = matching_images[0]["id"]
-            print(f"Found image ID: {image_id}")
             
-            # Add annotations
             for ann in st.session_state.annotations:
                 ann_id = len(data["annotations"]) + 1
                 ann_data = {
@@ -630,15 +609,10 @@ class AppPages:
                     "user_id": st.session_state.user_id
                 }
                 data["annotations"].append(ann_data)
-                print(f"Added annotation: {ann_data}")
             
-            # Save updated annotations
-            print("Saving updated annotations...")
             with open(annotations_file, "w") as f:
                 json.dump(data, f, indent=4)
             
-            # Update task queue
-            print("Updating task queue...")
             task_manager = self.manager.get_task_manager(st.session_state.selected_project)
             success = task_manager.complete_task(
                 st.session_state.current_image,
@@ -655,31 +629,24 @@ class AppPages:
             
         except Exception as e:
             st.error(f"Error saving annotations: {str(e)}")
-            print(f"Full error details: {e}")
-            import traceback
-            print(traceback.format_exc())
             return False
 
     def app_style(self):
         st.markdown("""
             <style>
-            /* Remove top padding and header */
             .block-container {
                 padding-top: 0rem !important;
                 padding-bottom: 0rem !important;
             }
             
-            /* Hide Streamlit header and footer */
             header {display: none !important;}
             footer {display: none !important;}
             
-            /* Remove top margin from all headers */
             h1, h2, h3, h4, h5, h6 {
                 margin-top: 0 !important;
                 padding-top: 0 !important;
             }
             
-            /* Rest of your styles */
             .stApp {
                 background-color: #1E1E1E;
                 color: #E0E0E0;
@@ -733,7 +700,6 @@ class AppPages:
                 border: 1px solid #333;
             }
             
-            /* Remove default margins and padding */
             .stMarkdown {
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;
@@ -759,16 +725,3 @@ class AppPages:
             });
             </script>
         """)
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -200,12 +200,11 @@ class AnnotationManager:
     
     def get_task_manager(self, project_name):
         """Get task manager for a specific project"""
-        # First check Detection folder
+
         detection_path = os.path.join(self.base_project_dir, 'Detection', project_name)
         if os.path.exists(detection_path):
             return TaskManager(project_dir=detection_path)
         
-        # Then check Keypoint folder
         keypoint_path = os.path.join(self.base_project_dir, 'Keypoint', project_name)
         if os.path.exists(keypoint_path):
             return TaskManager(project_dir=keypoint_path)

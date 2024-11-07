@@ -3,9 +3,9 @@ import boto3
 from botocore.exceptions import ClientError
 import json
 
-AWS_ACCESS = os.getenv('AWS_ACCESS_KEY')
-AWS_SECRET = os.getenv('AWS_SECRET_KEY')
-AWS_REG = os.getenv('AWS_REGION')
+AWS_ACCESS = os.getenv('AWS_BASEBALLCV_ACCESS_KEY')
+AWS_SECRET = os.getenv('AWS_BASEBALLCV_SECRET_KEY')
+AWS_REG = os.getenv('AWS_BASEBALLCV_REGION')
 
 class S3Manager:
     """
@@ -125,19 +125,70 @@ class S3Manager:
         except ClientError as e:
             print("Error:", e)
 
-    def download_file(self, s3_key: str, local_path: str) -> None:
+    def _download_file(self, s3_key: str, local_path: str) -> bool:
         """
         Download a file from the S3 bucket to the local file system.
         
         Args:
             s3_key (str): The S3 key of the file to download.
             local_path (str): The local path where the file will be saved.
-        
-        Raises:
-            ClientError: If there's an error downloading the file.
+            
+        Returns:
+            bool: True if download was successful, False otherwise.
         """
         try:
             self.s3_client.download_file(self.bucket_name, s3_key, local_path)
             print(f"File '{s3_key}' downloaded to '{local_path}'.")
+            return True
         except ClientError as e:
-            print("Error:", e)
+            print(f"Error downloading {s3_key}: {e}")
+            return False
+    
+    def retrieve_raw_photos(self, s3_folder_name: str, local_path: str, max_images: int) -> list[str]:
+        """
+        Retrieve raw photos from folder in S3 bucket and download them locally.
+        
+        Args:
+            s3_folder_name (str): The folder in S3 to retrieve photos from.
+            local_path (str): The local directory path where photos will be saved.
+            max_images (int): Maximum number of images to be downloaded into directory.
+            
+        Returns:
+            list[str]: List of local paths to downloaded photos.
+        """
+        if s3_folder_name and not s3_folder_name.endswith('/'):
+            s3_folder_name += '/'
+            
+        photos = []
+        downloaded_photos = []
+
+        paginator = self.s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=self.bucket_name, Prefix=s3_folder_name)
+
+        for page in page_iterator:
+            if page['KeyCount'] > 0:
+                for obj in page['Contents']:
+                    if any(obj['Key'].lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
+                        photos.append(obj['Key'])
+                        if len(photos) >= max_images:
+                            break
+                if len(photos) >= max_images:
+                    break
+
+        if not photos:
+            print(f"No photos found in {s3_folder_name}")
+            return []
+
+        os.makedirs(local_path, exist_ok=True)
+
+        for s3_key in photos:
+            filename = os.path.basename(s3_key)
+            file_path = os.path.join(local_path, filename)
+            
+            if filename not in os.listdir(local_path):
+                if self._download_file(s3_key, file_path):
+                    downloaded_photos.append(file_path)
+                
+        photos.clear()
+        return downloaded_photos
+        
