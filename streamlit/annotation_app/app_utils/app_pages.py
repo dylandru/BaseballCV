@@ -10,6 +10,7 @@ from .default_tools import DefaultTools
 from .file_tools import FileTools
 from datetime import datetime
 from .s3 import S3Manager
+from .model_manager import ModelManager
 
 class AppPages:
     def __init__(self):
@@ -36,6 +37,7 @@ class AppPages:
         self.task_manager = TaskManager(project_dir=self.base_project_dir)
         self.s3_manager = S3Manager("baseballcv-annotations")
         self.project_data = None
+        self.model_manager = ModelManager()
         
     def show_welcome_page(self):
         st.markdown("""
@@ -242,6 +244,7 @@ class AppPages:
                 type=["jpg", "jpeg", "png"],
                 accept_multiple_files=True
             )
+            print(uploaded_files)
             
             if uploaded_files:
                 if st.button("Add Images"):
@@ -457,6 +460,21 @@ class AppPages:
             )
             if next_task:
                 st.session_state.current_image = next_task
+                
+                model_alias = self.project_data.get("info", {}).get("model_config", {}).get("model_alias")
+                
+                if model_alias:
+                    try:
+                        predictions = self.model_manager.predict_image(
+                            image_path=st.session_state.current_image,
+                            model_alias=model_alias
+                        )
+                        st.session_state.annotations = predictions
+                    except Exception as e:
+                        st.warning(f"Model prediction failed: {str(e)}")
+                        st.session_state.annotations = []
+                else:
+                    st.session_state.annotations = []
             else:
                 st.info("No images available for annotation")
                 return
@@ -465,8 +483,8 @@ class AppPages:
             image = Image.open(st.session_state.current_image)
             orig_w, orig_h = image.size
             
-            max_width = 1200
-            max_height = 700
+            max_width = 1280
+            max_height = 736
             scale = min(max_width/orig_w, max_height/orig_h) * st.session_state.zoom_level
             new_size = (int(orig_w * scale), int(orig_h * scale))
             
@@ -493,9 +511,13 @@ class AppPages:
                         "Unknown"
                     )
                     
-                    text_width = len(category_name) * 6
-                    draw.rectangle([x1, y1-20, x1+text_width+4, y1], fill='#FF6B00')
-                    draw.text((x1+2, y1-18), category_name, fill='white')
+                    label = category_name
+                    if ann.get("auto_generated"):
+                        label += f" ({ann['score']:.2f})"
+                    
+                    text_width = len(label) * 6
+                    draw.rectangle([x1, y1, x1+text_width+4, y1], fill='#FF6B00')
+                    draw.text((x1, y1), label, fill='white')
                     
                 elif 'keypoints' in ann:
                     x, y, v = ann['keypoints']

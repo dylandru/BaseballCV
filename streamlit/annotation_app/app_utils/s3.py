@@ -1,9 +1,7 @@
 import os
 import boto3
 from botocore.exceptions import ClientError
-from PIL import Image
 import json
-
 
 AWS_ACCESS = os.getenv('AWS_BASEBALLCV_ACCESS_KEY')
 AWS_SECRET = os.getenv('AWS_BASEBALLCV_SECRET_KEY')
@@ -162,43 +160,35 @@ class S3Manager:
             s3_folder_name += '/'
             
         photos = []
-        downloaded_paths = []
+        downloaded_photos = []
 
-        try:
-            paginator = self.s3_client.get_paginator('list_objects_v2')
-            page_iterator = paginator.paginate(Bucket=self.bucket_name, Prefix=s3_folder_name)
+        paginator = self.s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=self.bucket_name, Prefix=s3_folder_name)
 
-            for page in page_iterator:
-                if 'Contents' not in page:
-                    continue
-                    
-                if page['KeyCount'] > 0:
-                    for obj in page['Contents']:
-                        if any(obj['Key'].lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
-                            photos.append(obj['Key'])
-                            if len(photos) >= max_images:
-                                break
-                    if len(photos) >= max_images:
-                        break
+        for page in page_iterator:
+            if page['KeyCount'] > 0:
+                for obj in page['Contents']:
+                    if any(obj['Key'].lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
+                        photos.append(obj['Key'])
+                        if len(photos) >= max_images:
+                            break
+                if len(photos) >= max_images:
+                    break
 
-            if not photos:
-                print(f"No photos found in {s3_folder_name}")
-                return []
-
-            os.makedirs(local_path, exist_ok=True)
-
-            for s3_key in photos:
-                filename = os.path.basename(s3_key)
-                file_path = os.path.join(local_path, filename)
-                
-                if filename not in os.listdir(local_path):
-                    if self._download_file(s3_key, file_path):
-                        downloaded_paths.append(file_path)
-
-            photos.clear()
-            return downloaded_paths
-            
-        except Exception as e:
-            print(f"Error retrieving photos: {str(e)}")
+        if not photos:
+            print(f"No photos found in {s3_folder_name}")
             return []
+
+        os.makedirs(local_path, exist_ok=True)
+
+        for s3_key in photos:
+            filename = os.path.basename(s3_key)
+            file_path = os.path.join(local_path, filename)
+            
+            if filename not in os.listdir(local_path):
+                if self._download_file(s3_key, file_path):
+                    downloaded_photos.append(file_path)
+                
+        photos.clear()
+        return downloaded_photos
         

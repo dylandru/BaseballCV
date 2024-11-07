@@ -1,7 +1,6 @@
 import os
 import json
 import cv2
-from PIL import Image
 
 __all__ = ['FileTools']
 

@@ -24,7 +24,11 @@ class DefaultTools:
                     "name": "Player Detection",
                     "description": "Detect players by role (pitcher, batter, catcher)",
                     "type": "detection",
-                    "date_created": datetime.now().isoformat()
+                    "date_created": datetime.now().isoformat(),
+                    "model_config": {
+                        "model_alias": "phc_detector",
+                        "confidence_threshold": 0.5
+                    }
                 },
                 "categories": [
                     {"id": 1, "name": "pitcher", "color": "#FF6B6B"},
