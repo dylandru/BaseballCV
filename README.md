@@ -57,7 +57,7 @@ If you are interested in training your own models with our datasets, you can dow
 If you are interested in annotating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
 
 ```python
-  from scripts.dataset_tools import DataTools
+  from scripts.load_tools import LoadTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
