@@ -284,13 +284,20 @@ class AppPages:
             if st.button("Download Images"):
                 try:
                     s3_folder = os.path.join(st.session_state.project_type, st.session_state.selected_project)
-                    self.s3_manager.retrieve_raw_photos(
+                    photos = self.s3_manager.retrieve_raw_photos(
                         s3_folder_name=s3_folder,
                         local_path=os.path.join(self.base_project_dir, st.session_state.project_type, st.session_state.selected_project, "images"),
                         max_images=num_images
                     )
-                    st.success(f"Successfully downloaded {num_images} images")
-                    st.rerun()
+                    if len(photos) > 0:
+                        self.manager.add_images_to_task_queue(
+                            st.session_state.selected_project,
+                            photos
+                        )
+                        st.success(f"Successfully downloaded {len(photos)} images")
+                        st.rerun()
+                    else:
+                        st.info("No new images found")
                 except Exception as e:
                     st.error(f"Error downloading images: {str(e)}")
 

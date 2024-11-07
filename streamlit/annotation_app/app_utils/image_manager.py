@@ -13,13 +13,11 @@ class ImageManager:
         self.resized_ratio_h = 1.0
         
     def load_image(self, image_path):
-        """Load and store original image"""
         self.current_image = Image.open(image_path)
         self.original_size = self.current_image.size
         return self.current_image
         
     def resize_for_display(self):
-        """Resize image for display while maintaining aspect ratio"""
         if not self.current_image:
             return None
             
@@ -37,5 +35,4 @@ class ImageManager:
         return self.current_image
         
     def display_to_original_coords(self, x, y):
-        """Convert display coordinates to original image coordinates"""
         return x * self.resized_ratio_w, y * self.resized_ratio_h

@@ -132,12 +132,13 @@ class AnnotationManager:
                 annotations_data = json.load(f)
 
             for uploaded_file in image_files:
-                save_path = os.path.join(images_dir, uploaded_file.name)
                 
                 if hasattr(uploaded_file, 'read'):
+                    save_path = os.path.join(images_dir, uploaded_file.name)
                     with open(save_path, "wb") as f:
                         f.write(uploaded_file.read())
                 else:
+                    save_path = os.path.join(images_dir, os.path.basename(uploaded_file))
                     with open(uploaded_file, "rb") as src, open(save_path, "wb") as dst:
                         dst.write(src.read())
                         
