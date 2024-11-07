@@ -54,10 +54,10 @@ If you are interested in training your own models with our datasets, you can dow
   dataset_path = load_tools.load_dataset("baseball_rubber_home_glove")
 
 ```
-If you are interested in creating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
+If you are interested in annotating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
 
 ```python
-  from scripts.load_tools import LoadTools
+  from scripts.dataset_tools import DataTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
@@ -69,7 +69,33 @@ If you are interested in creating your own dataset, you can use one of the raw p
   dataset_path = load_tools.load_dataset("broadcast_10k_frames")
 ```
 
-More datasets will likely be added in the future, so check back!
+**Creating Your Own Datasets**
+
+If you are interested in creating your own datasets from scratch, you can use our tools to help you, such as our photo generator.
+
+```python
+  from scripts.dataset_tools import DataTools
+
+  # Initialize DataTools class
+  data_tools = DataTools()
+
+  # Generate 10,000 photos into photos folder from across Savant videos between May 1, 2024 and July 31, 2024
+  data_tools.generate_photo_dataset(max_plays=5000, output_frames_folder="photos", max_num_frames=10000, max_videos_per_game=10, start_date="2024-05-01", end_date="2024-07-31", delete_savant_videos=True)
+```
+
+With that given dataset, you can then use our automatic annotation tool to annotate the dataset based on an existing model.
+
+```python
+  from scripts.dataset_tools import DataTools
+
+  # Initialize DataTools class
+  data_tools = DataTools()
+
+  # Annotate photos folder based on glove tracking model with a confidence threshold of 60%
+  data_tools.automated_annotation(model_alias="glove_tracking", dataset_path="photos", conf=0.6)
+```
+
+More datasets and tools will likely be added in the future, so check back!
 
 ### 2. Pre-trained Models
 We offer pre-trained YOLO models for object detection. The models are trained to detect the aforementioned objects with high accuracy.
