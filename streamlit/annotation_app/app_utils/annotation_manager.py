@@ -132,24 +132,24 @@ class AnnotationManager:
                 annotations_data = json.load(f)
 
             for uploaded_file in image_files:
-                
-                if hasattr(uploaded_file, 'read'):
+                if hasattr(uploaded_file, 'read'): 
                     save_path = os.path.join(images_dir, uploaded_file.name)
-                    with open(save_path, "wb") as f:
-                        f.write(uploaded_file.read())
-                else:
-                    save_path = os.path.join(images_dir, os.path.basename(uploaded_file))
-                    with open(uploaded_file, "rb") as src, open(save_path, "wb") as dst:
-                        dst.write(src.read())
-                        
+                    if not os.path.exists(save_path):  
+                        with open(save_path, "wb") as f:
+                            f.write(uploaded_file.read())
+                else:  
+                    save_path = uploaded_file if os.path.exists(uploaded_file) else os.path.join(images_dir, os.path.basename(uploaded_file))
+                    
                 saved_paths.append(save_path)
                 
-                image_info = {
-                    "id": len(annotations_data["images"]) + 1,
-                    "file_name": os.path.basename(save_path),
-                    "date_added": datetime.now().isoformat()
-                }
-                annotations_data["images"].append(image_info)
+                image_filename = os.path.basename(save_path)
+                if not any(img["file_name"] == image_filename for img in annotations_data["images"]):
+                    image_info = {
+                        "id": len(annotations_data["images"]) + 1,
+                        "file_name": image_filename,
+                        "date_added": datetime.now().isoformat()
+                    }
+                    annotations_data["images"].append(image_info)
 
             with open(annotations_file, "w") as f:
                 json.dump(annotations_data, f, indent=4)
@@ -158,12 +158,18 @@ class AnnotationManager:
             with open(task_queue_file, "r") as f:
                 task_queue = json.load(f)
 
-            task_queue["available_images"].extend(saved_paths)
+            existing_paths = (
+                task_queue["available_images"] + 
+                list(task_queue["in_progress"].values()) + 
+                list(task_queue["completed"].values())
+            )
+            new_paths = [p for p in saved_paths if p not in existing_paths]
+            task_queue["available_images"].extend(new_paths)
 
             with open(task_queue_file, "w") as f:
                 json.dump(task_queue, f, indent=4)
 
-            return len(saved_paths)
+            return len(new_paths)
 
         except Exception as e:
             raise Exception(f"Error adding images: {str(e)}")
