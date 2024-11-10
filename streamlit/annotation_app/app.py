@@ -1,39 +1,17 @@
-import os
 import streamlit as st
 from app_utils import AppPages, FileTools, TaskManager, ImageManager, AnnotationManager, DefaultTools
 
-def write_log(message, log_file_path):
-    try:
-        with open(log_file_path, 'a') as log_file:
-            log_file.write(message + '\n')
-    except PermissionError:
-        fallback_log_file_path = os.path.join("/tmp", "annotation_app.log")
-        with open(fallback_log_file_path, 'a') as fallback_log_file:
-            fallback_log_file.write(message + '\n')
-            fallback_log_file.write(f"Warning: Failed to write to {log_file_path}. Using fallback log file at {fallback_log_file_path}\n")
 
 def main():
-    # Define the log file path
-    log_file_path = os.path.join(os.path.expanduser("~"), "annotation_app.log")
-
-    # Log the current working directory
-    current_working_directory = os.getcwd()
-    write_log(f"Current working directory: {current_working_directory}", log_file_path)
-
-    # Log the process ID and user ID
-    process_id = os.getpid()
-    user_id = os.getuid()
-    write_log(f"Process ID: {process_id}, User ID: {user_id}", log_file_path)
-
     st.set_page_config(
         layout="wide",
         page_title="Baseball Annotation Tool",
         page_icon="⚾"
     )
-
+    
     # Initialize project structure at startup
     DefaultTools.init_project_structure()
-
+    
     # Initialize session state
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
@@ -52,9 +30,10 @@ def main():
     if 'current_image' not in st.session_state:
         st.session_state.current_image = None
 
+
     app_pages = AppPages()
     app_pages.app_style()
-
+    
     if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
             st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
@@ -79,22 +58,22 @@ def main():
             </div>
         """, unsafe_allow_html=True)
         return
-
+    
     with st.sidebar:
         st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='color: black; text-align: center'>User: {st.session_state.user_id}</h3>", unsafe_allow_html=True)
         st.markdown("---")
-
+        
         if st.session_state.page != "welcome":
             if st.button("← Back to Home", key="nav_home"):
                 st.session_state.page = "welcome"
                 st.session_state.selected_project = None
                 st.rerun()
-
+            
             if st.session_state.selected_project:
                 st.markdown(f"<h3 style='color: black; text-align: center'>Current Project: {st.session_state.selected_project}</h3>", unsafe_allow_html=True)
                 st.markdown("---")
-
+                
                 if st.button("Project Dashboard", key="nav_dashboard"):
                     st.session_state.page = "project_dashboard"
                     st.rerun()
@@ -107,14 +86,14 @@ def main():
                 if st.button("View Progress", key="nav_progress"):
                     st.session_state.page = "progress"
                     st.rerun()
-
+        
         st.markdown("---")
         if st.button("Logout", key="logout"):
             st.session_state.user_id = None
             st.session_state.page = "welcome"
             st.session_state.selected_project = None
             st.rerun()
-
+    
     if st.session_state.page == "welcome":
         app_pages.show_welcome_page()
     elif st.session_state.page == "create_project":
