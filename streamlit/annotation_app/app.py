@@ -1,17 +1,34 @@
+import os
+import logging
 import streamlit as st
 from app_utils import AppPages, FileTools, TaskManager, ImageManager, AnnotationManager, DefaultTools
 
+# Set up logging configuration
+logging.basicConfig(
+    filename=os.path.join(os.path.expanduser("~"), "annotation_app.log"),
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 def main():
+    # Log the current working directory
+    current_working_directory = os.getcwd()
+    logging.info(f"Current working directory: {current_working_directory}")
+
+    # Log the process ID and user ID
+    process_id = os.getpid()
+    user_id = os.getuid()
+    logging.info(f"Process ID: {process_id}, User ID: {user_id}")
+
     st.set_page_config(
         layout="wide",
         page_title="Baseball Annotation Tool",
         page_icon="⚾"
     )
-    
+
     # Initialize project structure at startup
     DefaultTools.init_project_structure()
-    
+
     # Initialize session state
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
@@ -30,10 +47,9 @@ def main():
     if 'current_image' not in st.session_state:
         st.session_state.current_image = None
 
-
     app_pages = AppPages()
     app_pages.app_style()
-    
+
     if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
             st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
@@ -58,22 +74,22 @@ def main():
             </div>
         """, unsafe_allow_html=True)
         return
-    
+
     with st.sidebar:
         st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='color: black; text-align: center'>User: {st.session_state.user_id}</h3>", unsafe_allow_html=True)
         st.markdown("---")
-        
+
         if st.session_state.page != "welcome":
             if st.button("← Back to Home", key="nav_home"):
                 st.session_state.page = "welcome"
                 st.session_state.selected_project = None
                 st.rerun()
-            
+
             if st.session_state.selected_project:
                 st.markdown(f"<h3 style='color: black; text-align: center'>Current Project: {st.session_state.selected_project}</h3>", unsafe_allow_html=True)
                 st.markdown("---")
-                
+
                 if st.button("Project Dashboard", key="nav_dashboard"):
                     st.session_state.page = "project_dashboard"
                     st.rerun()
@@ -86,14 +102,14 @@ def main():
                 if st.button("View Progress", key="nav_progress"):
                     st.session_state.page = "progress"
                     st.rerun()
-        
+
         st.markdown("---")
         if st.button("Logout", key="logout"):
             st.session_state.user_id = None
             st.session_state.page = "welcome"
             st.session_state.selected_project = None
             st.rerun()
-    
+
     if st.session_state.page == "welcome":
         app_pages.show_welcome_page()
     elif st.session_state.page == "create_project":
