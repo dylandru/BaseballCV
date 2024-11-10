@@ -96,8 +96,8 @@ class S3Manager:
         Raises:
             ClientError: If there's an error uploading the annotation data.
         """
-        json_data = json.dumps(annotations, indent=4)
-        s3_key = f"{folder_name}/annotations.json"
+    json_data = json.dumps(annotations, indent=4)
+    s3_key = f"{annotation_type}/{user}/{folder_name}/annotations.json"
         
         try:
             self.s3_client.put_object(Body=json_data, Bucket=self.bucket_name, Key=s3_key)
