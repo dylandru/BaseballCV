@@ -1,24 +1,29 @@
 import os
-import logging
 import streamlit as st
 from app_utils import AppPages, FileTools, TaskManager, ImageManager, AnnotationManager, DefaultTools
 
-# Set up logging configuration
-logging.basicConfig(
-    filename=os.path.join(os.path.expanduser("~"), "annotation_app.log"),
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+def write_log(message, log_file_path):
+    try:
+        with open(log_file_path, 'a') as log_file:
+            log_file.write(message + '\n')
+    except PermissionError:
+        fallback_log_file_path = os.path.join("/tmp", "annotation_app.log")
+        with open(fallback_log_file_path, 'a') as fallback_log_file:
+            fallback_log_file.write(message + '\n')
+            fallback_log_file.write(f"Warning: Failed to write to {log_file_path}. Using fallback log file at {fallback_log_file_path}\n")
 
 def main():
+    # Define the log file path
+    log_file_path = os.path.join(os.path.expanduser("~"), "annotation_app.log")
+
     # Log the current working directory
     current_working_directory = os.getcwd()
-    logging.info(f"Current working directory: {current_working_directory}")
+    write_log(f"Current working directory: {current_working_directory}", log_file_path)
 
     # Log the process ID and user ID
     process_id = os.getpid()
     user_id = os.getuid()
-    logging.info(f"Process ID: {process_id}, User ID: {user_id}")
+    write_log(f"Process ID: {process_id}, User ID: {user_id}", log_file_path)
 
     st.set_page_config(
         layout="wide",
