@@ -2,6 +2,8 @@ from load_tools import LoadTools
 from ultralytics import YOLO
 from datetime import datetime
 import cv2
+import streamlit as st
+
 __all__ = ['ModelManager']
 
 class ModelManager:
@@ -9,11 +11,17 @@ class ModelManager:
         self.load_tools = LoadTools()
         self.conf = conf
         
+    @st.cache_resource(show_spinner="Loading model...")
+    def _load_model(_self, model_alias: str):
+        model_path = _self.load_tools.load_model(model_alias=model_alias)
+        return YOLO(model_path)
+        
     def predict_image(self, image_path, model_alias: str):
         img = cv2.imread(image_path)
         height, width = img.shape[:2]
-        model_path = self.load_tools.load_model(model_alias=model_alias)
-        model = YOLO(model_path)
+        
+        model = self._load_model(model_alias)
+        
         results = model.predict(image_path, conf=self.conf)[0]
         
         annotations = []
