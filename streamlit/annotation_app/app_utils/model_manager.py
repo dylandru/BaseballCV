@@ -12,17 +12,16 @@ class ModelManager:
         self.conf = conf
         
     @st.cache_resource(show_spinner="Loading model...")
-    def _load_model(_self, model_alias: str):
+    def load_model(_self, model_alias: str) -> YOLO: #TODO: Adjust based on More Model Types
         model_path = _self.load_tools.load_model(model_alias=model_alias)
-        return YOLO(model_path)
+        model = YOLO(model_path)
+        return model
         
-    def predict_image(self, image_path, model_alias: str):
+    def predict_image(self, image_path: str, model: YOLO) -> list[dict]:
         img = cv2.imread(image_path)
         height, width = img.shape[:2]
         
-        model = self._load_model(model_alias)
-        
-        results = model.predict(image_path, conf=self.conf)[0]
+        results = model.predict(image_path, conf=self.conf, verbose=True)[0]
         
         annotations = []
         for i, (box, score, cls) in enumerate(zip(results.boxes.xywhn, 

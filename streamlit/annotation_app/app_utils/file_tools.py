@@ -1,22 +1,23 @@
 import os
 import json
 import cv2
+from typing import Any, List
 
 __all__ = ['FileTools']
 
 class FileTools:
-    @staticmethod
-    def save_json(data, filepath):
+    def __init__(self):
+        pass
+        
+    def save_json(self, data: Any, filepath: str) -> None:
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=4)
 
-    @staticmethod
-    def load_json(filepath):
+    def load_json(self, filepath: str) -> Any:
         with open(filepath, 'r') as f:
             return json.load(f)
 
-    @staticmethod
-    def extract_frames(video_file, output_dir, frame_interval=1):
+    def extract_frames(self, video_file: Any, output_dir: str, frame_interval: int = 1) -> List[str]:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             

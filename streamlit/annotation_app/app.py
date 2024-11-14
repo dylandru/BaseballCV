@@ -1,18 +1,17 @@
 import streamlit as st
-from app_utils import AppPages, FileTools, TaskManager, ImageManager, AnnotationManager, DefaultTools
+from app_utils import AppPages, DefaultTools
 
 
-def main():
+def app() -> None:
     st.set_page_config(
         layout="wide",
         page_title="Baseball Annotation Tool",
         page_icon="⚾"
     )
     
-    # Initialize project structure at startup
-    DefaultTools.init_project_structure()
+    default_tools = DefaultTools()
+    default_tools.init_project_structure()
     
-    # Initialize session state
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
     if 'selected_project' not in st.session_state:
@@ -29,7 +28,6 @@ def main():
         st.session_state.bbox_start = None
     if 'current_image' not in st.session_state:
         st.session_state.current_image = None
-
 
     app_pages = AppPages()
     app_pages.app_style()
@@ -110,4 +108,4 @@ def main():
         app_pages.show_annotation_interface()
 
 if __name__ == "__main__":
-    main()
+    app()

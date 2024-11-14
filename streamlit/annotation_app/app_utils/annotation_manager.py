@@ -1,226 +1,92 @@
 import os
-from datetime import datetime
-from .task_manager import TaskManager
-from .file_tools import FileTools 
 import json
-from PIL import ImageDraw
+from datetime import datetime
+from PIL import Image
+import cv2
+from .task_manager import TaskManager
+from .file_tools import FileTools
 
 class AnnotationManager:
+    """Manages annotation data and project configuration."""
+    
     def __init__(self):
-        self.base_project_dir = os.path.join("streamlit", "annotation_app", "projects")
-        self.init_projects()
+        """Initialize AnnotationManager."""
+        self.base_dir = os.path.join('streamlit', 'annotation_app', 'projects')
+        self.file_tools = FileTools()
         
-    def init_projects(self):
-        for project_type in ["Detection", "Keypoint"]:
-            type_dir = os.path.join(self.base_project_dir, project_type)
-            os.makedirs(type_dir, exist_ok=True)
+    def create_project(self, project_name: str, config: dict) -> None:
+        """Create new project with configuration.
+        
+        Args:
+            project_name: Name of the project
+            config: Project configuration dictionary
+        """
+        project_dir = os.path.join(self.base_dir, config['info']['type'], project_name)
+        os.makedirs(project_dir, exist_ok=True)
+        os.makedirs(os.path.join(project_dir, 'images'), exist_ok=True)
+        
+        config['info']['date_created'] = datetime.now().isoformat()
+        config['images'] = []
+        config['annotations'] = []
+        
+        self.file_tools.save_json(config, os.path.join(project_dir, 'annotations.json'))
+        
+    def get_task_manager(self, project_name: str, project_type: str) -> TaskManager:
+        """Get TaskManager instance for project."""
+        project_dir = os.path.join(self.base_dir, project_type, project_name)
+        if os.path.exists(project_dir):
+            return TaskManager(project_dir)
                 
-    def normalize_coordinates(self, x, y, width, height):
-        return x / width, y / height
-
-    def normalize_bbox(self, bbox, width, height):
-        x1, y1, x2, y2 = bbox
-        return [x1/width, y1/height, x2/width, y2/height]
-
-    def draw_bbox_preview(self, draw, start_point, current_point, category=None):
-        if start_point:
-            x1, y1 = start_point
+        raise ValueError(f"Project {project_name} not found")
+        
+    def add_images_to_task_queue(self, project_name: str, project_type: str, images: list) -> int:
+        """Add images to project and task queue.
+        
+        Args:
+            project_name: Name of the project
+            images: List of image files or paths
             
-            if draw._image.mode != 'RGB':
-                new_image = draw._image.convert('RGB')
-                draw = ImageDraw.Draw(new_image)
+        Returns:
+            int: Number of images added
+        """
+        project_dir = os.path.join(self.base_dir, project_type, project_name)
+        image_dir = os.path.join(project_dir, 'images')
+        
+        image_paths = []
+        for img in images:
+            if isinstance(img, str):
+                image_path = img
+            else:
+                image_path = os.path.join(image_dir, img.name)
+                with open(image_path, 'wb') as f:
+                    f.write(img.getbuffer())
             
-            orange_color = (255, 102, 0)
-            try:
-                draw.ellipse([int(x1-5), int(y1-5), int(x1+5), int(y1+5)], fill=orange_color)
-                
-                if current_point:
-                    x2, y2 = current_point
-                    
-                    x1, x2 = min(x1, x2), max(x1, x2)
-                    y1, y2 = min(y1, y2), max(y1, y2)
-                    
-                    draw.rectangle([int(x1), int(y1), int(x2), int(y2)], outline=orange_color, width=2)
-                    
-                    if category:
-                        draw.text((int(x1), int(y1-20)), category, fill=orange_color)
-            except Exception as e:
-                print(f"Error drawing preview: {str(e)}")
-
-    def draw_annotations(self, draw, annotations, config, scale_factor):
-        project_type = config.get("info", {}).get("type", "unknown")
-        
-        scale_w = scale_factor[0] if isinstance(scale_factor, tuple) else scale_factor
-        scale_h = scale_factor[1] if isinstance(scale_factor, tuple) else scale_factor
-        
-        if draw._image.mode != 'RGB':
-            new_image = draw._image.convert('RGB')
-            draw = ImageDraw.Draw(new_image)
-        
-        def hex_to_rgb(hex_color):
-            hex_color = hex_color.lstrip('#')
-            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            image_paths.append(image_path)
+            self._add_image_to_annotations(project_name, project_type, image_path)
             
-        if project_type == "detection":
-            for ann in annotations:
-                category = next(cat for cat in config.get("categories", []) 
-                              if cat["id"] == ann["category_id"])
-                color = category.get("color", "#FF6B6B")
-                rgb_color = hex_to_rgb(color)
-                
-                x1, y1, w, h = ann["bbox"]
-                x2, y2 = x1 + w, y1 + h
-                
-                scaled_coords = [
-                    int(x1 * scale_w),
-                    int(y1 * scale_h),
-                    int(x2 * scale_w),
-                    int(y2 * scale_h)
-                ]
-                
-                draw.rectangle(scaled_coords, outline=rgb_color, width=2)
-                label = f"{category['name']}"
-                if "score" in ann:
-                    label += f" ({ann['score']:.2f})"
-                draw.text((scaled_coords[0], scaled_coords[1]-20), label, 
-                         fill=rgb_color)
-    
-    def _create_project_structure(self, project_name, config):
-        project_type = "Detection" if config["info"]["type"] == "detection" else "Keypoint"
-        project_dir = os.path.join(self.base_project_dir, project_type, project_name)
+        task_manager = self.get_task_manager(project_name, project_type)
+        return task_manager.add_task_batch(image_paths)
         
-        if not os.path.exists(project_dir):
-            os.makedirs(project_dir, exist_ok=True)
-            os.makedirs(os.path.join(project_dir, "images"), exist_ok=True)
-            
-            coco_data = {
-                "info": config["info"],
-                "images": [],
-                "annotations": [],
-                "categories": config["categories"]
-            }
-            
-            with open(os.path.join(project_dir, "annotations.json"), "w") as f:
-                json.dump(coco_data, f, indent=4)
-                
-            task_queue = {
-                "available_images": [],
-                "in_progress": {},
-                "completed": {},
-                "users": {}
-            }
-            with open(os.path.join(project_dir, "task_queue.json"), "w") as f:
-                json.dump(task_queue, f, indent=4)
-            
-            return True
-        return False
-
-    def add_images_to_task_queue(self, project_name, image_files):
-        try:
-            project_path = self._get_project_path(project_name)
-            if not project_path:
-                raise ValueError(f"Project {project_name} not found")
-
-            images_dir = os.path.join(project_path, "images")
-            if not os.path.exists(images_dir):
-                os.makedirs(images_dir)
-
-            saved_paths = []
-            
-            annotations_file = os.path.join(project_path, "annotations.json")
-            with open(annotations_file, "r") as f:
-                annotations_data = json.load(f)
-
-            for uploaded_file in image_files:
-                if hasattr(uploaded_file, 'read'): 
-                    save_path = os.path.join(images_dir, uploaded_file.name)
-                    if not os.path.exists(save_path):  
-                        with open(save_path, "wb") as f:
-                            f.write(uploaded_file.read())
-                else:  
-                    save_path = uploaded_file if os.path.exists(uploaded_file) else os.path.join(images_dir, os.path.basename(uploaded_file))
-                    
-                saved_paths.append(save_path)
-                
-                image_filename = os.path.basename(save_path)
-                if not any(img["file_name"] == image_filename for img in annotations_data["images"]):
-                    image_info = {
-                        "id": len(annotations_data["images"]) + 1,
-                        "file_name": image_filename,
-                        "date_added": datetime.now().isoformat()
-                    }
-                    annotations_data["images"].append(image_info)
-
-            with open(annotations_file, "w") as f:
-                json.dump(annotations_data, f, indent=4)
-
-            task_queue_file = os.path.join(project_path, "task_queue.json")
-            with open(task_queue_file, "r") as f:
-                task_queue = json.load(f)
-
-            existing_paths = (
-                task_queue["available_images"] + 
-                list(task_queue["in_progress"].values()) + 
-                list(task_queue["completed"].values())
-            )
-            new_paths = [p for p in saved_paths if p not in existing_paths]
-            task_queue["available_images"].extend(new_paths)
-
-            with open(task_queue_file, "w") as f:
-                json.dump(task_queue, f, indent=4)
-
-            return len(new_paths)
-
-        except Exception as e:
-            raise Exception(f"Error adding images: {str(e)}")
-    
-    def handle_video_upload(self, project_name, video_file, frame_interval=1):
-        project_path = self._get_project_path(project_name)
-        if not project_path:
-            raise ValueError(f"Project {project_name} not found")
-            
-        frames_dir = os.path.join(project_path, "images")
+    def _add_image_to_annotations(self, project_name: str, project_type: str, image_path: str) -> None:
+        """Add image entry to annotations file.
         
-        frames = FileTools.extract_frames(video_file, frames_dir, frame_interval)
+        Args:
+            project_name: Name of the project
+            image_path: Path to image file
+        """
+        annotations_file = os.path.join(self.base_dir, project_type, project_name, 'annotations.json')
+        data = self.file_tools.load_json(annotations_file)
         
-        annotations_file = os.path.join(project_path, "annotations.json")
-        coco_data = FileTools.load_json(annotations_file)
+        image = Image.open(image_path)
+        width, height = image.size
         
-        for frame_path in frames:
-            frame_name = os.path.basename(frame_path)
-            image_info = {
-                "id": len(coco_data["images"]) + 1,
-                "file_name": frame_name,
-                "frame_number": int(frame_name.split("_")[1].split(".")[0]),
-                "date_added": datetime.now().isoformat()
-            }
-            coco_data["images"].append(image_info)
+        image_info = {
+            "id": len(data['images']) + 1,
+            "file_name": os.path.basename(image_path),
+            "width": width,
+            "height": height,
+            "date_captured": datetime.now().isoformat()
+        }
         
-        FileTools.save_json(coco_data, annotations_file)
-        
-        task_queue_file = os.path.join(project_path, "task_queue.json")
-        task_queue = FileTools.load_json(task_queue_file)
-        task_queue["available_images"].extend(frames)
-        FileTools.save_json(task_queue, task_queue_file)
-        
-        return frames
-    
-    def get_task_manager(self, project_name):
-        """Get task manager for a specific project"""
-
-        detection_path = os.path.join(self.base_project_dir, 'Detection', project_name)
-        if os.path.exists(detection_path):
-            return TaskManager(project_dir=detection_path)
-        
-        keypoint_path = os.path.join(self.base_project_dir, 'Keypoint', project_name)
-        if os.path.exists(keypoint_path):
-            return TaskManager(project_dir=keypoint_path)
-        
-        raise ValueError(f"Project {project_name} not found in either Detection or Keypoint directories")
-    
-    def _get_project_path(self, project_name):
-        for project_type in ["Detection", "Keypoint"]:
-            path = os.path.join(self.base_project_dir, project_type, project_name)
-            if os.path.exists(path):
-                return path
-        return None
+        data['images'].append(image_info)
+        self.file_tools.save_json(data, annotations_file)

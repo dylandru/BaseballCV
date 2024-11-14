@@ -1,8 +1,7 @@
 import os
 import streamlit as st
-from PIL import ImageDraw, Image
-import json
-from streamlit_image_coordinates import streamlit_image_coordinates
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 from .annotation_manager import AnnotationManager
 from .image_manager import ImageManager
 from .task_manager import TaskManager
@@ -11,10 +10,12 @@ from .file_tools import FileTools
 from datetime import datetime
 from .s3 import S3Manager
 from .model_manager import ModelManager
+import math
 
 class AppPages:
     def __init__(self):
         self.base_project_dir = os.path.join('streamlit', 'annotation_app', 'projects')
+        self.file_tools = FileTools()
         
         os.makedirs(self.base_project_dir, exist_ok=True)
         
@@ -30,7 +31,7 @@ class AppPages:
                 "completed": {},
                 "users": {}
             }
-            FileTools.save_json(task_queue_data, task_queue_file)
+            self.file_tools.save_json(task_queue_data, task_queue_file)
         
         self.image_manager = ImageManager(project_dir=self.base_project_dir)
         self.manager = AnnotationManager()
@@ -38,8 +39,10 @@ class AppPages:
         self.s3_manager = S3Manager("baseballcv-annotations")
         self.project_data = None
         self.model_manager = ModelManager()
-        
-    def show_welcome_page(self):
+        self.default_tools = DefaultTools()
+        self.model = None
+
+    def show_welcome_page(self) -> None:
         st.markdown("""
             <style>
             .block-container {
@@ -75,7 +78,7 @@ class AppPages:
             """, unsafe_allow_html=True)
             if st.button("Create New Project", key="new_project"):
                 st.session_state.page = "create_project"
-                st.rerun()
+                return st.rerun()
 
         with col2:
             st.markdown("""
@@ -90,9 +93,9 @@ class AppPages:
             """, unsafe_allow_html=True)
             if st.button("Open Existing Project", key="existing_project"):
                 st.session_state.page = "select_project"
-                st.rerun()
+                return st.rerun()
 
-    def create_project_screen(self):
+    def create_project_screen(self) -> None:
         st.markdown("<h1 style='text-align: center; color: white'>Create New Project</h1>", unsafe_allow_html=True)
         
         project_type = st.radio(":orange[Project Type]", ["Detection", "Keypoints"])
@@ -101,7 +104,7 @@ class AppPages:
         
         if project_type == "Detection":
             st.markdown("<h3 style='text-align: center; color: white'>Available Categories</h3>", unsafe_allow_html=True)
-            categories = DefaultTools.init_baseball_categories()["detection"]
+            categories = self.default_tools.init_baseball_categories()["detection"]
             selected_categories = st.multiselect(
                 ":orange[Select categories to include]",
                 options=[cat["name"] for cat in categories],
@@ -109,7 +112,7 @@ class AppPages:
             )
         else:
             st.markdown("<h3 style='text-align: center; color: white'>Keypoint Presets</h3>", unsafe_allow_html=True)
-            keypoint_presets = DefaultTools.init_baseball_categories()["keypoints"]
+            keypoint_presets = self.default_tools.init_baseball_categories()["keypoints"]
             selected_preset = st.selectbox(
                 ":orange[Select keypoint configuration]",
                 options=list(keypoint_presets.keys())
@@ -127,7 +130,10 @@ class AppPages:
                 "info": {
                     "description": project_description,
                     "type": "detection" if project_type == "Detection" else "keypoint",
-                    "date_created": datetime.now().isoformat()
+                    "date_created": datetime.now().isoformat(),
+                    "model_config": {
+                        "model_alias": "yolov8n"
+                    }
                 },
                 "categories": [cat for cat in categories if cat["name"] in selected_categories] if project_type == "Detection" else [{
                     "id": 1,
@@ -143,11 +149,11 @@ class AppPages:
                 st.session_state.selected_project = project_name
                 st.session_state.project_type = project_type
                 st.session_state.page = "add_media"
-                st.rerun()
+                return st.rerun()
             except Exception as e:
                 st.error(f"Error creating project: {str(e)}")
 
-    def show_project_selection(self):
+    def show_project_selection(self) -> None:
         st.markdown("""
             <style>
             .block-container {
@@ -177,8 +183,7 @@ class AppPages:
             for project in projects:
                 config_path = os.path.join(projects_path, project, "annotations.json")
                 if os.path.exists(config_path):
-                    with open(config_path, 'r') as f:
-                        config = json.load(f)
+                    config = self.file_tools.load_json(config_path)
                     
                     st.markdown(f"""
                         <div class='project-card'>
@@ -193,13 +198,13 @@ class AppPages:
                             st.session_state.selected_project = project
                             st.session_state.project_type = project_type
                             st.session_state.page = "project_dashboard"
-                            st.rerun()
+                            return st.rerun()
                     with col2:
                         if st.button("Details", key=f"details_{project}"):
                             st.session_state.project_details = project
-                            st.rerun()
+                            return st.rerun()
 
-    def show_project_dashboard(self):
+    def show_project_dashboard(self) -> None:
         if not st.session_state.selected_project:
             st.error("No project selected")
             return
@@ -216,7 +221,7 @@ class AppPages:
             """, unsafe_allow_html=True)
             if st.button("Upload Media", use_container_width=True):
                 st.session_state.page = "add_media"
-                st.rerun()
+                return st.rerun()
 
         with col2:
             st.markdown("""
@@ -227,9 +232,9 @@ class AppPages:
             """, unsafe_allow_html=True)
             if st.button("Open Annotator", use_container_width=True):
                 st.session_state.page = "annotate"
-                st.rerun()
+                return st.rerun()
 
-    def show_add_media_page(self):
+    def show_add_media_page(self) -> None:
         if not st.session_state.selected_project:
             st.error("No project selected")
             return
@@ -251,11 +256,11 @@ class AppPages:
                     try:
                         num_added = self.manager.add_images_to_task_queue(
                             st.session_state.selected_project,
+                            st.session_state.project_type,
                             uploaded_files
                         )
                         st.success(f"Added {num_added} images successfully")
-                        st.session_state.page = "project_dashboard"
-                        st.rerun()
+                        return st.rerun()
                     except Exception as e:
                         st.error(f"Error adding images: {str(e)}")
 
@@ -272,10 +277,9 @@ class AppPages:
                         )
                         st.success(f"Extracted {len(frames)} frames from video")
                         st.session_state.page = "project_dashboard"
-                        st.rerun()
+                        return st.rerun()
                     except Exception as e:
                         st.error(f"Error processing video: {str(e)}")
-
         with tab3:
             st.markdown(":orange[Use our Images]")
             num_images = st.number_input("How many images would you like to download?", 
@@ -286,25 +290,34 @@ class AppPages:
             
             if st.button("Download Images"):
                 try:
-                    s3_folder = os.path.join(st.session_state.project_type, st.session_state.selected_project)
+                    project_path = os.path.join(self.base_project_dir, 
+                                              st.session_state.project_type, 
+                                              st.session_state.selected_project)
+                    
+                    s3_folder = os.path.join(st.session_state.project_type, 
+                                            st.session_state.selected_project)
+                    
                     photos = self.s3_manager.retrieve_raw_photos(
                         s3_folder_name=s3_folder,
-                        local_path=os.path.join(self.base_project_dir, st.session_state.project_type, st.session_state.selected_project, "images"),
+                        local_path=os.path.join(project_path, "images"),
                         max_images=num_images
                     )
+                    
                     if len(photos) > 0:
-                        self.manager.add_images_to_task_queue(
+                        num_added = self.manager.add_images_to_task_queue(
                             st.session_state.selected_project,
+                            st.session_state.project_type,
                             photos
                         )
-                        st.success(f"Successfully downloaded {len(photos)} images")
+                        st.success(f"Successfully downloaded {num_added} images!")
+                        st.session_state.page = "project_dashboard"
                         st.rerun()
                     else:
                         st.info("No new images found")
                 except Exception as e:
                     st.error(f"Error downloading images: {str(e)}")
 
-    def show_progress_page(self):
+    def show_progress_page(self) -> None:
         st.markdown("<h1 style='color: white;'>Project Progress</h1>", unsafe_allow_html=True)
         
         if not st.session_state.selected_project:
@@ -331,7 +344,7 @@ class AppPages:
             completion_rate = (completed / total_images * 100) if total_images > 0 else 0
             st.metric(":orange[Completion Rate]", f"{completion_rate:.1f}%")
 
-    def show_annotation_interface(self):
+    def show_annotation_interface(self) -> None:
         if not st.session_state.selected_project or not st.session_state.project_type:
             st.error("No project selected")
             return
@@ -341,8 +354,7 @@ class AppPages:
                                         st.session_state.selected_project)
         
         try:
-            with open(os.path.join(self.project_dir, "annotations.json"), "r") as f:
-                self.project_data = json.load(f)
+            self.project_data = self.file_tools.load_json(os.path.join(self.project_dir, "annotations.json"))
         except Exception as e:
             st.error(f"Error loading project data: {str(e)}")
             return
@@ -361,6 +373,7 @@ class AppPages:
             .block-container {
                 padding: 0 !important;
                 margin: 0 !important;
+                padding-bottom: 200px !important;
             }
             
             div[data-testid="stVerticalBlock"] > div {
@@ -425,28 +438,103 @@ class AppPages:
             
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
+            
+            .legend {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: rgba(30, 30, 30, 0.95);
+                padding: 15px 20px;
+                border-top: 1px solid #333;
+                display: flex;
+                justify-content: center;
+                gap: 20px;
+                z-index: 1000;
+            }
+            
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin: 3px 0;
+            }
+            
+            .legend-color {
+                width: 12px;
+                height: 12px;
+                margin-right: 6px;
+                border-radius: 2px;
+            }
+            
+            .legend-label {
+                color: white;
+                font-size: 11px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            .bottom-legend {
+                position: fixed;
+                bottom: 60px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(30, 30, 30, 0.95);
+                padding: 15px 30px;
+                border-radius: 8px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 30px;
+                z-index: 1000;
+                width: auto;
+                max-width: 80%;
+                border: 1px solid #333; 
+            }
+            
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 5px 10px;
+            }
+            
+            .color-box {
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+            }
+            
+            .legend-text {
+                color: white;
+                font-size: 14px;
+                white-space: nowrap;
+            }
+            
+            .canvas-container {
+                margin-bottom: 150px !important;
+            }
             </style>
         """, unsafe_allow_html=True)
 
-        cols = st.columns([1, 1, 1, 1, 1, 1, 2])
+        cols = st.columns([1, 1, 1, 1, 2])
         
         with cols[0]:
-            st.button("📂 Open", use_container_width=True)
-        with cols[1]:
             if st.button("⟲ Rotate", use_container_width=True):
                 st.session_state.rotation = (st.session_state.rotation - 90) % 360
-        with cols[2]:
-            if st.button("🔍 Zoom In", use_container_width=True):
+        with cols[1]:
+            if st.button(" Zoom In", use_container_width=True):
                 st.session_state.zoom_level *= 1.2
-        with cols[3]:
+                return st.rerun()
+        with cols[2]:
             if st.button("🔍 Zoom Out", use_container_width=True):
-                st.session_state.zoom_level /= 1.2
-        with cols[4]:
+                st.session_state.zoom_level = max(0.1, st.session_state.zoom_level / 1.5)
+                return st.rerun()
+        with cols[3]:
             if st.button("↔ Fit", use_container_width=True):
                 st.session_state.zoom_level = 1.0
-        with cols[5]:
-            st.button("✋ Move", use_container_width=True)
-        with cols[6]:
+                return st.rerun()
+        with cols[4]:
             st.selectbox(
                 "Category",
                 options=[cat['name'] for cat in self.project_data.get("categories", [])],
@@ -454,87 +542,165 @@ class AppPages:
                 label_visibility="collapsed"
             )
 
+        model_config = self.project_data.get("info", {}).get("model_config", {})
+        model_alias = model_config.get("model_alias")
+        model = self.model_manager.load_model(model_alias)
+
         if not st.session_state.current_image:
-            next_task = self.manager.get_task_manager(st.session_state.selected_project).get_next_task(
-                st.session_state.user_id
-            )
+            task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
+            next_task = task_manager.get_next_task(st.session_state.user_id)
+            
             if next_task:
+                task_manager.start_task(next_task, st.session_state.user_id)
                 st.session_state.current_image = next_task
-                
-                model_alias = self.project_data.get("info", {}).get("model_config", {}).get("model_alias")
                 
                 if model_alias:
                     try:
                         predictions = self.model_manager.predict_image(
-                            image_path=st.session_state.current_image,
-                            model_alias=model_alias
+                            st.session_state.current_image,
+                            model
                         )
+                        
+                        canvas_objects = []
+                        for i, pred in enumerate(predictions):
+                            bbox = pred.get("bbox")
+                            category_id = pred.get("category_id")
+                            
+                            if bbox and category_id:
+                                category = next((cat for cat in self.project_data.get("categories", [])
+                                              if cat["id"] == category_id), None)
+                                
+                                if category:
+                                    color = category.get("color", "#FF6B00")
+                                    
+                                    x_offset = 90
+                                    y_offset = 110
+                                    
+                                    canvas_obj = {
+                                        "type": "rect",
+                                        "left": float(bbox[0]) - x_offset,
+                                        "top": float(bbox[1]) - y_offset,
+                                        "width": float(bbox[2]),
+                                        "height": float(bbox[3]),
+                                        "stroke": color,
+                                        "fill": f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.3)",
+                                        "strokeWidth": 2,
+                                        "id": str(i)
+                                    }
+                                    canvas_objects.append(canvas_obj)
+                
                         st.session_state.annotations = predictions
+                        st.session_state.canvas_objects = canvas_objects
+                        
                     except Exception as e:
                         st.warning(f"Model prediction failed: {str(e)}")
                         st.session_state.annotations = []
+                        st.session_state.canvas_objects = []
                 else:
-                    st.session_state.annotations = []
-            else:
-                st.info("No images available for annotation")
-                return
+                    st.warning("\nNo model_alias found in project configuration")
 
         if st.session_state.current_image:
-            image = Image.open(st.session_state.current_image)
-            orig_w, orig_h = image.size
+            image = self.image_manager.load_image(
+                st.session_state.current_image,
+                zoom_level=st.session_state.zoom_level
+            )
+            orig_w, orig_h = self.image_manager.original_size
+            scale = self.image_manager.get_scale_factor()
             
-            max_width = 1280
-            max_height = 736
-            scale = min(max_width/orig_w, max_height/orig_h) * st.session_state.zoom_level
-            new_size = (int(orig_w * scale), int(orig_h * scale))
-            
-            image = image.resize(new_size)
             if st.session_state.rotation:
-                image = image.rotate(st.session_state.rotation, expand=True)
+                angle_rad = math.radians(st.session_state.rotation)
+                cos_a = abs(math.cos(angle_rad))
+                sin_a = abs(math.sin(angle_rad))
+                
+                rot_w = int(image.width * cos_a + image.height * sin_a)
+                rot_h = int(image.width * sin_a + image.height * cos_a)
+                
+                rotated_image = Image.new('RGBA', (rot_w, rot_h), (0, 0, 0, 0))
+                image = image.rotate(st.session_state.rotation, expand=True, resample=Image.Resampling.LANCZOS)
+                paste_x = (rot_w - image.width) // 2
+                paste_y = (rot_h - image.height) // 2
+                rotated_image.paste(image, (paste_x, paste_y))
+                image = rotated_image
 
-            img_draw = image.copy()
-            if img_draw.mode != 'RGB':
-                img_draw = img_draw.convert('RGB')
-            draw = ImageDraw.Draw(img_draw)
+            initial_objects = []
+            if hasattr(st.session_state, 'canvas_objects') and st.session_state.canvas_objects:
+                for obj in st.session_state.canvas_objects:
+                    try:
+                        scaled_obj = {
+                            "type": "rect",
+                            "left": float(obj["left"]) * scale,
+                            "top": float(obj["top"]) * scale,
+                            "width": float(obj["width"]) * scale,
+                            "height": float(obj["height"]) * scale,
+                            "stroke": obj.get("stroke", "#FF6B00"),
+                            "fill": obj.get("fill", "rgba(255, 107, 0, 0.3)"),
+                            "strokeWidth": 2,
+                            "id": obj.get("id", "")
+                        }
+                        initial_objects.append(scaled_obj)
+                    except Exception as e:
+                        continue
 
-            for ann in st.session_state.annotations:
-                if 'bbox' in ann:
-                    x, y, width, height = ann['bbox']
-                    x1, y1 = x*scale, y*scale
-                    x2, y2 = (x+width)*scale, (y+height)*scale
-                    
-                    draw.rectangle([x1, y1, x2, y2], outline='#FF6B00', width=3)
-                    
-                    category_name = next(
-                        (cat["name"] for cat in self.project_data.get("categories", [])
-                        if cat["id"] == ann["category_id"]),
-                        "Unknown"
-                    )
-                    
-                    label = category_name
-                    if ann.get("auto_generated"):
-                        label += f" ({ann['score']:.2f})"
-                    
-                    text_width = len(label) * 6
-                    draw.rectangle([x1, y1, x1+text_width+4, y1], fill='#FF6B00')
-                    draw.text((x1, y1), label, fill='white')
-                    
-                elif 'keypoints' in ann:
-                    x, y, v = ann['keypoints']
-                    draw.ellipse(
-                        [(x*scale)-5, (y*scale)-5, (x*scale)+5, (y*scale)+5],
-                        fill='#FF6B00'
-                    )
+            if not st.session_state.current_category:
+                st.warning("⚠️ Please select a category before drawing")
+                drawing_mode = "transform"
+            else:
+                drawing_mode = "rect"
 
-            if st.session_state.get('bbox_start'):
-                start_x, start_y = st.session_state.bbox_start
-                current_x = st.session_state.get('current_point', (start_x, start_y))[0]
-                current_y = st.session_state.get('current_point', (start_x, start_y))[1]
-                draw.rectangle(
-                    [start_x, start_y, current_x, current_y],
-                    outline='#FF6B00',
-                    width=2
-                )
+            if st.session_state.current_category:
+                category = next((cat for cat in self.project_data.get("categories", [])
+                                if cat["name"] == st.session_state.current_category), None)
+                if category and "color" in category:
+                    stroke_color = category["color"]
+                    r = int(stroke_color[1:3], 16)
+                    g = int(stroke_color[3:5], 16)
+                    b = int(stroke_color[5:7], 16)
+                    fill_color = f"rgba({r}, {g}, {b}, 0.3)"
+                else:
+                    stroke_color = "#FF6B00"
+                    fill_color = "rgba(255, 107, 0, 0.3)"
+            else:
+                stroke_color = "#FF6B00"
+                fill_color = "rgba(255, 107, 0, 0.3)"
+
+            canvas_result = st_canvas(
+                fill_color=fill_color,
+                stroke_width=2,
+                stroke_color=stroke_color,
+                background_image=image,
+                drawing_mode=drawing_mode,
+                key="annotation_canvas",
+                update_streamlit=True,
+                height=image.height,
+                width=image.width,
+                background_color="#000000",
+                initial_drawing={
+                    "version": "5.3.0",
+                    "objects": initial_objects
+                } if initial_objects else None
+            )
+
+            if canvas_result.json_data is not None:
+                objects = canvas_result.json_data.get("objects", [])
+                
+                if st.session_state.current_category and len(objects) > len(st.session_state.annotations):
+                    last_object = objects[-1]
+                    
+                    x = last_object["left"] / scale
+                    y = last_object["top"] / scale
+                    w = last_object["width"] / scale
+                    h = last_object["height"] / scale
+                    
+                    category_id = next((cat["id"] for cat in self.project_data.get("categories", [])
+                                        if cat["name"] == st.session_state.current_category), None)
+                    
+                    if category_id is not None:
+                        st.session_state.annotations.append({
+                            "category_id": category_id,
+                            "bbox": [x, y, w, h],
+                            "stroke_color": stroke_color,
+                            "fill_color": fill_color
+                        })
 
             st.markdown(f"""
                 <div class="image-info">
@@ -543,78 +709,125 @@ class AppPages:
                 </div>
             """, unsafe_allow_html=True)
 
-            clicked = streamlit_image_coordinates(img_draw, key="annotator")
-            if clicked and clicked != st.session_state.get('last_click'):
-                st.session_state.last_click = clicked
-                self.handle_annotation_click(clicked, self.project_data, (scale, scale))
+        if st.session_state.current_image:
+            st.markdown("""
+                <div style='
+                    position: fixed;
+                    bottom: 80px;
+                    left: 60%;
+                    transform: translateX(-50%);
+                    background: rgba(30, 30, 30, 0.95);
+                    padding: 8px 20px;
+                    border-radius: 4px;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 20px;
+                    z-index: 1000;
+                    border: 1px solid #333;
+                '>
+            """ + "".join([
+                f"""
+                <div style='display: flex; align-items: center; gap: 8px;'>
+                    <div style='width: 12px; height: 12px; border-radius: 2px; background-color: {category.get("color", "#FF6B00")};'></div>
+                    <div style='color: white; font-size: 12px;'>{category.get("name", "Unknown")}</div>
+                </div>
+                """ for category in self.project_data.get("categories", [])
+            ]) + "</div>", unsafe_allow_html=True)
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.button("⬅️ Previous", use_container_width=True)
-        with col2:
-            st.button("➡️ Next", use_container_width=True)
-        with col3:
-            if st.button("🗑️ Delete Last", use_container_width=True):
-                if st.session_state.annotations:
-                    st.session_state.annotations.pop()
-                    st.rerun()
-        with col4:
-            if st.button("💾 Save", use_container_width=True, type="primary"):
+            if st.button("⬅️ Previous", use_container_width=True):
                 if self.save_current_annotations():
-                    st.session_state.current_image = None
-                    st.session_state.annotations = []
-                    st.rerun()
-                    
-    def handle_annotation_click(self, clicked, project_data, scale_factor):
-        x, y = clicked['x'], clicked['y']
-        scale_factor_w = scale_factor[0] if isinstance(scale_factor, tuple) else scale_factor
-        scale_factor_h = scale_factor[1] if isinstance(scale_factor, tuple) else scale_factor
-        
-        if project_data.get("info", {}).get("type", "unknown") == "detection":
-            if not st.session_state.current_category:
-                st.error("Select a category first")
-                return
-                
-            if not st.session_state.get('bbox_start'):
-                st.session_state.bbox_start = (x, y)
-                st.session_state.current_point = (x, y)
-                st.rerun()
-            else:
-                x1, y1 = st.session_state.bbox_start
-                x2, y2 = x, y
-                
-                x1, x2 = min(x1, x2), max(x1, x2)
-                y1, y2 = min(y1, y2), max(y1, y2)
-                
-                x1 /= scale_factor_w
-                y1 /= scale_factor_h
-                x2 /= scale_factor_w
-                y2 /= scale_factor_h
-                
-                category_id = next((cat["id"] for cat in project_data.get("categories", [])
-                                if cat["name"] == st.session_state.current_category), None)
-                
-                if category_id is not None:
-                    st.session_state.annotations.append({
-                        "category_id": category_id,
-                        "bbox": [x1, y1, x2-x1, y2-y1]
-                    })
-                
-                st.session_state.bbox_start = None
-                st.session_state.current_point = None
-                st.rerun()
-        else:
-            st.session_state.annotations.append({
-                "keypoints": [x/scale_factor_w, y/scale_factor_h, 2]
-            })
-            st.rerun()
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    prev_task = task_manager.get_previous_task(st.session_state.current_image)
+                    if prev_task:
+                        st.session_state.current_image = prev_task
+                        st.session_state.annotations = []
+                        st.session_state.canvas_objects = []
+                        return st.rerun()
+                    else:
+                        st.warning("No previous image available")
 
-    def save_current_annotations(self):
+        with col2:
+            if st.button("➡️ Next", use_container_width=True):
+                if self.save_current_annotations():
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    next_task = task_manager.get_next_available_task(st.session_state.user_id)
+                    
+                    if next_task:
+                        st.session_state.current_image = next_task
+                        st.session_state.annotations = []
+                        st.session_state.canvas_objects = []
+                        return st.rerun()
+                    else:
+                        st.warning("No more images available")
+
+        with col3:
+            if st.button("💾 Save", use_container_width=True, type="primary"):
+                if self._save_current_annotations():
+                    st.success("Annotations saved successfully!")
+                    
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    
+                    next_task = task_manager.get_next_task(st.session_state.user_id)
+                    
+                    if next_task:
+                        st.session_state.current_image = next_task
+                        st.session_state.annotations = []
+                        st.session_state.canvas_objects = []
+                        
+                        model_config = self.project_data.get("info", {}).get("model_config", {})
+                        model_alias = model_config.get("model_alias")
+                        
+                        if model_alias:
+                            try:
+                                predictions = self.model_manager.predict_image(
+                                    image_path=next_task,
+                                    model_alias=model_alias
+                                )
+                                
+                                canvas_objects = []
+                                for i, pred in enumerate(predictions):
+                                    bbox = pred.get("bbox")
+                                    category_id = pred.get("category_id")
+                                    
+                                    if bbox and category_id:
+                                        category = next((cat for cat in self.project_data.get("categories", [])
+                                                      if cat["id"] == category_id), None)
+                                        
+                                        if category:
+                                            color = category.get("color", "#FF6B00")
+                                            
+                                            canvas_obj = {
+                                                "type": "rect",
+                                                "left": float(bbox[0]) - 90,
+                                                "top": float(bbox[1]) - 110,
+                                                "width": float(bbox[2]),
+                                                "height": float(bbox[3]),
+                                                "stroke": color,
+                                                "fill": f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.3)",
+                                                "strokeWidth": 2,
+                                                "id": str(i)
+                                            }
+                                            canvas_objects.append(canvas_obj)
+                        
+                                st.session_state.annotations = predictions
+                                st.session_state.canvas_objects = canvas_objects
+                                
+                            except Exception as e:
+                                st.warning(f"Model prediction failed: {str(e)}")
+                
+                        return st.rerun()
+                    else:
+                        st.warning("No more images available")
+
+    def _save_current_annotations(self) -> None:
         try:
+            task_manager = self.manager.get_task_manager(st.session_state.selected_project)
             annotations_file = os.path.join(self.project_dir, "annotations.json")
             
-            with open(annotations_file, "r") as f:
-                data = json.load(f)
+            data = self.file_tools.load_json(annotations_file)
             
             image_filename = os.path.basename(st.session_state.current_image)
             
@@ -622,10 +835,18 @@ class AppPages:
                              if img["file_name"] == image_filename]
             
             if not matching_images:
-                st.error(f"Image {image_filename} not found in annotations.json")
-                return False
+                image_id = len(data["images"]) + 1
+                data["images"].append({
+                    "id": image_id,
+                    "file_name": image_filename,
+                    "width": self.image_manager.original_size[0],
+                    "height": self.image_manager.original_size[1]
+                })
+            else:
+                image_id = matching_images[0]["id"]
             
-            image_id = matching_images[0]["id"]
+            data["annotations"] = [ann for ann in data["annotations"] 
+                                 if ann["image_id"] != image_id]
             
             for ann in st.session_state.annotations:
                 ann_id = len(data["annotations"]) + 1
@@ -639,28 +860,21 @@ class AppPages:
                 }
                 data["annotations"].append(ann_data)
             
-            with open(annotations_file, "w") as f:
-                json.dump(data, f, indent=4)
+            self.file_tools.save_json(data, annotations_file)
             
-            task_manager = self.manager.get_task_manager(st.session_state.selected_project)
             success = task_manager.complete_task(
                 st.session_state.current_image,
                 st.session_state.user_id,
                 st.session_state.annotations
             )
             
-            if success:
-                st.success("Annotations saved successfully!")
-                return True
-            else:
-                st.error("Failed to update task queue")
-                return False
+            return success
             
         except Exception as e:
             st.error(f"Error saving annotations: {str(e)}")
             return False
 
-    def app_style(self):
+    def app_style(self) -> None:
         st.markdown("""
             <style>
             .block-container {
@@ -719,6 +933,7 @@ class AppPages:
                 border-radius: 8px;
                 padding: 1rem;
                 border: 1px solid #333;
+                margin-bottom: 150px !important;
             }
             
             .annotation-panel {

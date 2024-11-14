@@ -1,72 +1,68 @@
 import os
 import json
 from datetime import datetime
+from typing import Dict, Any
 
 __all__ = ['DefaultTools']
 
 class DefaultTools:
     
-    PROJECTS_CONFIG = {
-        "Detection": {
-            "Bat_Detection": {
-                "info": {
-                    "name": "Bat Detection",
-                    "description": "Detect baseball bats in images",
-                    "type": "detection",
-                    "date_created": datetime.now().isoformat()
-                },
-                "categories": [
-                    {"id": 1, "name": "bat", "color": "#D4A017"}
-                ]
-            },
-            "Player_Detection": {
-                "info": {
-                    "name": "Player Detection",
-                    "description": "Detect players by role (pitcher, batter, catcher)",
-                    "type": "detection",
-                    "date_created": datetime.now().isoformat(),
-                    "model_config": {
-                        "model_alias": "phc_detector",
-                        "confidence_threshold": 0.5
-                    }
-                },
-                "categories": [
-                    {"id": 1, "name": "pitcher", "color": "#FF6B6B"},
-                    {"id": 2, "name": "batter", "color": "#4ECDC4"},
-                    {"id": 3, "name": "catcher", "color": "#45B7D1"}
-                ]
-            }
-        },
-        "Keypoint": {
-            "Batter_Pose": {
-                "info": {
-                    "name": "Batter Pose",
-                    "description": "Annotate batter pose keypoints",
-                    "type": "keypoint",
-                    "date_created": datetime.now().isoformat()
-                },
-                "categories": [{
-                    "id": 1,
-                    "name": "batter",
-                    "keypoints": [
-                        "head", "shoulder", "elbow_front", "elbow_back",  #NEEDS CORRECTED
-                        "hands", "hip", "knee_front", "knee_back",
-                        "foot_front", "foot_back"
-                    ],
-                    "skeleton": [
-                        [0, 1], [1, 2], [1, 3], [2, 4], [3, 4], #NEEDS CORRECTED
-                        [1, 5], [5, 6], [5, 7], [6, 8], [7, 9]
+    def __init__(self):
+        self.PROJECTS_CONFIG: Dict[str, Dict[str, Dict[str, Any]]] = {
+            "Detection": {
+                "Bat_Detection": {
+                    "info": {
+                        "name": "Bat Detection",
+                        "description": "Detect baseball bats in images", 
+                        "type": "detection",
+                        "date_created": datetime.now().isoformat()
+                    },
+                    "categories": [
+                        {"id": 1, "name": "bat", "color": "#D4A017"}
                     ]
-                }]
+                },
+                "Player_Detection": {
+                    "info": {
+                        "name": "Player Detection",
+                        "description": "Detect players by role (pitcher, batter, catcher)",
+                        "type": "detection",
+                        "date_created": datetime.now().isoformat(),
+                        "model_config": {
+                            "model_alias": "phc_detector",
+                            "confidence_threshold": 0.5
+                        }
+                    },
+                    "categories": [
+                        {"id": 2, "name": "pitcher", "color": "#FF6B6B"},
+                        {"id": 1, "name": "batter", "color": "#4ECDC4"},
+                        {"id": 3, "name": "catcher", "color": "#45B7D1"}
+                    ]
+                }
+            },
+            "Keypoint": {
+                "Batter_Pose": {
+                    "info": {
+                        "name": "Batter Pose",
+                        "description": "Annotate batter pose keypoints",
+                        "type": "keypoint",
+                        "date_created": datetime.now().isoformat()
+                    },
+                    "categories": [{
+                        "id": 1,
+                        "name": "batter",
+                        "keypoints": [
+                            "head", "shoulder", "elbow_front", "elbow_back",
+                            "hands", "hip", "knee_front", "knee_back", 
+                            "foot_front", "foot_back"
+                        ]
+                    }]
+                }
             }
         }
-    }
 
-    @staticmethod
-    def init_baseball_categories():
+    def init_baseball_categories(self) -> Dict[str, Any]:
         return {
             "detection": [
-                # Players
                 {"id": 1, "name": "pitcher", "color": "#FF6B6B"},
                 {"id": 2, "name": "batter", "color": "#4ECDC4"},
                 {"id": 3, "name": "catcher", "color": "#45B7D1"},
@@ -98,19 +94,17 @@ class DefaultTools:
             }
         }
 
-    @staticmethod
-    def init_project_structure():
+    def init_project_structure(self) -> None:
         base_dir = os.path.join("streamlit", "annotation_app", "projects")
         config_path = os.path.join(base_dir, "project_config.json")
-        
         
         os.makedirs(base_dir, exist_ok=True)
         
         if not os.path.exists(config_path):
             with open(config_path, "w") as f:
-                json.dump(DefaultTools.PROJECTS_CONFIG, f, indent=4)
+                json.dump(self.PROJECTS_CONFIG, f, indent=4)
 
-        for project_type, projects in DefaultTools.PROJECTS_CONFIG.items():
+        for project_type, projects in self.PROJECTS_CONFIG.items():
             type_dir = os.path.join(base_dir, project_type)
             if not os.path.exists(type_dir):
                 os.makedirs(type_dir)
@@ -138,3 +132,5 @@ class DefaultTools:
                     }
                     with open(os.path.join(project_dir, "task_queue.json"), "w") as f:
                         json.dump(task_queue, f, indent=4)
+        
+        return None
