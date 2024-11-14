@@ -133,13 +133,15 @@ class S3Manager:
         Returns:
             bool: True if download was successful, False otherwise.
         """
-        command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{s3_key}", local_path]
+        # Ensure we're using just the filename part of the s3_key
+        clean_key = s3_key.split()[-1] if len(s3_key.split()) > 1 else s3_key
+        command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{clean_key}", local_path]
         try:
             self._run_cli_command(command)
-            print(f"File '{s3_key}' downloaded to '{local_path}'.")
+            print(f"File '{clean_key}' downloaded to '{local_path}'.")
             return True
         except Exception as e:
-            print(f"Error downloading {s3_key}: {e}")
+            print(f"Error downloading {clean_key}: {e}")
             return False
     
     def retrieve_raw_photos(self, s3_folder_name: str, local_path: str, max_images: int) -> list[str]:
@@ -154,35 +156,28 @@ class S3Manager:
         Returns:
             list[str]: List of local paths to downloaded photos.
         """
+        os.makedirs(local_path, exist_ok=True)
+        
         if s3_folder_name and not s3_folder_name.endswith('/'):
             s3_folder_name += '/'
-        
-        photos = []
-        downloaded_photos = []
         
         command = ["aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}"]
         result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         files = result.stdout.decode().splitlines()
         
+        downloaded_files = []
         for file in files:
-            if any(file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png']):
-                photos.append(file)
-                if len(photos) >= max_images:
-                    break
+            parts = file.split()
+            if len(parts) >= 4:
+                filename = parts[3]
+                if filename.lower().endswith(('.jpg', '.jpeg')):
+                    s3_key = f"{s3_folder_name}{filename}"
+                    local_file_path = os.path.join(local_path, filename)
+                    
+                    if self._download_file(s3_key, local_file_path):
+                        downloaded_files.append(local_file_path)
+                        
+                    if len(downloaded_files) >= max_images:
+                        break
         
-        if not photos:
-            print(f"No photos found in {s3_folder_name}")
-            return []
-
-        os.makedirs(local_path, exist_ok=True)
-
-        for s3_key in photos:
-            filename = os.path.basename(s3_key)
-            file_path = os.path.join(local_path, filename)
-            
-            if filename not in os.listdir(local_path):
-                if self._download_file(s3_key, file_path):
-                    downloaded_photos.append(file_path)
-                
-        photos.clear()
-        return downloaded_photos
+        return downloaded_files
