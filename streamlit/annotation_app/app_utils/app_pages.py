@@ -324,7 +324,7 @@ class AppPages:
             st.error("No project selected")
             return
             
-        task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+        task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
         
 
         tasks_data = FileTools.load_json(task_manager.tasks_file)
@@ -520,18 +520,18 @@ class AppPages:
         cols = st.columns([1, 1, 1, 1, 2])
         
         with cols[0]:
-            if st.button("⟲ Rotate", use_container_width=True):
+            if st.button("Rotate", use_container_width=True):
                 st.session_state.rotation = (st.session_state.rotation - 90) % 360
         with cols[1]:
-            if st.button(" Zoom In", use_container_width=True):
+            if st.button("Zoom In", use_container_width=True):
                 st.session_state.zoom_level *= 1.2
                 return st.rerun()
         with cols[2]:
-            if st.button("🔍 Zoom Out", use_container_width=True):
-                st.session_state.zoom_level = max(0.1, st.session_state.zoom_level / 1.5)
+            if st.button("Zoom Out", use_container_width=True):
+                st.session_state.zoom_level = max(0.1, st.session_state.zoom_level / 1.2)
                 return st.rerun()
         with cols[3]:
-            if st.button("↔ Fit", use_container_width=True):
+            if st.button("Fit", use_container_width=True):
                 st.session_state.zoom_level = 1.0
                 return st.rerun()
         with cols[4]:
@@ -739,7 +739,7 @@ class AppPages:
         with col1:
             if st.button("⬅️ Previous", use_container_width=True):
                 if self.save_current_annotations():
-                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
                     prev_task = task_manager.get_previous_task(st.session_state.current_image)
                     if prev_task:
                         st.session_state.current_image = prev_task
@@ -752,7 +752,7 @@ class AppPages:
         with col2:
             if st.button("➡️ Next", use_container_width=True):
                 if self.save_current_annotations():
-                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
                     next_task = task_manager.get_next_available_task(st.session_state.user_id)
                     
                     if next_task:
@@ -768,7 +768,7 @@ class AppPages:
                 if self._save_current_annotations():
                     st.success("Annotations saved successfully!")
                     
-                    task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+                    task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
                     
                     next_task = task_manager.get_next_task(st.session_state.user_id)
                     
@@ -824,7 +824,7 @@ class AppPages:
 
     def _save_current_annotations(self) -> None:
         try:
-            task_manager = self.manager.get_task_manager(st.session_state.selected_project)
+            task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
             annotations_file = os.path.join(self.project_dir, "annotations.json")
             
             data = self.file_tools.load_json(annotations_file)
