@@ -176,6 +176,7 @@ class S3Manager:
 
         os.makedirs(local_path, exist_ok=True)
 
+        print(photos)
         for s3_key in photos:
             filename = os.path.basename(s3_key)
             file_path = os.path.join(local_path, filename)
