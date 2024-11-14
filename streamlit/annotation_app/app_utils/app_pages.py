@@ -8,7 +8,7 @@ from .task_manager import TaskManager
 from .default_tools import DefaultTools
 from .file_tools import FileTools
 from datetime import datetime
-#from .s3 import S3Manager
+from .s3 import S3Manager
 from .model_manager import ModelManager
 import math
 
@@ -36,7 +36,7 @@ class AppPages:
         self.image_manager = ImageManager(project_dir=self.base_project_dir)
         self.manager = AnnotationManager()
         self.task_manager = TaskManager(project_dir=self.base_project_dir)
-        #self.s3_manager = S3Manager("baseballcv-annotations")
+        self.s3_manager = S3Manager("baseballcv-annotations")
         self.project_data = None
         self.model_manager = ModelManager()
         self.default_tools = DefaultTools()
