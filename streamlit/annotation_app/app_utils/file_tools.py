@@ -2,6 +2,9 @@ import os
 import json
 import cv2
 from typing import Any, List
+import requests
+from PIL import Image
+import io
 
 __all__ = ['FileTools']
 
@@ -9,13 +12,20 @@ class FileTools:
     def __init__(self):
         pass
         
-    def save_json(self, data: Any, filepath: str) -> None:
+    def save_json(self, data: Any, filepath: str) -> Any:
         with open(filepath, 'w') as f:
-            json.dump(data, f, indent=4)
+            return json.dump(data, f, indent=4)
 
     def load_json(self, filepath: str) -> Any:
         with open(filepath, 'r') as f:
             return json.load(f)
+    
+    def load_image_from_endpoint(self, api_endpoint: str) -> Image.Image:
+        response = requests.get(api_endpoint)
+        if response.status_code == 200:
+            return Image.open(io.BytesIO(response.content))
+        else:
+            raise Exception(f"Failed to load image from {api_endpoint}")
 
     def extract_frames(self, video_file: Any, output_dir: str, frame_interval: int = 1) -> List[str]:
         if not os.path.exists(output_dir):

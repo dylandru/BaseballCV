@@ -1,9 +1,7 @@
 import streamlit as st
 import subprocess
-from app_utils import AppPages, DefaultTools
+from app_utils import AppPages, DefaultTools, FileTools
 
-subprocess.run(["curl", "-x", "POST","https://advanced.balldatalab.com/assets"],
-                   check=True)
 
 def app() -> None:
     st.set_page_config(
@@ -14,7 +12,10 @@ def app() -> None:
 
     default_tools = DefaultTools()
     default_tools.init_project_structure()
-    
+
+    file_tools = FileTools()
+    baseballcv_logo = file_tools.load_image_from_endpoint("https://data.balldatalab.com/index.php/s/ppFSndAn3soSQn2/download/baseballcvlogo.png")
+
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
     if 'selected_project' not in st.session_state:
@@ -37,7 +38,7 @@ def app() -> None:
     
     if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
-            st.image("assets/baseballcvlogo.png", use_column_width=True)
+            st.image(baseballcv_logo, use_column_width=True)
             st.markdown("---")
             st.markdown("## User Login")
             user_id = st.text_input("Enter your username:")
@@ -61,7 +62,7 @@ def app() -> None:
         return
     
     with st.sidebar:
-        st.image("assets/baseballcvlogo.png", use_column_width=True)
+        st.image(baseballcv_logo, use_column_width=True)
         st.markdown(f"<h2 style='color: black; text-align: center'>User: {st.session_state.user_id}</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
