@@ -294,9 +294,10 @@ class AppPages:
                                               st.session_state.project_type, 
                                               st.session_state.selected_project)
                     
-                    s3_folder = os.path.join(st.session_state.project_type, 
-                                            st.session_state.selected_project)
+                    #s3_folder = os.path.join(st.session_state.project_type, 
+                    #                        st.session_state.selected_project)
                     
+                    s3_folder = 'Detection/Player_Detection/'
                     photos = self.s3_manager.retrieve_raw_photos(
                         s3_folder_name=s3_folder,
                         local_path=os.path.join(project_path, "images"),
