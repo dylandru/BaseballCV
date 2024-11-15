@@ -190,8 +190,16 @@ class S3Manager:
         if s3_folder_name and not s3_folder_name.endswith('/'):
             s3_folder_name += '/'
         
+        #command = ["aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}"]
+        #result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         command = ["aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}"]
-        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            print("Error:", result.stderr.decode())
+        files = result.stdout.decode().splitlines()
+
+
+
         files = result.stdout.decode().splitlines()
         
         downloaded_files = []
