@@ -68,6 +68,37 @@ class AnnotationManager:
             return TaskManager(project_dir)
                 
         raise ValueError(f"Project {project_name} not found")
+    
+    def handle_video_upload(self, project_name: str, project_type: str, video_file, frame_interval: int = 1) -> list:
+        project_dir = os.path.join(self.base_dir, project_type, project_name)
+        if not project_dir:
+            raise ValueError(f"Project {project_name} not found")
+            
+        frames_dir = os.path.join(project_dir, "images")
+        
+        frames = self.file_tools.extract_frames(video_file, frames_dir, frame_interval)
+        
+        annotations_file = os.path.join(project_dir, "annotations.json")
+        coco_data = self.file_tools.load_json(annotations_file)
+        
+        for frame_path in frames:
+            frame_name = os.path.basename(frame_path)
+            image_info = {
+                "id": len(coco_data["images"]) + 1,
+                "file_name": frame_name,
+                "frame_number": int(frame_name.split("_")[1].split(".")[0]),
+                "date_added": datetime.now().isoformat()
+            }
+            coco_data["images"].append(image_info)
+        
+        self.file_tools.save_json(coco_data, annotations_file)
+        
+        task_queue_file = os.path.join(project_dir, "task_queue.json")
+        task_queue = self.file_tools.load_json(task_queue_file)
+        task_queue["available_images"].extend(frames)
+        self.file_tools.save_json(task_queue, task_queue_file)
+        
+        return frames
         
     def add_images_to_task_queue(self, project_name: str, project_type: str, images: list) -> int:
         """Add images to project and task queue.

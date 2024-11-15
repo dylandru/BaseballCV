@@ -272,6 +272,7 @@ class AppPages:
                     try:
                         frames = self.manager.handle_video_upload(
                             st.session_state.selected_project,
+                            st.session_state.project_type,
                             video_file,
                             frame_interval
                         )

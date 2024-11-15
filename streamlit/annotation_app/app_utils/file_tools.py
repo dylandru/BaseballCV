@@ -21,6 +21,8 @@ class FileTools:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
+        video_name = os.path.splitext(video_file.name)[0]
+            
         temp_path = os.path.join(output_dir, "temp_video.mp4")
         with open(temp_path, "wb") as f:
             f.write(video_file.read())
@@ -35,7 +37,7 @@ class FileTools:
                 break
                 
             if frame_count % frame_interval == 0:
-                frame_path = os.path.join(output_dir, f"frame_{frame_count}.jpg")
+                frame_path = os.path.join(output_dir, f"{video_name}_frame_{frame_count}.jpg")
                 cv2.imwrite(frame_path, frame)
                 saved_frames.append(frame_path)
                 
