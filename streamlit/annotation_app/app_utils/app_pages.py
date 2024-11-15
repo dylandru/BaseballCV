@@ -329,7 +329,7 @@ class AppPages:
         task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
         
 
-        tasks_data = FileTools.load_json(task_manager.tasks_file)
+        tasks_data = self.file_tools.load_json(task_manager.tasks_file)
         total_images = (len(tasks_data["available_images"]) + 
                        len(tasks_data["in_progress"]) + 
                        len(tasks_data["completed"]))
