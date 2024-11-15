@@ -30,6 +30,36 @@ class AnnotationManager:
         config['annotations'] = []
         
         self.file_tools.save_json(config, os.path.join(project_dir, 'annotations.json'))
+
+    def create_project_structure(self, project_name, config):
+        project_type = "Detection" if config["info"]["type"] == "detection" else "Keypoint"
+        project_dir = os.path.join(self.base_project_dir, project_type, project_name)
+        
+        if not os.path.exists(project_dir):
+            os.makedirs(project_dir, exist_ok=True)
+            os.makedirs(os.path.join(project_dir, "images"), exist_ok=True)
+            
+            coco_data = {
+                "info": config["info"],
+                "images": [],
+                "annotations": [],
+                "categories": config["categories"]
+            }
+            
+            with open(os.path.join(project_dir, "annotations.json"), "w") as f:
+                json.dump(coco_data, f, indent=4)
+                
+            task_queue = {
+                "available_images": [],
+                "in_progress": {},
+                "completed": {},
+                "users": {}
+            }
+            with open(os.path.join(project_dir, "task_queue.json"), "w") as f:
+                json.dump(task_queue, f, indent=4)
+            
+            return True
+        return False
         
     def get_task_manager(self, project_name: str, project_type: str) -> TaskManager:
         """Get TaskManager instance for project."""

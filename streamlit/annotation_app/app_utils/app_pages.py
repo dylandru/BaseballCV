@@ -144,7 +144,7 @@ class AppPages:
             }
 
             try:
-                self.manager._create_project_structure(project_name, config)
+                self.manager.create_project_structure(project_name, config)
                 st.success(f"Project created successfully in {project_dir}")
                 st.session_state.selected_project = project_name
                 st.session_state.project_type = project_type
