@@ -2,6 +2,7 @@ import streamlit as st
 from app_utils import AppPages, DefaultTools
 
 
+
 def app() -> None:
     st.set_page_config(
         layout="wide",
@@ -34,9 +35,9 @@ def app() -> None:
     
     if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
-            st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
+            st.image("assets/baseballcvlogo.png", use_column_width=True)
             st.markdown("---")
-            st.markdown("### User Login")
+            st.markdown("## User Login")
             user_id = st.text_input("Enter your username:")
             email = st.text_input("Enter your email:")
             if user_id and email:
@@ -48,7 +49,7 @@ def app() -> None:
                     st.error("Invalid Email Address!")
         st.markdown("""
             <div style='text-align: center; padding: 7 rem; color: white;'>
-                <h1 style='color: white; font-size: 5
+                <h1 style='color: white; font-size: 10
                     rem;'>BaseballCV Annotation Tool</h1>
                 <p style='font-size: 2rem; color: #FF6B00;'>
                     Please enter Username and Email in the Sidebar to Continue...
@@ -58,8 +59,8 @@ def app() -> None:
         return
     
     with st.sidebar:
-        st.markdown("<h1 style='text-align: center; font-size: 3rem;'>⚾ BASEBALLCV ⚾</h1>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='color: black; text-align: center'>User: {st.session_state.user_id}</h3>", unsafe_allow_html=True)
+        st.image("assets/baseballcvlogo.png", use_column_width=True)
+        st.markdown(f"<h2 style='color: black; text-align: center'>User: {st.session_state.user_id}</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
         if st.session_state.page != "welcome":
