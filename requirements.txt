@@ -9,3 +9,4 @@ streamlit==1.32.2
 streamlit-image-coordinates==0.1.6
 Pillow==10.2.0
 streamlit-drawable-canvas==0.9.3
+awscli==1.36.5
