@@ -139,7 +139,7 @@ class BaseballSavVideoScraper:
         statcast_df = (statcast_pitches.load()
                         .filter(
                             (pl.col("game_date").dt.date() >= start_date) & 
-                            (pl.col("game_date") <= start_date),
+                            (pl.col("game_date") <= end_date),
                             (pl.col("home_team") == team) |
                             (pl.col("away_team") == team) 
                             if team is not None else pl.lit(True))
