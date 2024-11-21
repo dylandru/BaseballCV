@@ -21,7 +21,7 @@ class ModelManager:
         img = cv2.imread(image_path)
         height, width = img.shape[:2]
         
-        results = model.predict(image_path, conf=self.conf, verbose=True)[0]
+        results = model.predict(image_path, conf=self.conf, verbose=True, imgsz=(480, 800))[0]
         
         annotations = []
         for i, (box, score, cls) in enumerate(zip(results.boxes.xywhn, 
