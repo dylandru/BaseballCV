@@ -8,7 +8,6 @@ import time
 import shutil
 import statcast_pitches
 import polars as pl
-import pybaseball
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -18,10 +17,8 @@ class BaseballSavVideoScraper:
         self.session = requests.Session()
 
     def run_statcast_pull_scraper(self,
-                                  start_date: pd.Timestamp = pd.Timestamp(
-                                      '2024-05-01'),
-                                  end_date: pd.Timestamp = pd.Timestamp(
-                                      '2024-06-01'),
+                                  start_date: str | pd.Timestamp = '2024-05-01',
+                                  end_date: str | pd.Timestamp = '2024-06-01',
                                   download_folder: str = 'savant_videos',
                                   max_workers: int = 5,
                                   team: str = None,
@@ -52,7 +49,6 @@ class BaseballSavVideoScraper:
             print("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(
                 start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call)  # retrieves Play IDs to scrape
-            print(df.head())
 
             if not df.empty and 'play_id' in df.columns:
                 os.makedirs(download_folder, exist_ok=True)
@@ -64,7 +60,7 @@ class BaseballSavVideoScraper:
                 if max_videos is not None:
                     df = df.head(max_videos)
 
-                self.download_play_ids(df, max_workers, download_folder)
+                self.download_play_ids(download_folder, df, max_workers)
                 return df
 
             else:
@@ -75,7 +71,8 @@ class BaseballSavVideoScraper:
             print("Ctrl+C detected. Shutting down.")
             return pd.DataFrame()
 
-    def download_play_ids(self, play_ids: DataFrame, max_workers=5, download_folder='savantVideos'):
+    def download_play_ids(self, download_folder: str, play_ids: DataFrame, max_workers: int = 5) -> DataFrame:
+        """Download videos for given Play IDs."""
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # sets futures to download videos for given Play IDs
             future_to_play_id = {executor.submit(
@@ -89,7 +86,8 @@ class BaseballSavVideoScraper:
                         f"Error processing Play ID {play_id['play_id']}: {str(e)}")
             return play_ids
 
-    def download_video(self, video_url, save_path, max_retries=5):
+    def download_video(self, video_url, save_path, max_retries=5) -> None:
+        """Downloads video from given URL and saves to specified path."""
         attempt = 0
         while attempt < max_retries:
             try:
@@ -98,15 +96,15 @@ class BaseballSavVideoScraper:
                     with open(save_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             f.write(chunk)
-                print(f"Video downloaded to {save_path}")
-                return
+                return print(f"Video downloaded to {save_path}")
             except Exception as e:
                 print(
                     f"Error downloading video {video_url}: {e}. Attempt {attempt + 1} of {max_retries}")
                 attempt += 1
                 time.sleep(2)
 
-    def get_video_url(self, page_url, max_retries=5):
+    def get_video_url(self, page_url, max_retries=5) -> str | None:
+        """Retrieves Savant video URL from given page URL."""
         attempt = 0
         while attempt < max_retries:
             try:
@@ -138,7 +136,7 @@ class BaseballSavVideoScraper:
                 attempt += 1
                 time.sleep(2)  # Wait for 2 seconds before retrying
 
-    def process_game_data(self, game_data, pitch_call=None):
+    def process_game_data(self, game_data, pitch_call=None) -> DataFrame:
         """Process game data and filter by pitch_call if provided."""
         team_home_data = game_data.get('team_home', [])
         team_away_data = game_data.get('team_away', [])
@@ -149,18 +147,23 @@ class BaseballSavVideoScraper:
             df = df.loc[df['pitch_call'] == pitch_call]
         return df
 
-    def playids_for_date_range(self, start_date: pd.Timestamp, end_date: pd.Timestamp, team: str = None, pitch_call: str = None):
+    def playids_for_date_range(self, start_date: str | pd.Timestamp, end_date: str | pd.Timestamp, team: str = None, pitch_call: str = None) -> DataFrame:
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
+        # Convert string dates to pd.Timestamp if needed
+        if isinstance(start_date, str):
+            start_date = pd.Timestamp(start_date)
+        if isinstance(end_date, str):
+            end_date = pd.Timestamp(end_date)
 
         statcast_df = (statcast_pitches.load()
                        .filter(
-            (pl.col("game_date").dt.date() >= start_date) &
-            (pl.col("game_date") <= end_date),
-            (pl.col("home_team") == team) |
-            (pl.col("away_team") == team)
-            if team is not None else pl.lit(True))
+            (pl.col("game_date").dt.date() >= start_date.date()) &
+            (pl.col("game_date").dt.date() <= end_date.date()) &
+            ((pl.col("home_team") == team) |
+             (pl.col("away_team") == team)
+             if team is not None else pl.lit(True)))
             .collect()
             .to_pandas())
 
@@ -171,7 +174,7 @@ class BaseballSavVideoScraper:
         play_id_df = pd.concat(dfs, ignore_index=True)
         return play_id_df
 
-    def get_video_for_play_id(self, play_id, game_pk, download_folder):
+    def get_video_for_play_id(self, play_id, game_pk, download_folder) -> None:
         """Process single play ID to download corresponding video."""
         page_url = f"https://baseballsavant.mlb.com/sporty-videos?playId={play_id}"
         try:
@@ -188,6 +191,7 @@ class BaseballSavVideoScraper:
             print(f"Unable to complete request. Error: {e}")
 
     def cleanup_savant_videos(self, folder_path: str) -> None:
+        """Delete folder of downloaded BaseballSavant videos."""
         if os.path.exists(folder_path):
             try:
                 shutil.rmtree(folder_path)
