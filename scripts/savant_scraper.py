@@ -151,11 +151,7 @@ class BaseballSavVideoScraper:
         """
         Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
         """
-        # Convert string dates to pd.Timestamp if needed
-        if isinstance(start_date, str):
-            start_date = pd.Timestamp(start_date)
-        if isinstance(end_date, str):
-            end_date = pd.Timestamp(end_date)
+        start_date, end_date = pd.Timestamp(start_date) if isinstance(start_date, str) else start_date, pd.Timestamp(end_date) if isinstance(end_date, str) else end_date
 
         statcast_df = (statcast_pitches.load()
                        .filter(
