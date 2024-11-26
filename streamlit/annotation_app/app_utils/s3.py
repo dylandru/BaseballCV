@@ -134,43 +134,15 @@ class S3Manager:
         Returns:
             bool: True if download was successful, False otherwise.
         """
-        # Set the path for the log file
-        log_file_path = "/var/www/bdatalab/logs/aws_download.log"
-        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-
-        # Clean the s3_key to ensure no extra spaces or unwanted characters
-        s3_key = s3_key.strip()
-        command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{s3_key}", local_path]
-        
+        # Ensure we're using just the filename part of the s3_key
+        clean_key = s3_key.split()[-1] if len(s3_key.split()) > 1 else s3_key
+        command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{clean_key}", local_path]
         try:
-            # Run the command and capture output and errors
-            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            
-            # Prepare log entry with timestamp
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            log_entry = f"{timestamp} - Command: {' '.join(command)}\n"
-            
-            # Log the output and errors
-            if result.stdout:
-                log_entry += f"Output: {result.stdout}\n"
-            
-            if result.returncode != 0:
-                log_entry += f"Error: {result.stderr}\n"
-                log_entry += f"Error downloading {s3_key}\n"
-            
-            else:
-                log_entry += f"File '{s3_key}' downloaded to '{local_path}'.\n"
-            
-            # Write the log entry to the file
-            with open(log_file_path, "a") as log_file:
-                log_file.write(log_entry)
-            
-            return result.returncode == 0
-
+            self._run_cli_command(command)
+            print(f"File '{clean_key}' downloaded to '{local_path}'.")
+            return True
         except Exception as e:
-            # Log the exception in case of failure
-            with open(log_file_path, "a") as log_file:
-                log_file.write(f"{timestamp} - Exception during download: {e}\n")
+            print(f"Error downloading {clean_key}: {e}")
             return False
        
     def retrieve_raw_photos(self, s3_folder_name: str, local_path: str, max_images: int) -> list[str]:
