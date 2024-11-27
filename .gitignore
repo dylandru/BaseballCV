@@ -20,3 +20,6 @@ __pycache__/
 
 # Ignore __MACOSX folders
 __MACOSX/
+
+# Ignore .env files
+.env
