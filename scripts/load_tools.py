@@ -37,6 +37,7 @@ class LoadTools:
             'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
             'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
             'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
+            'ball_trackingv4': 'models/ball_tracking/model_weights/ball_trackingv4.txt'
         }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
