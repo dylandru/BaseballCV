@@ -1,21 +1,35 @@
 import streamlit as st
-import subprocess
-from app_utils import AppPages, DefaultTools, FileTools
+from app_utils.app_pages import AppPages
+from app_utils.default_tools import DefaultTools
+from app_utils.file_tools import FileTools
+import atexit
 
-
-def app() -> None:
+def app():
     st.set_page_config(
         layout="wide",
         page_title="Baseball Annotation Tool",
         page_icon="⚾"
     )
 
+    if "initialized" not in st.session_state:
+        st.session_state.initialized = False
+        
     default_tools = DefaultTools()
-    default_tools.init_project_structure()
+    if not st.session_state.initialized:
+        default_tools.init_project_structure()
+        st.session_state.initialized = True
+        
+        app_pages = AppPages()
+        app_pages.task_manager.cleanup_incomplete_tasks()
+
+    def cleanup():
+        if "app_pages" in locals():
+            app_pages.task_manager.cleanup_incomplete_tasks()
+    atexit.register(cleanup)
 
     file_tools = FileTools()
     baseballcv_logo = file_tools.load_image_from_endpoint("https://data.balldatalab.com/index.php/s/ppFSndAn3soSQn2/download/baseballcvlogo.png")
-
+    
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
     if 'selected_project' not in st.session_state:
@@ -35,7 +49,7 @@ def app() -> None:
 
     app_pages = AppPages()
     app_pages.app_style()
-    
+
     if not st.session_state.user_id or not st.session_state.get('email'):
         with st.sidebar:
             st.image(baseballcv_logo, use_column_width=True)
@@ -52,15 +66,14 @@ def app() -> None:
                     st.error("Invalid Email Address!")
         st.markdown("""
             <div style='text-align: center; padding: 7 rem; color: white;'>
-                <h1 style='color: white; font-size: 10
-                    rem;'>BaseballCV Annotation Tool</h1>
+                <h1 style='color: white; font-size: 10rem;'>BaseballCV Annotation Tool</h1>
                 <p style='font-size: 2rem; color: #FF6B00;'>
                     Please enter Username and Email in the Sidebar to Continue...
                 </p>
             </div>
         """, unsafe_allow_html=True)
         return
-    
+
     with st.sidebar:
         st.image(baseballcv_logo, use_column_width=True)
         st.markdown(f"<h2 style='color: black; text-align: center'>User: {st.session_state.user_id}</h2>", unsafe_allow_html=True)
@@ -95,7 +108,7 @@ def app() -> None:
             st.session_state.page = "welcome"
             st.session_state.selected_project = None
             st.rerun()
-    
+
     if st.session_state.page == "welcome":
         app_pages.show_welcome_page()
     elif st.session_state.page == "create_project":

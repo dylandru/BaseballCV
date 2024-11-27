@@ -6,7 +6,7 @@ from typing import Dict, Any
 __all__ = ['DefaultTools']
 
 class DefaultTools:
-    
+    """A class to manage default tools and project structure."""
     def __init__(self):
         self.PROJECTS_CONFIG: Dict[str, Dict[str, Dict[str, Any]]] = {
             "Detection": {
@@ -61,6 +61,12 @@ class DefaultTools:
         }
 
     def init_baseball_categories(self) -> Dict[str, Any]:
+        """
+        Initialize the baseball categories.
+
+        Returns:
+            Dict[str, Any]: The baseball categories.
+        """
         return {
             "detection": [
                 {"id": 1, "name": "pitcher", "color": "#FF6B6B"},
@@ -95,6 +101,7 @@ class DefaultTools:
         }
 
     def init_project_structure(self) -> None:
+        """Initialize the project structure."""
         base_dir = os.path.join("streamlit", "annotation_app", "projects")
         config_path = os.path.join(base_dir, "project_config.json")
         

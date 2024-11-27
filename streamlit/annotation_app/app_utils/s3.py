@@ -3,10 +3,6 @@ import subprocess
 import json
 from datetime import datetime
 
-AWS_ACCESS = os.getenv('AWS_BASEBALLCV_ACCESS_KEY')
-AWS_SECRET = os.getenv('AWS_BASEBALLCV_SECRET_KEY')
-AWS_REG = os.getenv('AWS_BASEBALLCV_REGION')
-
 class S3Manager:
     """
     A class to manage interactions with Amazon S3, including creating buckets,
@@ -24,35 +20,52 @@ class S3Manager:
             bucket_name (str): The name of the S3 bucket to use.
         """
         self.bucket_name = bucket_name
+        # Set up environment with AWS credentials
+        self.env = {
+            "AWS_ACCESS_KEY_ID": os.getenv('AWS_BASEBALLCV_ACCESS_KEY'),
+            "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_BASEBALLCV_SECRET_KEY'),
+            "AWS_DEFAULT_REGION": os.getenv('AWS_BASEBALLCV_REGION'),
+            **os.environ  # Include existing environment variables
+        }
+        
+        # Validate AWS credentials
+        if not all([self.env["AWS_ACCESS_KEY_ID"], 
+                   self.env["AWS_SECRET_ACCESS_KEY"], 
+                   self.env["AWS_DEFAULT_REGION"]]):
+            raise ValueError("AWS credentials not properly configured. Please set AWS_BASEBALLCV_ACCESS_KEY, AWS_BASEBALLCV_SECRET_KEY, and AWS_BASEBALLCV_REGION environment variables.")
 
     def _run_cli_command(self, command: list) -> None:
         """
-        Run an AWS CLI command using subprocess.
+        Run an AWS CLI command using subprocess with credentials from environment variables.
         
         Args:
             command (list): List of command-line arguments for the AWS CLI command.
-        
-        Raises:
-            Exception: If the AWS CLI command fails.
         """
         try:
-            result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            print(result.stdout.decode())
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self.env
+            )
+            print(f"Command output: {result.stdout.decode()}")
         except subprocess.CalledProcessError as e:
-            print(f"Error running AWS CLI command: {e.stderr.decode()}")
-            raise Exception(f"Error: {e.stderr.decode()}")
+            error_msg = e.stderr.decode()
+            print(f"Error running AWS CLI command: {error_msg}")
+            raise RuntimeError(f"Error: {error_msg}")
 
     def create_bucket(self) -> None:
         """
         Create an S3 bucket if it does not already exist using AWS CLI.
         """
         try:
-            if AWS_REG == "us-east-1":
+            if self.env["AWS_DEFAULT_REGION"] == "us-east-1":
                 command = ["aws", "s3api", "create-bucket", "--bucket", self.bucket_name]
             else:
                 command = [
                     "aws", "s3api", "create-bucket", "--bucket", self.bucket_name,
-                    "--create-bucket-configuration", f"LocationConstraint={AWS_REG}"
+                    "--create-bucket-configuration", f"LocationConstraint={self.env['AWS_DEFAULT_REGION']}"
                 ]
             self._run_cli_command(command)
             print(f"Bucket '{self.bucket_name}' created successfully.")
@@ -66,24 +79,89 @@ class S3Manager:
         Args:
             folder_name (str): The name of the folder to create.
         """
-        s3_key = f"{folder_name}/"
-        command = ["aws", "s3", "api", "put-object", "--bucket", self.bucket_name, "--key", s3_key]
-        self._run_cli_command(command)
-        print(f"Folder '{folder_name}' created in bucket '{self.bucket_name}'.")
+        if not folder_name:
+            raise ValueError("Folder name must not be empty or None.")
+
+        # Clean and normalize the folder path
+        folder_path = folder_name.strip('/')
+        if not folder_path:
+            raise ValueError("Invalid folder path after normalization")
+
+        # Create an empty file to simulate folder creation
+        dummy_file = os.path.join(os.getcwd(), 'empty.txt')
+        try:
+            with open(dummy_file, 'w') as f:
+                pass  # Create an empty file
+
+            # Upload the empty file to S3 to create the "folder"
+            s3_path = f"s3://{self.bucket_name}/{folder_path}/.keep"
+            command = ["aws", "s3", "cp", dummy_file, s3_path]
+            
+            self._run_cli_command(command)
+            print(f"Folder '{folder_path}' created successfully in bucket '{self.bucket_name}'")
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to create folder '{folder_path}': {e}")
+        finally:
+            if os.path.exists(dummy_file):
+                os.remove(dummy_file)
 
     def upload_file(self, folder_name: str, file_path: str) -> None:
         """
         Upload a file to the specified S3 bucket and folder using AWS CLI.
+        The file remains in its original location after upload.
         
         Args:
             folder_name (str): The name of the folder to upload the file to.
             file_path (str): The local path of the file to upload.
         """
+        if not os.path.exists(file_path):
+            raise ValueError(f"File not found: {file_path}")
+
+        # Clean and normalize the folder path
+        folder_path = folder_name.strip('/')
         file_name = os.path.basename(file_path)
-        s3_key = f"{folder_name}/{file_name}"
+        s3_key = f"{folder_path}/{file_name}" if folder_path else file_name
+        
         command = ["aws", "s3", "cp", file_path, f"s3://{self.bucket_name}/{s3_key}"]
-        self._run_cli_command(command)
-        print(f"File '{file_name}' uploaded to '{self.bucket_name}/{s3_key}'.")
+        try:
+            self._run_cli_command(command)
+            print(f"File '{file_name}' uploaded to '{self.bucket_name}/{s3_key}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload file '{file_name}': {e}")
+
+    def copy_file(self, source_key: str, dest_key: str) -> None:
+        """
+        Copy a file within the S3 bucket.
+        
+        Args:
+            source_key (str): Source path in the bucket
+            dest_key (str): Destination path in the bucket
+        """
+        command = ["aws", "s3", "cp", 
+                  f"s3://{self.bucket_name}/{source_key}",
+                  f"s3://{self.bucket_name}/{dest_key}"]
+        try:
+            self._run_cli_command(command)
+            print(f"Copied '{source_key}' to '{dest_key}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to copy file: {e}")
+
+    def download_file(self, s3_key: str, local_path: str) -> None:
+        """
+        Download a file from S3 to a local path.
+        
+        Args:
+            s3_key (str): The key (path) of the file in S3
+            local_path (str): The local path where the file should be saved
+        """
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{s3_key}", local_path]
+        try:
+            self._run_cli_command(command)
+            print(f"Downloaded '{s3_key}' to '{local_path}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to download file: {e}")
 
     def upload_annotation_data(self, folder_name: str, annotations: dict) -> None:
         """
@@ -94,15 +172,20 @@ class S3Manager:
             annotations (dict): The annotation data to be uploaded.
         """
         json_data = json.dumps(annotations, indent=4)
-        temp_file = "/tmp/annotations.json"
-        with open(temp_file, "w") as f:
-            f.write(json_data)
-        
-        s3_key = f"{folder_name}/annotations.json"
-        command = ["aws", "s3", "cp", temp_file, f"s3://{self.bucket_name}/{s3_key}"]
-        self._run_cli_command(command)
-        os.remove(temp_file)
-        print(f"Annotations uploaded to '{self.bucket_name}/{s3_key}'.")
+        temp_file = os.path.join(os.getcwd(), 'temp_annotations.json')
+        try:
+            with open(temp_file, "w") as f:
+                f.write(json_data)
+            
+            s3_key = f"{folder_name}/annotations.json"
+            command = ["aws", "s3", "cp", temp_file, f"s3://{self.bucket_name}/{s3_key}"]
+            self._run_cli_command(command)
+            print(f"Annotations uploaded to '{self.bucket_name}/{s3_key}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload annotations: {e}")
+        finally:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
     def update_task_queue(self, folder_name: str, task_queue: dict) -> None:
         """
@@ -190,3 +273,50 @@ class S3Manager:
                         break
         
         return downloaded_files
+
+    def create_project_structure(self, project_name: str) -> None:
+        """
+        Create the initial project structure in S3.
+        
+        Args:
+            project_name (str): Name of the project to create structure for.
+        """
+        base_folders = [
+            f"{project_name}/images",
+            f"{project_name}/completed",
+            f"{project_name}/annotations"
+        ]
+        
+        for folder in base_folders:
+            self.create_folder(folder)
+            
+    def move_file(self, source_key: str, dest_key: str) -> None:
+        """
+        Move/Copy a file within the S3 bucket.
+        
+        Args:
+            source_key (str): Source path in the bucket
+            dest_key (str): Destination path in the bucket
+        """
+        command = ["aws", "s3", "mv", 
+                  f"s3://{self.bucket_name}/{source_key}",
+                  f"s3://{self.bucket_name}/{dest_key}"]
+        try:
+            self._run_cli_command(command)
+            print(f"Moved '{source_key}' to '{dest_key}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to move file: {e}")
+
+    def delete_file(self, s3_key: str) -> None:
+        """
+        Delete a file from the S3 bucket.
+        
+        Args:
+            s3_key (str): The key (path) of the file to delete in S3
+        """
+        command = ["aws", "s3", "rm", f"s3://{self.bucket_name}/{s3_key}"]
+        try:
+            self._run_cli_command(command)
+            print(f"Deleted '{s3_key}' from bucket '{self.bucket_name}'")
+        except Exception as e:
+            raise RuntimeError(f"Failed to delete file '{s3_key}': {e}")

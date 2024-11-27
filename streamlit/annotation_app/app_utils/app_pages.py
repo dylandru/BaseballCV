@@ -361,6 +361,7 @@ class AppPages:
             st.error(f"Error loading project data: {str(e)}")
             return
 
+        # Initialize session state variables
         if 'current_image' not in st.session_state:
             st.session_state.current_image = None
         if 'annotations' not in st.session_state:
@@ -370,6 +371,7 @@ class AppPages:
         if 'rotation' not in st.session_state:
             st.session_state.rotation = 0
 
+        # Add styling
         st.markdown("""
             <style>
             .block-container {
@@ -519,6 +521,7 @@ class AppPages:
             </style>
         """, unsafe_allow_html=True)
 
+        # Control buttons
         cols = st.columns([1, 1, 1, 1, 2])
         
         with cols[0]:
@@ -544,10 +547,14 @@ class AppPages:
                 label_visibility="collapsed"
             )
 
+        # Get model configuration and cached instance
         model_config = self.project_data.get("info", {}).get("model_config", {})
         model_alias = model_config.get("model_alias")
-        model = self.model_manager.load_model(model_alias)
+        model = None
+        if model_alias:
+            model = ModelManager.get_model_instance(model_alias)
 
+        # Rest of your existing code for image loading and annotation
         if not st.session_state.current_image:
             task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
             next_task = task_manager.get_next_task(st.session_state.user_id)
@@ -556,7 +563,7 @@ class AppPages:
                 task_manager.start_task(next_task, st.session_state.user_id)
                 st.session_state.current_image = next_task
                 
-                if model_alias:
+                if model:
                     try:
                         predictions = self.model_manager.predict_image(
                             st.session_state.current_image,
@@ -598,8 +605,6 @@ class AppPages:
                         st.warning(f"Model prediction failed: {str(e)}")
                         st.session_state.annotations = []
                         st.session_state.canvas_objects = []
-                else:
-                    st.warning("\nNo model_alias found in project configuration")
 
         if st.session_state.current_image:
             image = self.image_manager.load_image(
@@ -805,57 +810,60 @@ class AppPages:
 
         with col3:
             if st.button("💾 Save", use_container_width=True, type="primary"):
-                if self._save_current_annotations():
-                    st.success("Annotations saved successfully!")
-                    
-                    task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
-                    next_task = task_manager.get_next_task(st.session_state.user_id)
-                    
-                    if next_task:
-                        st.session_state.current_image = next_task
+                with st.spinner("Saving annotations..."):
+                    if self._save_current_annotations():
+                        st.success("Annotations saved successfully!")
                         
-                        model_config = self.project_data.get("info", {}).get("model_config", {})
-                        model_alias = model_config.get("model_alias")
+                        task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
+                        next_task = task_manager.get_next_task(st.session_state.user_id)
                         
-                        if model_alias:
-                            model = self.model_manager.load_model(model_alias)
-                            try:
-                                predictions = self.model_manager.predict_image(next_task, model)
-                                
-                                canvas_objects = []
-                                for i, pred in enumerate(predictions):
-                                    bbox = pred.get("bbox")
-                                    category_id = pred.get("category_id")
-                                    
-                                    if bbox and category_id:
-                                        category = next((cat for cat in self.project_data.get("categories", [])
-                                                      if cat["id"] == category_id), None)
-                                        
-                                        if category:
-                                            color = category.get("color", "#FF6B00")
-                                            canvas_obj = {
-                                                "type": "rect",
-                                                "left": float(bbox[0]) - 90,
-                                                "top": float(bbox[1]) - 110,
-                                                "width": float(bbox[2]),
-                                                "height": float(bbox[3]),
-                                                "stroke": color,
-                                                "fill": f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.3)",
-                                                "strokeWidth": 2,
-                                                "id": str(i)
-                                            }
-                                            canvas_objects.append(canvas_obj)
+                        if next_task:
+                            st.session_state.current_image = next_task
                             
-                                st.session_state.annotations = predictions
-                                st.session_state.canvas_objects = canvas_objects
-                            except Exception as e:
-                                st.warning(f"Model prediction failed: {str(e)}")
-                                st.session_state.annotations = []
-                                st.session_state.canvas_objects = []
-                    
-                        return st.rerun()
+                            model_config = self.project_data.get("info", {}).get("model_config", {})
+                            model_alias = model_config.get("model_alias")
+                            
+                            if model_alias:
+                                model = ModelManager.get_model_instance(model_alias)
+                                try:
+                                    predictions = self.model_manager.predict_image(next_task, model)
+                                    
+                                    canvas_objects = []
+                                    for i, pred in enumerate(predictions):
+                                        bbox = pred.get("bbox")
+                                        category_id = pred.get("category_id")
+                                        
+                                        if bbox and category_id:
+                                            category = next((cat for cat in self.project_data.get("categories", [])
+                                                          if cat["id"] == category_id), None)
+                                            
+                                            if category:
+                                                color = category.get("color", "#FF6B00")
+                                                canvas_obj = {
+                                                    "type": "rect",
+                                                    "left": float(bbox[0]) - 90,
+                                                    "top": float(bbox[1]) - 110,
+                                                    "width": float(bbox[2]),
+                                                    "height": float(bbox[3]),
+                                                    "stroke": color,
+                                                    "fill": f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.3)",
+                                                    "strokeWidth": 2,
+                                                    "id": str(i)
+                                                }
+                                                canvas_objects.append(canvas_obj)
+                                
+                                    st.session_state.annotations = predictions
+                                    st.session_state.canvas_objects = canvas_objects
+                                except Exception as e:
+                                    st.warning(f"Model prediction failed: {str(e)}")
+                                    st.session_state.annotations = []
+                                    st.session_state.canvas_objects = []
+                        
+                            return st.rerun()
+                        else:
+                            st.warning("No more images available")
                     else:
-                        st.warning("No more images available")
+                        st.error("Failed to save annotations. Please try again.")
 
     def _save_current_annotations(self) -> None:
         try:

@@ -2,15 +2,18 @@ import os
 import json
 from datetime import datetime
 from PIL import Image
-import cv2
 from .task_manager import TaskManager
 from .file_tools import FileTools
 
 class AnnotationManager:
-    """Manages annotation data and project configuration."""
+    """
+    Manages annotation data and project configuration.
+
+    Args:
+        base_dir (str): The base directory for projects. Defaults to "streamlit/annotation_app/projects".
+    """
     
     def __init__(self):
-        """Initialize AnnotationManager."""
         self.base_dir = os.path.join('streamlit', 'annotation_app', 'projects')
         self.file_tools = FileTools()
         
@@ -18,8 +21,8 @@ class AnnotationManager:
         """Create new project with configuration.
         
         Args:
-            project_name: Name of the project
-            config: Project configuration dictionary
+            project_name (str): Name of the project.
+            config (dict): Project configuration dictionary.
         """
         project_dir = os.path.join(self.base_dir, config['info']['type'], project_name)
         os.makedirs(project_dir, exist_ok=True)
@@ -31,7 +34,16 @@ class AnnotationManager:
         
         self.file_tools.save_json(config, os.path.join(project_dir, 'annotations.json'))
 
-    def create_project_structure(self, project_name, config):
+        return None
+
+    def create_project_structure(self, project_name: str, config: dict) -> None:
+        """
+        Create project structure.
+        
+        Args:
+            project_name (str): Name of the project.
+            config (dict): Project configuration dictionary.
+        """
         project_type = "Detection" if config["info"]["type"] == "detection" else "Keypoint"
         project_dir = os.path.join(self.base_project_dir, project_type, project_name)
         
@@ -62,7 +74,16 @@ class AnnotationManager:
         return False
         
     def get_task_manager(self, project_name: str, project_type: str) -> TaskManager:
-        """Get TaskManager instance for project."""
+        """
+        Get TaskManager instance for project.
+        
+        Args:
+            project_name (str): Name of the project.
+            project_type (str): Type of the project.
+            
+        Returns:
+            TaskManager: TaskManager instance for the project
+        """
         project_dir = os.path.join(self.base_dir, project_type, project_name)
         if os.path.exists(project_dir):
             return TaskManager(project_dir)
@@ -70,6 +91,18 @@ class AnnotationManager:
         raise ValueError(f"Project {project_name} not found")
     
     def handle_video_upload(self, project_name: str, project_type: str, video_file, frame_interval: int = 1) -> list:
+        """
+        Handle video upload and extract frames.
+        
+        Args:
+            project_name (str): Name of the project
+            project_type (str): Type of the project.
+            video_file: Video file to extract frames from.
+            frame_interval (int): Interval between frames to extract. Defaults to 1.
+            
+        Returns:
+            list: List of paths to the extracted frames
+        """
         project_dir = os.path.join(self.base_dir, project_type, project_name)
         if not project_dir:
             raise ValueError(f"Project {project_name} not found")
@@ -101,11 +134,12 @@ class AnnotationManager:
         return frames
         
     def add_images_to_task_queue(self, project_name: str, project_type: str, images: list) -> int:
-        """Add images to project and task queue.
+        """
+        Add images to project and task queue.
         
         Args:
-            project_name: Name of the project
-            images: List of image files or paths
+            project_name (str): Name of the project.
+            images (list): List of image files or paths.
             
         Returns:
             int: Number of images added
@@ -129,11 +163,12 @@ class AnnotationManager:
         return task_manager.add_task_batch(image_paths)
         
     def _add_image_to_annotations(self, project_name: str, project_type: str, image_path: str) -> None:
-        """Add image entry to annotations file.
+        """
+        Add image entry to annotations file.
         
         Args:
-            project_name: Name of the project
-            image_path: Path to image file
+            project_name (str): Name of the project.
+            image_path (str): Path to image file.
         """
         annotations_file = os.path.join(self.base_dir, project_type, project_name, 'annotations.json')
         data = self.file_tools.load_json(annotations_file)
@@ -151,3 +186,5 @@ class AnnotationManager:
         
         data['images'].append(image_info)
         self.file_tools.save_json(data, annotations_file)
+
+        return None

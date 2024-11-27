@@ -1,9 +1,17 @@
 from PIL import Image
-from typing import Tuple, List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 
 __all__ = ['ImageManager']
 
 class ImageManager:
+    """
+    A class to manage image processing and scaling for annotation tasks.
+    
+    Args:
+        project_dir (str): Path to the project directory
+        max_width (int): Maximum width for display. Defaults to 1280.
+
+    """
     def __init__(self, project_dir: str, max_width: int = 1280) -> None:
         self.project_dir = project_dir
         self.max_width = max_width
@@ -13,6 +21,16 @@ class ImageManager:
         self.scale_factor = 1.0
         
     def load_image(self, image_path: str, zoom_level: float = 1.0) -> Image.Image:
+        """
+        Load an image and scale it to fit within the maximum width and height.
+
+        Args:
+            image_path (str): Path to the image file
+            zoom_level (float): Zoom level for the image. Defaults to 1.0.
+
+        Returns:
+            Image.Image: The scaled image
+        """
         self.current_image = Image.open(image_path)
         self.original_size = self.current_image.size
         
@@ -30,9 +48,25 @@ class ImageManager:
         return self.current_image.resize(self.display_size, Image.Resampling.LANCZOS)
         
     def get_scale_factor(self) -> float:
+        """
+        Get the current scale factor for the image.
+
+        Returns:
+            float: The current scale factor
+        """
         return self.scale_factor
         
     def scale_coordinates(self, coords: List[float], inverse: bool = False) -> List[float]:
+        """
+        Scale coordinates based on the current scale factor.
+
+        Args:
+            coords (List[float]): The coordinates to scale
+            inverse (bool): Whether to invert the scaling. Defaults to False.
+
+        Returns:
+            List[float]: The scaled coordinates
+        """
         try:
             if inverse:
                 return [float(c) / self.scale_factor for c in coords]
@@ -41,6 +75,16 @@ class ImageManager:
             return coords
             
     def scale_object(self, obj: Dict[str, Any], scale: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Scale an annotation object based on the current scale factor.
+
+        Args:
+            obj (Dict[str, Any]): The annotation object to scale
+            scale (Optional[float]): The scale factor to use. Defaults to None.
+
+        Returns:
+            Dict[str, Any]: The scaled annotation object
+        """
         if scale is None:
             scale = self.scale_factor
             
