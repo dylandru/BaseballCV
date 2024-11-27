@@ -1,0 +1,1 @@
+https://data.balldatalab.com/index.php/s/cfoxjLS5BiZAgKs/download/ball_tracking_v4-YOLOv11.pt
