@@ -3,6 +3,8 @@ from ultralytics import YOLO
 from datetime import datetime
 import cv2
 import streamlit as st
+import torch
+import numpy as np
 
 __all__ = ['ModelManager']
 
@@ -17,6 +19,7 @@ class ModelManager:
         self.load_tools = LoadTools()
         self.conf = conf
         self._model_cache = {}
+        torch.set_num_threads(8)
         
     def load_model(self, model_alias: str) -> YOLO:
         """
@@ -30,7 +33,10 @@ class ModelManager:
         """
         if model_alias not in self._model_cache:
             model_path = self.load_tools.load_model(model_alias=model_alias)
-            self._model_cache[model_alias] = YOLO(model_path)
+            model = YOLO(model_path)
+            model.model.eval()
+            model.model.float()
+            self._model_cache[model_alias] = model
         return self._model_cache[model_alias]
         
     def predict_image(self, image_path: str, model: YOLO) -> list[dict]:
@@ -44,34 +50,45 @@ class ModelManager:
         Returns:
             list[dict]: List of annotations.
         """
-        #TODO: Add support for keypoint predictions
-
         img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError(f"Failed to load image: {image_path}")
+            
         height, width = img.shape[:2]
-        
-        results = model.predict(image_path, conf=self.conf, verbose=True, imgsz=(480, 800))[0] 
+
+        results = next(model.predict(
+            img,
+            conf=self.conf,
+            verbose=True,
+            imgsz=(480, 800),
+            stream=True,
+            device='cpu',
+            max_det=5,
+            agnostic_nms=True
+        ))
         
         annotations = []
-        for i, (box, score, cls) in enumerate(zip(results.boxes.xywhn, 
-                                                 results.boxes.conf, 
-                                                 results.boxes.cls)):
-            x, y, w, h = box.tolist()
-
-            x = x * width
-            y = y * height
-            w = w * width
-            h = h * height
-
-            annotations.append({
-                "id": i + 1,
-                "image_id": 1,
-                "category_id": int(cls.item()) + 1,
-                "bbox": [x, y, w, h],
-                "date_created": datetime.now().isoformat(),
-                "user_id": "model",
-                "auto_generated": True,
-                "score": float(score)
-            })
+        if len(results.boxes) > 0:
+            boxes = results.boxes.xywhn.cpu().numpy()
+            scores = results.boxes.conf.cpu().numpy()
+            classes = results.boxes.cls.cpu().numpy()
+            
+            boxes[:, 0] *= width
+            boxes[:, 1] *= height
+            boxes[:, 2] *= width
+            boxes[:, 3] *= height
+            
+            for i, (box, score, cls) in enumerate(zip(boxes, scores, classes)):
+                annotations.append({
+                    "id": i + 1,
+                    "image_id": 1,
+                    "category_id": int(cls) + 1,
+                    "bbox": box.tolist(),
+                    "date_created": datetime.now().isoformat(),
+                    "user_id": "model",
+                    "auto_generated": True,
+                    "score": float(score)
+                })
         
         return annotations
 
