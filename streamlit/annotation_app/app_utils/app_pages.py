@@ -11,6 +11,7 @@ from datetime import datetime
 from .s3 import S3Manager
 from .model_manager import ModelManager
 import math
+import time
 
 class AppPages:
     def __init__(self):
@@ -291,31 +292,32 @@ class AppPages:
             
             if st.button("Download Images"):
                 try:
-                    project_path = os.path.join(self.base_project_dir, 
+                    with st.spinner("Downloading images... Please wait..."):
+                        project_path = os.path.join(self.base_project_dir, 
                                               st.session_state.project_type, 
                                               st.session_state.selected_project)
                     
-                    #s3_folder = os.path.join(st.session_state.project_type, 
-                    #                        st.session_state.selected_project)
-                    
-                    s3_folder = 'Detection/Player_Detection/'
-                    photos = self.s3_manager.retrieve_raw_photos(
-                        s3_folder_name=s3_folder,
-                        local_path=os.path.join(project_path, "images"),
-                        max_images=num_images
-                    )
-                    
-                    if len(photos) > 0:
-                        num_added = self.manager.add_images_to_task_queue(
-                            st.session_state.selected_project,
-                            st.session_state.project_type,
-                            photos
+                        s3_folder = os.path.join(st.session_state.project_type, 
+                                            st.session_state.selected_project)
+                        
+                        photos = self.s3_manager.retrieve_raw_photos(
+                            s3_folder_name=s3_folder,
+                            local_path=os.path.join(project_path, "images"),
+                            max_images=num_images
                         )
-                        st.success(f"Successfully downloaded {num_added} images!")
-                        st.session_state.page = "project_dashboard"
-                        st.rerun()
-                    else:
-                        st.info("No new images found")
+                        
+                        if len(photos) > 0:
+                            num_added = self.manager.add_images_to_task_queue(
+                                st.session_state.selected_project,
+                                st.session_state.project_type,
+                                photos
+                            )
+                            st.success(f"Successfully downloaded {num_added} images!")
+                            time.sleep(2)
+                            st.session_state.page = "project_dashboard"
+                            st.rerun()
+                        else:
+                            st.info("No new images found")
                 except Exception as e:
                     st.error(f"Error downloading images: {str(e)}")
 
@@ -521,7 +523,6 @@ class AppPages:
             </style>
         """, unsafe_allow_html=True)
 
-        # Control buttons
         cols = st.columns([1, 1, 1, 1, 2])
         
         with cols[0]:
@@ -540,21 +541,41 @@ class AppPages:
                 st.session_state.zoom_level = 1.0
                 return st.rerun()
         with cols[4]:
+            category_options = ["None"] + [cat['name'] for cat in self.project_data.get("categories", [])]
             st.selectbox(
                 "Category",
-                options=[cat['name'] for cat in self.project_data.get("categories", [])],
+                options=category_options,
                 key="current_category",
                 label_visibility="collapsed"
             )
 
-        # Get model configuration and cached instance
+        if not st.session_state.current_category or st.session_state.current_category == "None":
+            drawing_mode = "transform"
+        else:
+            drawing_mode = "rect" 
+
+        if st.session_state.current_category and st.session_state.current_category != "None":
+            category = next((cat for cat in self.project_data.get("categories", [])
+                            if cat["name"] == st.session_state.current_category), None)
+            if category and "color" in category:
+                stroke_color = category["color"]
+                r = int(stroke_color[1:3], 16)
+                g = int(stroke_color[3:5], 16)
+                b = int(stroke_color[5:7], 16)
+                fill_color = f"rgba({r}, {g}, {b}, 0.3)"
+            else:
+                stroke_color = "#FF6B00"
+                fill_color = "rgba(255, 107, 0, 0.3)"
+        else:
+            stroke_color = "#FF6B00"
+            fill_color = "rgba(255, 107, 0, 0.3)"
+
         model_config = self.project_data.get("info", {}).get("model_config", {})
         model_alias = model_config.get("model_alias")
         model = None
         if model_alias:
             model = ModelManager.get_model_instance(model_alias)
 
-        # Rest of your existing code for image loading and annotation
         if not st.session_state.current_image:
             task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
             next_task = task_manager.get_next_task(st.session_state.user_id)
@@ -647,28 +668,6 @@ class AppPages:
                         initial_objects.append(scaled_obj)
                     except Exception as e:
                         continue
-
-            if not st.session_state.current_category:
-                st.warning("⚠️ Please select a category before drawing")
-                drawing_mode = "transform"
-            else:
-                drawing_mode = "rect"
-
-            if st.session_state.current_category:
-                category = next((cat for cat in self.project_data.get("categories", [])
-                                if cat["name"] == st.session_state.current_category), None)
-                if category and "color" in category:
-                    stroke_color = category["color"]
-                    r = int(stroke_color[1:3], 16)
-                    g = int(stroke_color[3:5], 16)
-                    b = int(stroke_color[5:7], 16)
-                    fill_color = f"rgba({r}, {g}, {b}, 0.3)"
-                else:
-                    stroke_color = "#FF6B00"
-                    fill_color = "rgba(255, 107, 0, 0.3)"
-            else:
-                stroke_color = "#FF6B00"
-                fill_color = "rgba(255, 107, 0, 0.3)"
 
             canvas_result = st_canvas(
                 fill_color=fill_color,
@@ -1012,3 +1011,36 @@ class AppPages:
             });
             </script>
         """)
+
+    def _load_current_image(self):
+        """Load and display the current image."""
+        if not self.current_image_path:
+            return
+
+        if 'is_downloading' not in st.session_state:
+            st.session_state.is_downloading = False
+
+        try:
+            st.session_state.is_downloading = True
+
+            
+            image_path = self.load_tools.load_image(
+                image_path=self.current_image_path,
+                project_type=self.project_data.get("info", {}).get("project_type", ""),
+                project_name=self.project_data.get("info", {}).get("project_name", "")
+            )
+
+            if not os.path.exists(image_path):
+                st.error(f"Image not found: {image_path}")
+                return
+
+            image = Image.open(image_path)
+            
+            annotations = self._get_annotations_for_current_image()
+            
+            self._draw_annotations_on_canvas(image, annotations)
+                
+        except Exception as e:
+            st.error(f"Error loading image: {str(e)}")
+        finally:
+            st.session_state.is_downloading = False

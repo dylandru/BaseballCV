@@ -178,20 +178,17 @@ class TaskManager:
             image_path (str): The path to the image to move
             user_id (str): The ID of the user completing the task
             annotations (List[Dict]): The annotations for the image
-
         """
-        project_type = st.session_state.project_type
-        project_name = st.session_state.selected_project
         
-        user_folder = self._create_user_completed_folder(user_id, project_type, project_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        user_folder = f"{st.session_state.project_type}/{st.session_state.selected_project}/completed/com_{timestamp}"
         
         image_filename = os.path.basename(image_path)
-        original_s3_path = f"{project_type}/{project_name}/{image_filename}"
+        original_s3_path = f"{st.session_state.project_type}/{st.session_state.selected_project}/{image_filename}"
         completed_s3_path = f"{user_folder}/images/{image_filename}"
         
         try:
-            self.s3.copy_file(original_s3_path, completed_s3_path)
-            self.s3.delete_file(original_s3_path)
+            self.s3.move_file(original_s3_path, completed_s3_path)
             print(f"Moved image from {original_s3_path} to {completed_s3_path}")
             
             annotations_data = {
@@ -199,12 +196,13 @@ class TaskManager:
                 "annotations": annotations,
                 "user_id": user_id,
                 "timestamp": datetime.now().isoformat(),
-                "project_type": project_type,
-                "project_name": project_name,
+                "project_type": st.session_state.project_type,
+                "project_name": st.session_state.selected_project,
                 "original_path": original_s3_path,
                 "completed_path": completed_s3_path
             }
-            self.s3.upload_annotation_data(user_folder, annotations_data)
+            
+            self.s3.upload_json_data(f"{user_folder}/annotations.json", annotations_data)
             
         except Exception as e:
             raise RuntimeError(f"Error moving file in S3: {e}")
@@ -265,14 +263,6 @@ class TaskManager:
                     }
                     annotations_data["annotations"].append(annotation_info)
                 self.file_tools.save_json(annotations_data, self.annotations_file)
-  
-                try:
-                    if os.path.exists(image_path):
-                        os.remove(image_path)
-                        print(f"Removed original image: {image_path}")
-                except Exception as e:
-                    print(f"Warning: Could not remove original image {image_path}: {e}")
-                
                 return True
             return False
         except Exception as e:

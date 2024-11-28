@@ -2,6 +2,8 @@ import os
 import subprocess
 import json
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import tempfile
 
 class S3Manager:
     """
@@ -12,7 +14,7 @@ class S3Manager:
         bucket_name (str): The name of the S3 bucket to manage.
     """
     
-    def __init__(self, bucket_name: str) -> None:
+    def __init__(self, bucket_name: str, max_workers: int = 10) -> None:
         """
         Initialize the S3Manager with a specified bucket name.
         
@@ -20,15 +22,13 @@ class S3Manager:
             bucket_name (str): The name of the S3 bucket to use.
         """
         self.bucket_name = bucket_name
-        # Set up environment with AWS credentials
         self.env = {
             "AWS_ACCESS_KEY_ID": os.getenv('AWS_BASEBALLCV_ACCESS_KEY'),
             "AWS_SECRET_ACCESS_KEY": os.getenv('AWS_BASEBALLCV_SECRET_KEY'),
             "AWS_DEFAULT_REGION": os.getenv('AWS_BASEBALLCV_REGION'),
-            **os.environ  # Include existing environment variables
+            **os.environ
         }
-        
-        # Validate AWS credentials
+        self.max_workers = max_workers
         if not all([self.env["AWS_ACCESS_KEY_ID"], 
                    self.env["AWS_SECRET_ACCESS_KEY"], 
                    self.env["AWS_DEFAULT_REGION"]]):
@@ -56,9 +56,7 @@ class S3Manager:
             raise RuntimeError(f"Error: {error_msg}")
 
     def create_bucket(self) -> None:
-        """
-        Create an S3 bucket if it does not already exist using AWS CLI.
-        """
+        """Create an S3 bucket if it does not already exist using AWS CLI."""
         try:
             if self.env["AWS_DEFAULT_REGION"] == "us-east-1":
                 command = ["aws", "s3api", "create-bucket", "--bucket", self.bucket_name]
@@ -82,20 +80,17 @@ class S3Manager:
         if not folder_name:
             raise ValueError("Folder name must not be empty or None.")
 
-        # Clean and normalize the folder path
         folder_path = folder_name.strip('/')
         if not folder_path:
             raise ValueError("Invalid folder path after normalization")
 
-        # Create an empty file to simulate folder creation
-        dummy_file = os.path.join(os.getcwd(), 'empty.txt')
+        dummy_file_for_folder = os.path.join(os.getcwd(), 'empty.txt')
         try:
-            with open(dummy_file, 'w') as f:
-                pass  # Create an empty file
+            with open(dummy_file_for_folder, 'w') as f:
+                pass
 
-            # Upload the empty file to S3 to create the "folder"
             s3_path = f"s3://{self.bucket_name}/{folder_path}/.keep"
-            command = ["aws", "s3", "cp", dummy_file, s3_path]
+            command = ["aws", "s3", "cp", dummy_file_for_folder, s3_path]
             
             self._run_cli_command(command)
             print(f"Folder '{folder_path}' created successfully in bucket '{self.bucket_name}'")
@@ -103,8 +98,8 @@ class S3Manager:
         except Exception as e:
             raise RuntimeError(f"Failed to create folder '{folder_path}': {e}")
         finally:
-            if os.path.exists(dummy_file):
-                os.remove(dummy_file)
+            if os.path.exists(dummy_file_for_folder):
+                os.remove(dummy_file_for_folder)
 
     def upload_file(self, folder_name: str, file_path: str) -> None:
         """
@@ -118,7 +113,6 @@ class S3Manager:
         if not os.path.exists(file_path):
             raise ValueError(f"File not found: {file_path}")
 
-        # Clean and normalize the folder path
         folder_path = folder_name.strip('/')
         file_name = os.path.basename(file_path)
         s3_key = f"{folder_path}/{file_name}" if folder_path else file_name
@@ -217,7 +211,6 @@ class S3Manager:
         Returns:
             bool: True if download was successful, False otherwise.
         """
-        # Ensure we're using just the filename part of the s3_key
         clean_key = s3_key.split()[-1] if len(s3_key.split()) > 1 else s3_key
         command = ["aws", "s3", "cp", f"s3://{self.bucket_name}/{clean_key}", local_path]
         try:
@@ -230,7 +223,8 @@ class S3Manager:
        
     def retrieve_raw_photos(self, s3_folder_name: str, local_path: str, max_images: int) -> list[str]:
         """
-        Retrieve raw photos from a folder in the S3 bucket and download them locally using AWS CLI.
+        Retrieve raw photos from a folder in the S3 bucket and download them locally using AWS CLI with
+        parallel downloading for better performance.
         
         Args:
             s3_folder_name (str): The folder in S3 to retrieve photos from.
@@ -242,35 +236,53 @@ class S3Manager:
         """
         os.makedirs(local_path, exist_ok=True)
         
-        if s3_folder_name and not s3_folder_name.endswith('/'):
-            s3_folder_name += '/'
+        command = [
+            "aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}",
+            "--recursive",
+            "|", "grep", "-i", "'.jpg\|.jpeg'",
+            "|", "head", f"-n {max_images}"
+        ]
         
-        #command = ["aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}"]
-        #result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        command = ["aws", "s3", "ls", f"s3://{self.bucket_name}/{s3_folder_name}"]
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(
+            " ".join(command), 
+            shell=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
         if result.returncode != 0:
-            print("Error:", result.stderr.decode())
-        files = result.stdout.decode().splitlines()
-
-
-
-        files = result.stdout.decode().splitlines()
+            print(f"Error listing files: {result.stderr}")
+            return []
+            
+        download_tasks = []
+        files = result.stdout.splitlines()
         
-        downloaded_files = []
         for file in files:
             parts = file.split()
             if len(parts) >= 4:
                 filename = parts[3]
                 if filename.lower().endswith(('.jpg', '.jpeg')):
-                    s3_key = f"{s3_folder_name}{filename}"
-                    local_file_path = os.path.join(local_path, filename)
+                    local_file_path = os.path.join(local_path, os.path.basename(filename))
+                    download_tasks.append((filename, local_file_path))
                     
-                    if self._download_file(s3_key, local_file_path):
-                        downloaded_files.append(local_file_path)
-                        
-                    if len(downloaded_files) >= max_images:
+                    if len(download_tasks) >= max_images:
                         break
+        
+        downloaded_files = []
+        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(download_tasks))) as executor:
+            future_to_path = {
+                executor.submit(self._download_file, s3_key, local_path): local_path
+                for s3_key, local_path in download_tasks
+            }
+            
+            for future in as_completed(future_to_path):
+                local_path = future_to_path[future]
+                try:
+                    if future.result():
+                        downloaded_files.append(local_path)
+                except Exception as e:
+                    print(f"Error downloading to {local_path}: {str(e)}")
         
         return downloaded_files
 
@@ -320,3 +332,17 @@ class S3Manager:
             print(f"Deleted '{s3_key}' from bucket '{self.bucket_name}'")
         except Exception as e:
             raise RuntimeError(f"Failed to delete file '{s3_key}': {e}")
+
+    def upload_json_data(self, s3_key: str, data: dict) -> None:
+        """
+        Upload JSON data directly to S3 using a temporary file.
+        
+        Args:
+            s3_key (str): The S3 key where the JSON will be uploaded
+            data (dict): The data to be uploaded as JSON
+        """
+        with tempfile.NamedTemporaryFile(mode='w', delete=True) as tmp:
+            json.dump(data, tmp)
+            tmp.flush()
+            command = ["aws", "s3", "cp", tmp.name, f"s3://{self.bucket_name}/{s3_key}"]
+            self._run_cli_command(command)
