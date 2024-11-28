@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  annotation-app:
+    build:
+      context: ../../
+      dockerfile: streamlit/annotation_app/Dockerfile
+    ports:
+      - "8505:8501"
+    volumes:
+      - ../../:/BaseballCV
+    env_file:
+      - .env
+    environment:
+      - AWS_BASEBALLCV_ACCESS_KEY=${AWS_BASEBALLCV_ACCESS_KEY}
+      - AWS_BASEBALLCV_SECRET_KEY=${AWS_BASEBALLCV_SECRET_KEY}
+      - AWS_BASEBALLCV_REGION=${AWS_BASEBALLCV_REGION}
+      - PYTHONPATH=/BaseballCV
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 10G
+        reservations:
+          cpus: '3'
+          memory: 5G
+    restart: unless-stopped
