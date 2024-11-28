@@ -45,6 +45,8 @@ class LoadTools:
             'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
             'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
             'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
+            'baseball_rubber_home_COCO': 'datasets/COCO/baseball_rubber_home_COCO.txt',
+            'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
             'baseball': 'datasets/yolo/baseball.txt'
         }
 
