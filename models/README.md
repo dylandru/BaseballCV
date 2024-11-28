@@ -4,19 +4,22 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 
 ## Available Models
 
-- `bat_tracking.pt`: Utilizes YOLOv8 Detection model to detect the bat in broadcast feeds (model in PyTorch).
-- `ball_tracking.pt`: Utilizes YOLOv9 Detection Model to track the baseball from pitcher's hand to home plate (model in PyTorch).
-- `pitcher_hitter_catcher_detector.pt`: Utilizes YOLOv8 Detection model to detect the pitcher, hitter, and catcher in broadcast feeds (model in PyTorch).
-- `glove_tracking.pt`: Utilizes YOLOv9 Detection model to detect the catcher's glove, the ball, the rubber, and home plate (model in PyTorch).
+- `bat_tracking`: Utilizes YOLOv8 Detection model to detect the bat in broadcast feeds (model in PyTorch).
+- `ball_tracking`: Utilizes YOLOv9 Detection Model to track the baseball and other objects from pitcher's hand to home plate (model in PyTorch).
+- `pitcher_hitter_catcher_detector`: Utilizes YOLOv8 Detection model to detect the pitcher, hitter, and catcher in broadcast feeds (model in PyTorch).
+- `glove_tracking`: Utilizes YOLOv9 Detection model to detect the catcher's glove, the ball, the rubber, and home plate (model in PyTorch).
+- `ball_trackingv4`: Utilizes YOLOv11 Detection model to track ONLY the baseball from pitcher's hand to home plate (model in PyTorch).
+
 
 ## Model Weights
 
-The model weights can be downloaded using the following links:
+The model weights can be downloaded directly from the links below:
 
 - Pitcher Hitter Catcher Detector: [pitcher_hitter_catcher_detector_v3.pt](https://data.balldatalab.com/index.php/s/SciCLNYR5QGkjfK/download/pitcher_hitter_catcher_detector_v3.pt)
 - Glove Tracking: [glove_tracking_v1.pt](https://data.balldatalab.com/index.php/s/QHmGwgYnwwbXybx/download/glove_tracking_v1.pt)
 - Ball Tracking: [ball_tracking_v3-YOLOv11.pt](https://data.balldatalab.com/index.php/s/xdaTeMtmnpx8NbE/download/ball_tracking_v3-YOLOv11.pt)
 - Bat Tracking: [bat_tracking.pt](https://data.balldatalab.com/index.php/s/SqMzsxKkCrzojSF/download/bat_tracking.pt)
+- Ball Tracking v4: [ball_tracking_v4-YOLOv11.pt](https://data.balldatalab.com/index.php/s/cfoxjLS5BiZAgKs/download/ball_tracking_v4-YOLOv11.pt)
 
 ## Usage
 
