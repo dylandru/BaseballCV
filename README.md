@@ -30,11 +30,16 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 
 - `baseball_rubber_home_glove.txt`: A comprehensive MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 - `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
+- `baseball.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for solely baseballs.
 
 **Available Raw Photos Datasets**: 
 
 - `broadcast_10k_frames.txt`: A collection of 10,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
 - `broadcast_15k_frames.txt`: A collection of 15,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
+
+**Available COCO-format Datasets**:
+- `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
+- `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 
 
 **Downloading Datasets**
@@ -106,6 +111,7 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 - `ball_tracking.pt`: Trained to detect the baseball from the pitcher's hand to home from a broadcast feed.
 - `pitcher_hitter_catcher.pt`: Trained to detect the pitcher, hitter and catcher from a broadcast feed.
 - `glove_tracking.pt`: Trained to detect and track the catcher's glove, the ball, homeplate, and the pitcher's rubber from a broadcast feed.
+- `ball_trackingv4`: Trained to track ONLY the baseball from pitcher's hand to home plate.
 
 **Downloading Models**:
 
