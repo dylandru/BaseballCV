@@ -44,7 +44,8 @@ class LoadTools:
             'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
             'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
             'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
-            'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt'
+            'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
+            'baseball': 'datasets/yolo/baseball.txt'
         }
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_dataset: bool = False, is_labeled: bool = False) -> None:
