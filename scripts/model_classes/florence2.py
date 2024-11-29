@@ -1,0 +1,558 @@
+import torch
+import torch.nn
+from torch.utils.data import Dataset, DataLoader
+from transformers import AutoModelForCausalLM, AutoProcessor, get_scheduler, AdamW
+from peft import LoraConfig, get_peft_model
+from PIL import ImageEnhance
+import torch.backends
+from tqdm import tqdm
+import os
+import json
+from PIL import Image
+import matplotlib.pyplot as plt
+import random
+import shutil
+from typing import List, Dict, Any, Tuple
+import logging
+import time
+import seaborn as sns
+
+logger = logging.getLogger(__name__)
+
+class CustomData(Dataset):
+            def __init__(self, parent, entries, image_directory_path, augment=True):
+                self.parent = parent
+                self.entries = entries
+                self.image_directory_path = image_directory_path
+                self.augment = augment
+                self.transforms = parent._get_augmentation_transforms() if augment else []
+                
+            def __len__(self):
+                return len(self.entries)
+                
+            def __getitem__(self, idx):
+                image, data = self.parent._get_jsonl_item(
+                    self.entries, idx, self.image_directory_path)
+                
+                if self.augment and random.random() > 0.5:
+                    for transform in self.transforms:
+                        image = transform(image)
+                
+                prefix = data['prefix']
+                suffix = data['suffix']
+                return prefix, suffix, image
+
+
+class Florence2:
+    def __init__(self, model_id: str = 'microsoft/Florence-2-large', batch_size: int=6):
+        self.device = torch.device("cuda" if torch.cuda.is_available() 
+                                  else "mps" if torch.backends.mps.is_available() 
+                                  else "cpu")
+        self.model_id = model_id
+        self.batch_size = batch_size
+        self.model = None
+        self.processor = None
+        self.peft_model = None
+        self.train_loader = None
+        self.val_loader = None
+        self.train_dataset = None
+        self.val_dataset = None
+        self._init_model()
+
+    def _init_model(self):
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_id, trust_remote_code=True).to(self.device)
+        self.processor = AutoProcessor.from_pretrained(
+            self.model_id, trust_remote_code=True)
+
+    def _load_jsonl_entries(self, jsonl_file_path: str) -> List[Dict[str, Any]]:
+        entries = []
+        with open(jsonl_file_path, 'r') as file:
+            for line in file:
+                data = json.loads(line)
+                entries.append(data)
+        return entries
+
+    def _get_jsonl_item(self, entries: List[Dict[str, Any]], idx: int, 
+                       image_directory_path: str) -> Tuple[Image.Image, Dict[str, Any]]:
+        if idx < 0 or idx >= len(entries):
+            raise IndexError("Index out of range")
+        entry = entries[idx]
+        image_path = os.path.join(image_directory_path, entry['image'])
+        try:
+            image = Image.open(image_path)
+            return (image, entry)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Image file {image_path} not found.")
+
+    def _create_detection_dataset(self, jsonl_file_path: str, image_directory_path: str, 
+                           augment: bool = True) -> Dataset:
+        entries = self._load_jsonl_entries(jsonl_file_path)
+                
+        return CustomData(self, entries, image_directory_path, augment)
+
+    def _collate_fn(self, batch):
+        questions, answers, images = zip(*batch)
+        inputs = self.processor(
+            text=list(questions), 
+            images=list(images), 
+            return_tensors="pt", 
+            padding=True
+        ).to(self.device)
+        return inputs, answers
+
+    def _prepare_dataset(self, base_path: str, dict_classes: Dict[int, str], 
+                         train_test_split: Tuple[int, int, int] = (80, 10, 10)):
+        for split in ["train", "test", "valid"]:
+            os.makedirs(os.path.join(base_path, split, "images"), exist_ok=True)
+            os.makedirs(os.path.join(base_path, split, "labels"), exist_ok=True)
+
+        image_files = [f for f in os.listdir(base_path) 
+                      if f.endswith(('.jpg', '.png', '.jpeg'))]
+        total_images = len(image_files)
+        
+        random.shuffle(image_files)
+        train_count = int(train_test_split[0] * total_images)
+        test_count = int(train_test_split[1] * total_images)
+
+        train_files = image_files[:train_count]
+        test_files = image_files[train_count:train_count + test_count]
+        valid_files = image_files[train_count + test_count:]
+
+        splits = [("train", train_files), ("test", test_files), ("valid", valid_files)]
+        for split_name, files in splits:
+            for file_name in tqdm(files, desc=f"Processing {split_name}"):
+
+                src_image = os.path.join(base_path, file_name)
+                dst_image = os.path.join(base_path, split_name, "images", file_name)
+                shutil.move(src_image, dst_image)
+
+                label_name = os.path.splitext(file_name)[0] + ".txt"
+                src_label = os.path.join(base_path, label_name)
+                dst_label = os.path.join(base_path, split_name, "labels", label_name)
+                
+                if os.path.exists(src_label):
+                    shutil.move(src_label, dst_label)
+
+        for split in ["train", "valid", "test"]:
+            self._convert_annotations(base_path, split, dict_classes)
+
+        logger.info("Dataset preparation complete!")
+        logger.info(f"Train: {len(train_files)} images, Test: {len(test_files)} images, Valid: {len(valid_files)} images")
+
+        return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
+
+    def _convert_annotations(self, base_path: str, split: str, dict_classes: Dict[int, str]):
+        annotations_dir = os.path.join(base_path, split, "labels")
+        output_file = os.path.join(base_path, split, "images", f"{split}_annotations.json")
+        
+        annotations = []
+        files = [f for f in os.listdir(annotations_dir) if f.endswith(".txt")]
+        
+        for filename in tqdm(files, desc=f"Converting {split} annotations"):
+            annotation_file = os.path.join(annotations_dir, filename)
+            with open(annotation_file, 'r') as f:
+                lines = f.readlines()
+            
+            image_name = os.path.basename(annotation_file).replace('.txt', '.jpg')
+            suffix_lines = []
+            
+            for line in lines:
+                parts = line.strip().split()
+                class_id = int(parts[0])
+                x_center, y_center, width, height = map(float, parts[1:5])
+                
+                x1 = int((x_center - width/2) * 1000)
+                y1 = int((y_center - height/2) * 1000)
+                x2 = int((x_center + width/2) * 1000)
+                y2 = int((y_center + height/2) * 1000)
+                
+                class_name = dict_classes.get(class_id, f"Unknown Class {class_id}")
+                suffix_line = f"{class_name}<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>"
+                suffix_lines.append(suffix_line)
+            
+            annotations.append({
+                "image": image_name,
+                "prefix": "<OD>",
+                "suffix": "".join(suffix_lines)
+            })
+        
+        with open(output_file, 'w') as f:
+            json.dump(annotations, f)
+
+    def _setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 10):
+        self.train_dataset = self._create_detection_dataset(
+            jsonl_file_path=f"{train_path}train_annotations.json",
+            image_directory_path=train_path,
+            augment=True
+        )
+        self.val_dataset = self._create_detection_dataset(
+            jsonl_file_path=f"{valid_path}valid_annotations.json",
+            image_directory_path=valid_path,
+            augment=False
+        )
+
+        self.train_loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            collate_fn=self._collate_fn,
+            num_workers=num_workers,
+            shuffle=True
+        )
+        self.val_loader = DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            collate_fn=self._collate_fn,
+            num_workers=num_workers
+        )
+
+    def _setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05):
+        config = LoraConfig(
+            r=r,
+            lora_alpha=alpha,
+            target_modules=["q_proj", "o_proj", "k_proj", "v_proj", 
+                          "linear", "Conv2d", "lm_head", "fc2"],
+            task_type="CAUSAL_LM",
+            lora_dropout=dropout,
+            bias="none",
+            inference_mode=False,
+            use_rslora=True,
+            init_lora_weights="gaussian",
+        )
+        self.peft_model = get_peft_model(self.model, config)
+        return self.peft_model.print_trainable_parameters()
+    
+    def _save_training_plots(self, vis_path: str, metrics: Dict[str, List[float]], epoch: int):
+        timestamp = time.strftime("%Y%m%d-%H%M")
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(metrics['train_losses'], label='Training Loss')
+        plt.plot(metrics['val_losses'], label='Validation Loss')
+        plt.title(f'Training and Validation Loss - Epoch {epoch}')
+        plt.xlabel('Steps')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(vis_path, f'loss_curves_{timestamp}.png'))
+        plt.close()
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(metrics['learning_rates'], label='Learning Rate')
+        plt.title(f'Learning Rate Schedule - Epoch {epoch}')
+        plt.xlabel('Steps')
+        plt.ylabel('Learning Rate')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(vis_path, f'learning_rate_{timestamp}.png'))
+        plt.close()
+
+        if 'confusion_matrix' in metrics:
+            plt.figure(figsize=(10, 8))
+            sns.heatmap(metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues')
+            plt.title(f'Confusion Matrix - Epoch {epoch}')
+            plt.ylabel('True Label')
+            plt.xlabel('Predicted Label')
+            plt.savefig(os.path.join(vis_path, f'confusion_matrix_{timestamp}.png'))
+            plt.close()
+
+    def _get_augmentation_transforms(self):
+        def random_color_jitter(image):
+            factors = {
+                'brightness': random.uniform(0.8, 1.2),
+                'contrast': random.uniform(0.8, 1.2),
+                'color': random.uniform(0.8, 1.2)
+            }
+            
+            for enhance_type, factor in factors.items():
+                if random.random() > 0.5:
+                    if enhance_type == 'brightness':
+                        image = ImageEnhance.Brightness(image).enhance(factor)
+                    elif enhance_type == 'contrast':
+                        image = ImageEnhance.Contrast(image).enhance(factor)
+                    elif enhance_type == 'color':
+                        image = ImageEnhance.Color(image).enhance(factor)
+            return image
+        
+        def random_blur(image):
+            if random.random() > 0.8:
+                from PIL import ImageFilter
+                return image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.0)))
+            return image
+        
+        def random_noise(image):
+            if random.random() > 0.8:
+                import numpy as np
+                img_array = np.array(image)
+                noise = np.random.normal(0, 2, img_array.shape)
+                noisy_img = np.clip(img_array + noise, 0, 255).astype(np.uint8)
+                return Image.fromarray(noisy_img)
+            return image
+        
+        return [random_color_jitter, random_blur, random_noise]
+    
+
+    def load_checkpoint(self, checkpoint_dir: str) -> bool:
+        try:
+            adapter_path = os.path.join(checkpoint_dir, "adapter_model.safetensors")
+            config_path = os.path.join(checkpoint_dir, "adapter_config.json")
+            
+            if not all(os.path.exists(p) for p in [adapter_path, config_path]):
+                raise FileNotFoundError(f"Checkpoint files not found in {checkpoint_dir}")
+            
+            self.peft_model.load_adapter(adapter_path, config_path)
+            print(f"Successfully loaded checkpoint from {checkpoint_dir}")
+            return True
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}")
+            return False
+
+    def inference(self, image_path: str, task: str = "<OD>", 
+                 text_input: str = None, visualize: bool = True):
+        image = Image.open(image_path)
+        prompt = task + text_input if text_input else task
+
+        inputs = self.processor(
+            text=prompt,
+            images=image,
+            return_tensors="pt"
+        ).to(self.device)
+        
+        model_to_use = self.peft_model if self.peft_model else self.model
+        
+        generated_ids = model_to_use.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=1024,
+            early_stopping=False,
+            do_sample=False,
+            num_beams=3,
+        )
+        
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False)[0]
+        parsed_answer = self.processor.post_process_generation(
+            generated_text,
+            task=task,
+            image_size=(image.width, image.height)
+        )
+
+        if visualize:
+            self._visualize_results(image, parsed_answer[task])
+            
+        return parsed_answer[task]
+
+    def _visualize_results(self, image: Image.Image, results: Dict):
+        plt.figure(figsize=(10, 8))
+        plt.imshow(image)
+        ax = plt.gca()
+        
+        for bbox, label in zip(results['bboxes'], results['labels']):
+            xmin, ymin, xmax, ymax = bbox
+            rect = plt.Rectangle(
+                (xmin, ymin), 
+                xmax-xmin, 
+                ymax-ymin,
+                fill=False,
+                edgecolor='red',
+                linewidth=2
+            )
+            ax.add_patch(rect)
+            ax.text(
+                xmin, 
+                ymin - 2,
+                label,
+                bbox=dict(facecolor='red', alpha=0.5),
+                fontsize=12,
+                color='white'
+            )
+        
+        plt.axis('off')
+        plt.show()
+
+    def finetune(self, dataset: str, classes: Dict[int, str], train_test_split: Tuple[int, int, int] = (80, 10, 10), 
+                epochs: int = 20, lr: float = 4e-6, save_dir: str = "./model_checkpoints", 
+                num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
+                lora_dropout: float = 0.05, warmup_epochs: int = 1):
+        vis_path = os.path.join(
+            'training_visualizations',
+            self.model_id.replace('/', '_'),
+            'finetuning_info',
+            os.path.basename(dataset.rstrip('/'))
+        )
+        os.makedirs(vis_path, exist_ok=True)
+
+        metrics = {
+            'train_losses': [],
+            'val_losses': [],
+            'learning_rates': [],
+            'best_val_loss': float('inf'),
+            'best_epoch': -1
+        }
+
+        try:
+            train_path, valid_path = self._prepare_dataset(
+                base_path=dataset, 
+                dict_classes=classes, 
+                train_test_split=train_test_split
+            )
+            self._setup_data_loaders(train_path, valid_path, num_workers=num_workers)
+            self._setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout)
+
+            config = {
+                'model_id': self.model_id,
+                'dataset': dataset,
+                'classes': classes,
+                'epochs': epochs,
+                'learning_rate': lr,
+                'batch_size': self.batch_size,
+                'lora_config': {
+                    'r': lora_r,
+                    'scaling': lora_scaling,
+                    'dropout': lora_dropout
+                }
+            }
+            with open(os.path.join(vis_path, 'training_config.json'), 'w') as f:
+                json.dump(config, f, indent=4)
+
+            optimizer = AdamW(self.peft_model.parameters(), lr=lr, weight_decay=0.01)
+            num_steps = epochs * len(self.train_loader)
+            warmup_steps = warmup_epochs * len(self.train_loader)
+            lr_scheduler = get_scheduler(
+                "cosine",
+                optimizer=optimizer,
+                num_warmup_steps=warmup_steps,
+                num_training_steps=num_steps
+            )
+
+            patience_counter = 0
+
+            for epoch in range(epochs):
+                self.peft_model.train()
+                train_loss = 0
+                
+                for batch_idx, (inputs, answers) in enumerate(tqdm(self.train_loader, 
+                                                                desc=f"Training Epoch {epoch + 1}/{epochs}")):
+                    try:
+                        input_ids = inputs["input_ids"]
+                        pixel_values = inputs["pixel_values"]
+                        labels = self.processor.tokenizer(
+                            text=answers,
+                            return_tensors="pt",
+                            padding=True,
+                            return_token_type_ids=False
+                        ).input_ids.to(self.device)
+
+                        outputs = self.peft_model(
+                            input_ids=input_ids,
+                            pixel_values=pixel_values,
+                            labels=labels
+                        )
+                        
+                        loss = outputs.loss
+                        loss.backward()
+
+                        torch.nn.utils.clip_grad_norm_(self.peft_model.parameters(), max_norm=1.0)
+                        
+                        optimizer.step()
+                        lr_scheduler.step()
+                        optimizer.zero_grad()
+                        
+                        current_lr = lr_scheduler.get_last_lr()[0]
+                        metrics['train_losses'].append(loss.item())
+                        metrics['learning_rates'].append(current_lr)
+                        train_loss += loss.item()
+
+                        if self.device == "cuda" and batch_idx % 10 == 0:
+                            torch.cuda.empty_cache()
+
+                    except RuntimeError as e:
+                        logger.error(f"Error in training batch {batch_idx}: {str(e)}")
+                        continue
+
+                avg_train_loss = train_loss / len(self.train_loader)
+
+                self.peft_model.eval()
+                val_loss = 0
+                
+                with torch.no_grad():
+                    for inputs, answers in tqdm(self.val_loader,
+                                            desc=f"Validation Epoch {epoch + 1}/{epochs}"):
+                        try:
+                            input_ids = inputs["input_ids"]
+                            pixel_values = inputs["pixel_values"]
+                            labels = self.processor.tokenizer(
+                                text=answers,
+                                return_tensors="pt",
+                                padding=True,
+                                return_token_type_ids=False
+                            ).input_ids.to(self.device)
+
+                            outputs = self.peft_model(
+                                input_ids=input_ids,
+                                pixel_values=pixel_values,
+                                labels=labels
+                            )
+                            val_loss += outputs.loss.item()
+
+                        except RuntimeError as e:
+                            logger.error(f"Error in validation batch: {str(e)}")
+                            continue
+
+                avg_val_loss = val_loss / len(self.val_loader)
+                metrics['val_losses'].append(avg_val_loss)
+
+                self._save_training_plots(vis_path, metrics, epoch)
+
+                if avg_val_loss < metrics['best_val_loss']:
+                    metrics['best_val_loss'] = avg_val_loss
+                    metrics['best_epoch'] = epoch
+                    patience_counter = 0
+                    
+                    best_model_path = os.path.join(save_dir, "best_model")
+                    os.makedirs(best_model_path, exist_ok=True)
+                    self.peft_model.save_pretrained(best_model_path)
+                    self.processor.save_pretrained(best_model_path)
+                else:
+                    patience_counter += 1
+
+                if (epoch + 1) % 5 == 0:
+                    save_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch+1}")
+                    os.makedirs(save_path, exist_ok=True)
+                    
+                    self.peft_model.save_pretrained(save_path)
+                    self.processor.save_pretrained(save_path)
+                    
+                    torch.save({
+                        'epoch': epoch,
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': lr_scheduler.state_dict(),
+                        'metrics': metrics
+                    }, os.path.join(save_path, "training_state.pt"))
+
+                logger.info(
+                    f"Epoch {epoch + 1}/{epochs} - "
+                    f"Train Loss: {avg_train_loss:.4f} - "
+                    f"Val Loss: {avg_val_loss:.4f} - "
+                    f"LR: {current_lr:.2e}"
+                )
+
+                if patience_counter >= patience:
+                    logger.info(f"Early stopping triggered at epoch {epoch + 1}")
+                    break
+
+                if (epoch + 1) % 5 == 0:
+                    random_idx = random.randint(0, len(self.val_dataset) - 1)
+                    image, data = self.val_dataset.dataset[random_idx]
+                    _ = self.inference(image, task="<OD>", visualize=True)
+
+            with open(os.path.join(vis_path, 'final_metrics.json'), 'w') as f:
+                json.dump(metrics, f, indent=4)
+
+            return metrics
+
+        except Exception as e:
+            logger.error(f"Training failed: {str(e)}")
+            emergency_path = os.path.join(save_dir, "emergency_checkpoint")
+            os.makedirs(emergency_path, exist_ok=True)
+            self.peft_model.save_pretrained(emergency_path)
+            raise e
