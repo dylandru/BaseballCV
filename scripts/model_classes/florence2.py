@@ -397,7 +397,14 @@ class Florence2:
             else:
                 raise ValueError("Text input is needed for CAPTION_TO_PHASE_GROUNDING task")
             
+        if task == "<CAPTION>" or task == "<MORE_DETAILED_CAPTION>" or task == "<CAPTION_TO_PHASE_GROUNDING>":
+            print(self._return_text_output(parsed_answer[task]))
+
         return parsed_answer[task]
+    
+    def _return_text_output(self, results: Dict) -> str:
+        return next(iter(results.values())).strip()
+        
 
     def _visualize_results(self, image: Image.Image, results: Dict):
         plt.figure(figsize=(10, 8))
