@@ -52,7 +52,7 @@ class YOLOToFlorence2(Dataset):
                 
                 prefix = data['prefix']
                 suffix = data['suffix']
-                return prefix, suffix, image, data
+                return prefix, suffix, image
             
             def get_unaugmented_item(self, idx):
                 return self.parent._get_jsonl_item(
@@ -163,14 +163,14 @@ class Florence2:
         return YOLOToFlorence2(self, entries, image_directory_path, augment)
 
     def _collate_fn(self, batch):
-        questions, answers, images = zip(*batch)
+        prefixes, suffixes, images = zip(*batch)
         inputs = self.processor(
-            text=list(questions), 
+            text=list(prefixes), 
             images=list(images), 
             return_tensors="pt", 
             padding=True
         ).to(self.device)
-        return inputs, answers
+        return inputs, suffixes
 
     def _prepare_dataset(self, base_path: str, dict_classes: Dict[int, str], 
                      train_test_split: Tuple[int, int, int] = (80, 10, 10)):
