@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
+from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
-from transformers import AutoModelForCausalLM, AutoProcessor, get_scheduler, AdamW
+from transformers import AutoModelForCausalLM, AutoProcessor, get_scheduler
 from peft import LoraConfig, get_peft_model
 from PIL import ImageEnhance
 import torch.backends
@@ -51,7 +52,11 @@ class YOLOToFlorence2(Dataset):
                 
                 prefix = data['prefix']
                 suffix = data['suffix']
-                return prefix, suffix, image
+                return prefix, suffix, image, data
+            
+            def get_unaugmented_item(self, idx):
+                return self.parent._get_jsonl_item(
+                    self.entries, idx, self.image_directory_path)
 
 
 class Florence2:
@@ -615,7 +620,7 @@ class Florence2:
 
                 if (epoch + 1) % 5 == 0:
                     random_idx = random.randint(0, len(self.val_dataset) - 1)
-                    image, data = self.val_dataset.dataset[random_idx]
+                    prefix, suffix, image = self.val_dataset[random_idx]
                     _ = self.inference(image, task="<OD>", visualize=True)
 
             with open(os.path.join(vis_path, 'final_metrics.json'), 'w') as f:
