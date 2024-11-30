@@ -16,7 +16,8 @@ from typing import List, Dict, Any, Tuple
 import logging
 import seaborn as sns
 import torch.multiprocessing as mp
-
+import io
+from IPython.display import display
 '''
 This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
 
@@ -370,7 +371,7 @@ class Florence2:
     def _return_clean_text_output(self, results: Dict) -> str:
         return next(iter(results.values())).strip()
         
-    def _visualize_results(self, image: Image.Image, results: Dict):
+    def _visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations'):
         plt.figure(figsize=(10, 8))
         plt.imshow(image)
         ax = plt.gca()
@@ -397,6 +398,8 @@ class Florence2:
         
         plt.axis('off')
         plt.show()
+        os.makedirs(save_viz_dir, exist_ok=True)
+        plt.savefig(f'{save_viz_dir}/result.png')
 
     def finetune(self, dataset: str, classes: Dict[int, str],
                 train_test_split: Tuple[int, int, int] = (80, 10, 10), 
