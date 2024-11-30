@@ -17,7 +17,14 @@ import logging
 import seaborn as sns
 import torch.multiprocessing as mp
 
+'''
+This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
 
+- https://huggingface.co/microsoft/Florence-2-large/blob/main/sample_inference.ipynb
+- https://github.com/roboflow/notebooks/blob/main/notebooks/how-to-finetune-florence-2-on-detection-dataset.ipynb
+- https://github.com/AarohiSingla/Florence-2-Fine-tuning/blob/main/fine_tuning_florence2.ipynb
+
+'''
 
 logger = logging.getLogger(__name__)
 
