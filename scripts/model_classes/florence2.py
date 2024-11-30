@@ -102,45 +102,73 @@ class Florence2:
         return inputs, answers
 
     def _prepare_dataset(self, base_path: str, dict_classes: Dict[int, str], 
-                         train_test_split: Tuple[int, int, int] = (80, 10, 10)):
-        for split in ["train", "test", "valid"]:
-            os.makedirs(os.path.join(base_path, split, "images"), exist_ok=True)
-            os.makedirs(os.path.join(base_path, split, "labels"), exist_ok=True)
-
-        image_files = [f for f in os.listdir(base_path) 
+                     train_test_split: Tuple[int, int, int] = (80, 10, 10)):
+    
+      existing_split = all(
+          os.path.exists(os.path.join(base_path, split)) 
+          for split in ["train", "test", "valid"]
+      )
+      
+      if existing_split:
+          logger.info("Found existing train/test/valid split. Using existing split.")
+          train_files = [f for f in os.listdir(os.path.join(base_path, "train", "images")) 
+                        if f.endswith(('.jpg', '.png', '.jpeg'))]
+          test_files = [f for f in os.listdir(os.path.join(base_path, "test", "images")) 
                       if f.endswith(('.jpg', '.png', '.jpeg'))]
-        total_images = len(image_files)
-        
-        random.shuffle(image_files)
-        train_count = int(train_test_split[0] * total_images)
-        test_count = int(train_test_split[1] * total_images)
+          valid_files = [f for f in os.listdir(os.path.join(base_path, "valid", "images")) 
+                        if f.endswith(('.jpg', '.png', '.jpeg'))]
+          
+          for split, files in [("train", train_files), ("test", test_files), ("valid", valid_files)]:
+              label_dir = os.path.join(base_path, split, "labels")
+              os.makedirs(label_dir, exist_ok=True)
+              
+              for img_file in files:
+                  base_name = os.path.splitext(img_file)[0]
+                  label_name = f"{base_name}.txt"
+                  src_label = os.path.join(base_path, label_name)
+                  dst_label = os.path.join(label_dir, label_name)
+                  
+                  if os.path.exists(src_label) and not os.path.exists(dst_label):
+                      shutil.copy2(src_label, dst_label)
+          
+          logger.info(f"Train: {len(train_files)} images, Test: {len(test_files)} images, Valid: {len(valid_files)} images")
+      else:
+          logger.info("No existing split found. Creating new train/test/valid split.")
+          for split in ["train", "test", "valid"]:
+              os.makedirs(os.path.join(base_path, split, "images"), exist_ok=True)
+              os.makedirs(os.path.join(base_path, split, "labels"), exist_ok=True)
 
-        train_files = image_files[:train_count]
-        test_files = image_files[train_count:train_count + test_count]
-        valid_files = image_files[train_count + test_count:]
+          image_files = [f for f in os.listdir(base_path) 
+                        if f.endswith(('.jpg', '.png', '.jpeg'))]
+          total_images = len(image_files)
+          
+          random.shuffle(image_files)
+          train_count = int(train_test_split[0] * total_images / 100)
+          test_count = int(train_test_split[1] * total_images / 100)
 
-        splits = [("train", train_files), ("test", test_files), ("valid", valid_files)]
-        for split_name, files in splits:
-            for file_name in tqdm(files, desc=f"Processing {split_name}"):
+          train_files = image_files[:train_count]
+          test_files = image_files[train_count:train_count + test_count]
+          valid_files = image_files[train_count + test_count:]
 
-                src_image = os.path.join(base_path, file_name)
-                dst_image = os.path.join(base_path, split_name, "images", file_name)
-                shutil.move(src_image, dst_image)
+          splits = [("train", train_files), ("test", test_files), ("valid", valid_files)]
+          for split_name, files in splits:
+              for file_name in tqdm(files, desc=f"Processing {split_name}"):
+                  src_image = os.path.join(base_path, file_name)
+                  dst_image = os.path.join(base_path, split_name, "images", file_name)
+                  shutil.copy2(src_image, dst_image)
 
-                label_name = os.path.splitext(file_name)[0] + ".txt"
-                src_label = os.path.join(base_path, label_name)
-                dst_label = os.path.join(base_path, split_name, "labels", label_name)
-                
-                if os.path.exists(src_label):
-                    shutil.move(src_label, dst_label)
+                  label_name = os.path.splitext(file_name)[0] + ".txt"
+                  src_label = os.path.join(base_path, label_name)
+                  dst_label = os.path.join(base_path, split_name, "labels", label_name)
+                  
+                  if os.path.exists(src_label):
+                      shutil.copy2(src_label, dst_label)
 
-        for split in ["train", "valid", "test"]:
-            self._convert_annotations(base_path, split, dict_classes)
+      for split in ["train", "valid", "test"]:
+          self._convert_annotations(base_path, split, dict_classes)
 
-        logger.info("Dataset preparation complete!")
-        logger.info(f"Train: {len(train_files)} images, Test: {len(test_files)} images, Valid: {len(valid_files)} images")
-
-        return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
+      logger.info("Dataset preparation complete!")
+      return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
 
     def _convert_annotations(self, base_path: str, split: str, dict_classes: Dict[int, str]):
         annotations_dir = os.path.join(base_path, split, "labels")
@@ -289,22 +317,6 @@ class Florence2:
             return image
         
         return [random_color_jitter, random_blur, random_noise]
-    
-
-    def load_checkpoint(self, checkpoint_dir: str) -> bool:
-        try:
-            adapter_path = os.path.join(checkpoint_dir, "adapter_model.safetensors")
-            config_path = os.path.join(checkpoint_dir, "adapter_config.json")
-            
-            if not all(os.path.exists(p) for p in [adapter_path, config_path]):
-                raise FileNotFoundError(f"Checkpoint files not found in {checkpoint_dir}")
-            
-            self.peft_model.load_adapter(adapter_path, config_path)
-            print(f"Successfully loaded checkpoint from {checkpoint_dir}")
-            return True
-        except Exception as e:
-            print(f"Error loading checkpoint: {e}")
-            return False
 
     def inference(self, image_path: str, task: str = "<OD>", 
                  text_input: str = None, visualize: bool = True):
@@ -369,10 +381,12 @@ class Florence2:
         plt.axis('off')
         plt.show()
 
-    def finetune(self, dataset: str, classes: Dict[int, str], train_test_split: Tuple[int, int, int] = (80, 10, 10), 
+    def finetune(self, dataset: str, classes: Dict[int, str],
+                train_test_split: Tuple[int, int, int] = (80, 10, 10), 
                 epochs: int = 20, lr: float = 4e-6, save_dir: str = "./model_checkpoints", 
                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
-                lora_dropout: float = 0.05, warmup_epochs: int = 1):
+                lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine"):
+        
         vis_path = os.path.join(
             'training_visualizations',
             self.model_id.replace('/', '_'),
@@ -418,7 +432,7 @@ class Florence2:
             num_steps = epochs * len(self.train_loader)
             warmup_steps = warmup_epochs * len(self.train_loader)
             lr_scheduler = get_scheduler(
-                "cosine",
+                lr_schedule,
                 optimizer=optimizer,
                 num_warmup_steps=warmup_steps,
                 num_training_steps=num_steps
