@@ -16,8 +16,12 @@ from typing import List, Dict, Any, Tuple
 import logging
 import time
 import seaborn as sns
+import torch.multiprocessing as mp
 
 logger = logging.getLogger(__name__)
+
+if __name__ == '__main__':
+    mp.set_start_method('spawn', force=True)
 
 class CustomData(Dataset):
             def __init__(self, parent, entries, image_directory_path, augment=True):
@@ -225,13 +229,17 @@ class Florence2:
             batch_size=self.batch_size,
             collate_fn=self._collate_fn,
             num_workers=num_workers,
-            shuffle=True
+            shuffle=True,
+            persistent_workers=False if num_workers == 0 else True,
+            pin_memory=True if self.device == 'cuda' else False
         )
         self.val_loader = DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
             collate_fn=self._collate_fn,
-            num_workers=num_workers
+            num_workers=num_workers,
+            persistent_workers=False if num_workers == 0 else True,
+            pin_memory=True if self.device == 'cuda' else False
         )
 
     def _setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05):
