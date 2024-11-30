@@ -26,7 +26,7 @@ We provide open-source datasets containing images and corresponding annotations 
 
 Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines. Our current datasets include:
 
-**Available Pre-Annotated Datasets (currently only YOLO)**:
+**Available YOLO Pre-Annotated Datasets**:
 
 - `baseball_rubber_home_glove.txt`: A comprehensive MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 - `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
@@ -112,6 +112,10 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 - `pitcher_hitter_catcher.pt`: Trained to detect the pitcher, hitter and catcher from a broadcast feed.
 - `glove_tracking.pt`: Trained to detect and track the catcher's glove, the ball, homeplate, and the pitcher's rubber from a broadcast feed.
 - `ball_trackingv4`: Trained to track ONLY the baseball from pitcher's hand to home plate.
+
+**Available Florence2 Models**:
+
+- `florence_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
 **Downloading Models**:
 
