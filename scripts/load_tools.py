@@ -40,7 +40,7 @@ class LoadTools:
             'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt'
         }
         self.florence_model_aliases = {
-            'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
+            'florence_ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
         }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
