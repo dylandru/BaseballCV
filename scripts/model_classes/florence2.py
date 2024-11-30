@@ -407,6 +407,8 @@ class Florence2:
                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
                 lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine"):
         
+        logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
+        
         vis_path = os.path.join(
             'training_visualizations',
             self.model_id.replace('/', '_'),
@@ -424,13 +426,23 @@ class Florence2:
         }
 
         try:
+
             train_path, valid_path = self._prepare_dataset(
                 base_path=dataset, 
                 dict_classes=classes, 
                 train_test_split=train_test_split
             )
+
+            logger.info(f"Dataset Preparation Complete - Train Path: {train_path}, Valid Path: {valid_path}")
+
             self._setup_data_loaders(train_path, valid_path, num_workers=num_workers)
+
+            logger.info(f"Data Loader Setup Complete")
+
             self._setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout)
+
+            logger.info(f"PEFT Setup Complete w/ SpecifiedParams: \n"
+                        f"LoRA r: {lora_r}, Scaling: {lora_scaling}, Dropout: {lora_dropout}")
 
             config = {
                 'model_id': self.model_id,
@@ -459,6 +471,11 @@ class Florence2:
             )
 
             patience_counter = 0
+
+            logger.info(f"Beginning Training Loop w/ SpecifiedParams: \n"
+                        f"Optimizer: AdamW, Learning Rate: {lr}, Scheduler: {lr_schedule}, " #Hardcoded AdamW until Optimizer Customization is Updated
+                        f"Warmup Epochs: {warmup_epochs}, Number of Steps: {num_steps}, "
+                        f"Patience: {patience}")
 
             for epoch in range(epochs):
                 self.peft_model.train()
