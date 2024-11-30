@@ -370,9 +370,9 @@ class Florence2:
             return_tensors="pt"
         ).to(self.device)
         
-        model_to_use = self.peft_model if self.peft_model else self.model
+
         
-        generated_ids = model_to_use.generate(
+        generated_ids = self.model.generate(
             input_ids=inputs["input_ids"],
             pixel_values=inputs["pixel_values"],
             max_new_tokens=1024,
