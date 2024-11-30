@@ -179,9 +179,11 @@ class TaskManager:
             user_id (str): The ID of the user completing the task
             annotations (List[Dict]): The annotations for the image
         """
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        user_folder = f"{st.session_state.project_type}/{st.session_state.selected_project}/completed/com_{timestamp}"
+
+        clean_user_id = ''.join(c for c in user_id if c.isalnum() or c == '_')
+        user_folder = f"{st.session_state.project_type}/{st.session_state.selected_project}/completed/{clean_user_id}"
+        self.s3.create_folder(user_folder)
+        self.s3.create_folder(f"{user_folder}/images")
         
         image_filename = os.path.basename(image_path)
         original_s3_path = f"{st.session_state.project_type}/{st.session_state.selected_project}/{image_filename}"
@@ -288,23 +290,4 @@ class TaskManager:
         
         self.file_tools.save_json(tasks_data, self.tasks_file)
         return None
-    
-    def _create_user_completed_folder(self, user_id: str, project_type: str, project_name: str) -> str:
-        """
-        Create a user-specific completed folder in S3 with timestamp within the project folder.
-
-        Args:
-            user_id (str): The ID of the user completing the task
-            project_type (str): The type of project
-            project_name (str): The name of the project
-
-        Returns:
-            str: The path to the user's completed folder
-        """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        clean_user_id = ''.join(c for c in user_id if c.isalnum() or c == '_')
-        folder_name = f"{project_type}/{project_name}/completed/{clean_user_id}_{timestamp}"
-        self.s3.create_folder(folder_name)
-        self.s3.create_folder(f"{folder_name}/images")
-        return folder_name
         
