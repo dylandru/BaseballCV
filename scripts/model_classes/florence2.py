@@ -420,23 +420,26 @@ class Florence2:
         plt.axis('off')
         plt.show()
         os.makedirs(save_viz_dir, exist_ok=True)
-        plt.savefig(f'{save_viz_dir}/result.png')
+        plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
 
     def finetune(self, dataset: str, classes: Dict[int, str],
                 train_test_split: Tuple[int, int, int] = (80, 10, 10), 
-                epochs: int = 20, lr: float = 4e-6, save_dir: str = "./model_checkpoints", 
+                epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints", 
                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
                 lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine"):
         
         self.logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
         
+        save_dir = os.path.join(self.model_run_path, save_dir)
         vis_path = os.path.join(
+            self.model_run_path,
             'training_visualizations',
             self.model_id.replace('/', '_'),
             'finetuning_info',
             os.path.basename(dataset.rstrip('/'))
         )
         os.makedirs(vis_path, exist_ok=True)
+
 
         metrics = {
             'train_losses': [],
