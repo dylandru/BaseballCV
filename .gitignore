@@ -14,12 +14,15 @@ __pycache__/
 **/.pyc
 .pyc
 
-
 # Ignore .pytest_cache folders
 .pytest_cache/
 
 # Ignore __MACOSX folders
 __MACOSX/
 
+# Ignore .env files
+.env
+
 # Ignore TF Event Files
 events.out.tfevents.*
+

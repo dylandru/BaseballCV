@@ -7,4 +7,9 @@ pytest==8.3.2
 ultralytics>=8.2.90
 transformers==4.46.3
 peft==0.13.2
+streamlit==1.32.2
+streamlit-image-coordinates==0.1.6
+Pillow==10.2.0
+streamlit-drawable-canvas==0.9.3
+awscli==1.36.5
 git+https://github.com/Jensen-holm/statcast-era-pitches.git
