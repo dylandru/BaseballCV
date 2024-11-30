@@ -186,6 +186,7 @@ class TaskManager:
         self.s3.create_folder(f"{user_folder}/images")
         
         image_filename = os.path.basename(image_path)
+        raw_image_filename = image_filename.split(".")[0]
         original_s3_path = f"{st.session_state.project_type}/{st.session_state.selected_project}/{image_filename}"
         completed_s3_path = f"{user_folder}/images/{image_filename}"
         
@@ -204,7 +205,7 @@ class TaskManager:
                 "completed_path": completed_s3_path
             }
             
-            self.s3.upload_json_data(f"{user_folder}/annotations.json", annotations_data)
+            self.s3.upload_json_data(f"{user_folder}/annotations_{raw_image_filename}.json", annotations_data)
             
         except Exception as e:
             raise RuntimeError(f"Error moving file in S3: {e}")
