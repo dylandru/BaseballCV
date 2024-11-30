@@ -20,3 +20,6 @@ __pycache__/
 
 # Ignore __MACOSX folders
 __MACOSX/
+
+# Ignore TF Event Files
+events.out.tfevents.*
