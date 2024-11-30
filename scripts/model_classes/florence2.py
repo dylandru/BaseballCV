@@ -17,7 +17,6 @@ import logging
 import seaborn as sns
 import torch.multiprocessing as mp
 from datetime import datetime
-from pathlib import Path
 
 '''
 This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
@@ -89,8 +88,8 @@ class Florence2:
                 logging.StreamHandler()
             ]
         )
-        self.logger = logging.getLogger(f"FLORENCE2_v({self.model_id})")
-        self.logger.info(f"Initializing Florence2 model with {self.batch_size} batch size")
+        self.logger = logging.getLogger(f"FLORENCE2_({self.model_id})")
+        self.logger.info(f"Initializing Florence2 model with Batch Size: {self.batch_size}")
         self.logger.info(f"Device: {self.device}")
 
     def _init_model(self):
@@ -234,7 +233,6 @@ class Florence2:
       for split in ["train", "valid", "test"]:
           self._convert_annotations(base_path, split, dict_classes)
 
-      self.logger.info("Dataset preparation complete!")
       return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
 
     def _convert_annotations(self, base_path: str, split: str, dict_classes: Dict[int, str]):
@@ -320,7 +318,7 @@ class Florence2:
             init_lora_weights="gaussian",
         )
         self.peft_model = get_peft_model(self.model, config)
-        return self.peft_model.print_trainable_parameters()
+        return self.logger.info(self.peft_model.print_trainable_parameters())
     
     def _save_training_plots(self, vis_path: str, metrics: Dict[str, List[float]], epoch: int):
         
