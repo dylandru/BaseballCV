@@ -41,13 +41,21 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 
+**Clone and install requirements**
+
+# Clone the repository
+!git clone https://github.com/dylandru/BaseballCV.git
+
+# Change directory to the repository
+%cd BaseballCV
+!pip install -r requirements.txt
 
 **Downloading Datasets**
 
 If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
 
 ```python
-  from scripts.load_tools import LoadTools
+  from scripts import LoadTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
@@ -62,7 +70,7 @@ If you are interested in training your own models with our datasets, you can dow
 If you are interested in annotating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
 
 ```python
-  from scripts.load_tools import LoadTools
+  from scripts import LoadTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
@@ -79,7 +87,7 @@ If you are interested in annotating your own dataset, you can use one of the raw
 If you are interested in creating your own datasets from scratch, you can use our tools to help you, such as our photo generator.
 
 ```python
-  from scripts.dataset_tools import DataTools
+  from scripts import DataTools
 
   # Initialize DataTools class
   data_tools = DataTools()
@@ -91,7 +99,7 @@ If you are interested in creating your own datasets from scratch, you can use ou
 With that given dataset, you can then use our automatic annotation tool to annotate the dataset based on an existing model.
 
 ```python
-  from scripts.dataset_tools import DataTools
+  from scripts import DataTools
 
   # Initialize DataTools class
   data_tools = DataTools()
@@ -117,25 +125,45 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 
 - `florence_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
-**Downloading Models**:
+## Downloading and Loading Models
 
-To download a model, you can use the following lines of code:
+### Overview
+The `LoadTools` class provides a convenient way to download and load different types of models, including YOLO and Florence2 models. This class handles the downloading of model weights and datasets from either the BallDataLab API or specified text files.
+
+### Loading Models
+
+#### YOLO Models
+To load a YOLO model, you can use the `load_model` method of the `LoadTools` class. Below is an example of how to load a YOLO model:
 
 ```python
-from scripts.load_tools import LoadTools
-from ultralytics import YOLO
+from scripts import LoadTools
 
 # Initialize LoadTools class
 load_tools = LoadTools()
 
-# Load model from .txt file path
-model_path = load_tools.load_model("models/bat_tracking/model_weights/bat_tracking.txt")
+# Load YOLO model using alias
+model_path = load_tools.load_model("bat_trackingv4")
 
-# Load model from alias
-model_path = load_tools.load_model("bat_tracking")
+# Load YOLO model using .txt file path
+model_path = load_tools.load_model("models/YOLO/bat_tracking/model_weights/bat_tracking.txt")
+```
 
-# Initialize model with YOLO class
-model = YOLO(model_path)
+#### Florence 2 Models
+
+To load a Florence 2 model, you can also use the load_model method of the LoadTools class. Below is an example of how to load a Florence 2 model:
+
+
+```python
+from scripts import LoadTools
+
+# Initialize LoadTools class
+load_tools = LoadTools()
+
+# Load Florence2 model using alias
+model_path = load_tools.load_model("florence_ball_tracking", model_type='FLORENCE2')
+
+# Load Florence2 model using .txt file path
+model_path = load_tools.load_model("models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt", model_type='FLORENCE2')
 ```
 
 ## Examples

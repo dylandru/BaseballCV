@@ -11,6 +11,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `model_fine_tuning.ipynb`: Demonstrates how to auto fine tune our models, using the glove tracking model as an example.
 - `okd_nkd`: Creates a model through a classifier to detect One Knee Down postion, or others.
 - `autolabeling_semisupervised.ipynb`: Demonstrates how to use DataTools class for auto annotating images using the BaseballCV pipeline, in a semisupervised manner.
+- `Florence_2_example.ipynb`: Demonstrates how to use the Florence2 class to custom train a Florence 2 model using the BaseballCV pipeline.
 
 ## Usage
 
