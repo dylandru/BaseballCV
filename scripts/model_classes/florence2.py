@@ -16,8 +16,9 @@ from typing import List, Dict, Any, Tuple
 import logging
 import seaborn as sns
 import torch.multiprocessing as mp
-import io
-from IPython.display import display
+from datetime import datetime
+from pathlib import Path
+
 '''
 This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
 
@@ -26,8 +27,6 @@ This implementation of the Florence2 class is based on the following notebooks /
 - https://github.com/AarohiSingla/Florence-2-Fine-tuning/blob/main/fine_tuning_florence2.ipynb
 
 '''
-
-logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
@@ -57,7 +56,7 @@ class YOLOToFlorence2(Dataset):
 
 
 class Florence2:
-    def __init__(self, model_id: str = 'microsoft/Florence-2-large', batch_size: int=1):
+    def __init__(self, model_id: str = 'microsoft/Florence-2-large', model_run_path: str = f'florence2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int=1):
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                   else "mps" if torch.backends.mps.is_available() 
                                   else "cpu")
@@ -70,7 +69,29 @@ class Florence2:
         self.val_loader = None
         self.train_dataset = None
         self.val_dataset = None
+        self.logger = None
+        self.model_run_path = model_run_path
         self._init_model()
+        self._orig_logging()
+
+    def _orig_logging(self):
+        log_dir = os.path.join(self.model_run_path, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"florence2_{timestamp}.log")
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
+        self.logger = logging.getLogger(f"FLORENCE2_v({self.model_id})")
+        self.logger.info(f"Initializing Florence2 model with {self.batch_size} batch size")
+        self.logger.info(f"Device: {self.device}")
 
     def _init_model(self):
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -88,20 +109,20 @@ class Florence2:
                         if isinstance(data, dict):
                             entries.append(data)
                         else:
-                            logger.warning(f"Skipping invalid entry: not dictionary - {data}")
+                            self.logger.warning(f"Skipping invalid entry: not dictionary - {data}")
                     except json.JSONDecodeError as e:
-                        logger.warning(f"Failed to parse JSON line: {e}")
+                        self.logger.warning(f"Failed to parse JSON line: {e}")
                         continue
             
             if not entries:
-                logger.error(f"No valid entries found in {jsonl_file_path}")
+                self.logger.error(f"No valid entries found in {jsonl_file_path}")
                 raise ValueError(f"No valid entries found in {jsonl_file_path}")
                 
-            logger.info(f"Loaded {len(entries)} valid entries from {jsonl_file_path}")
+            self.logger.info(f"Loaded {len(entries)} valid entries from {jsonl_file_path}")
             return entries
 
         except Exception as e:
-            logger.error(f"Error loading entries from {jsonl_file_path}: {str(e)}")
+            self.logger.error(f"Error loading entries from {jsonl_file_path}: {str(e)}")
             raise
 
     def _get_jsonl_item(self, entries: List[Dict[str, Any]], idx: int, 
@@ -128,7 +149,7 @@ class Florence2:
             return image, entry
             
         except Exception as e:
-            logger.error(f"Error processing item at index {idx}: {str(e)}")
+            self.logger.error(f"Error processing item at index {idx}: {str(e)}")
             raise
 
     def _create_detection_dataset(self, jsonl_file_path: str, image_directory_path: str, 
@@ -156,7 +177,7 @@ class Florence2:
       )
       
       if existing_split:
-          logger.info("Found existing train/test/valid split. Using existing split.")
+          self.logger.info("Found existing train/test/valid split. Using existing split.")
           train_files = [f for f in os.listdir(os.path.join(base_path, "train", "images")) 
                         if f.endswith(('.jpg', '.png', '.jpeg'))]
           test_files = [f for f in os.listdir(os.path.join(base_path, "test", "images")) 
@@ -177,9 +198,9 @@ class Florence2:
                   if os.path.exists(src_label) and not os.path.exists(dst_label):
                       shutil.copy2(src_label, dst_label)
           
-          logger.info(f"Train: {len(train_files)} images, Test: {len(test_files)} images, Valid: {len(valid_files)} images")
+          self.logger.info(f"Train: {len(train_files)} images, Test: {len(test_files)} images, Valid: {len(valid_files)} images")
       else:
-          logger.info("No existing split found. Creating new train/test/valid split.")
+          self.logger.info("No existing split found. Creating new train/test/valid split.")
           for split in ["train", "test", "valid"]:
               os.makedirs(os.path.join(base_path, split, "images"), exist_ok=True)
               os.makedirs(os.path.join(base_path, split, "labels"), exist_ok=True)
@@ -213,7 +234,7 @@ class Florence2:
       for split in ["train", "valid", "test"]:
           self._convert_annotations(base_path, split, dict_classes)
 
-      logger.info("Dataset preparation complete!")
+      self.logger.info("Dataset preparation complete!")
       return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
 
     def _convert_annotations(self, base_path: str, split: str, dict_classes: Dict[int, str]):
@@ -407,7 +428,7 @@ class Florence2:
                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
                 lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine"):
         
-        logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
+        self.logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
         
         vis_path = os.path.join(
             'training_visualizations',
@@ -433,15 +454,15 @@ class Florence2:
                 train_test_split=train_test_split
             )
 
-            logger.info(f"Dataset Preparation Complete - Train Path: {train_path}, Valid Path: {valid_path}")
+            self.logger.info(f"Dataset Preparation Complete - Train Path: {train_path}, Valid Path: {valid_path}")
 
             self._setup_data_loaders(train_path, valid_path, num_workers=num_workers)
 
-            logger.info(f"Data Loader Setup Complete")
+            self.logger.info(f"Data Loader Setup Complete")
 
             self._setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout)
 
-            logger.info(f"PEFT Setup Complete w/ SpecifiedParams: \n"
+            self.logger.info(f"PEFT Setup Complete w/ SpecifiedParams: \n"
                         f"LoRA r: {lora_r}, Scaling: {lora_scaling}, Dropout: {lora_dropout}")
 
             config = {
@@ -472,7 +493,7 @@ class Florence2:
 
             patience_counter = 0
 
-            logger.info(f"Beginning Training Loop w/ SpecifiedParams: \n"
+            self.logger.info(f"Beginning Training Loop w/ SpecifiedParams: \n"
                         f"Optimizer: AdamW, Learning Rate: {lr}, Scheduler: {lr_schedule}, " #Hardcoded AdamW until Optimizer Customization is Updated
                         f"Warmup Epochs: {warmup_epochs}, Number of Steps: {num_steps}, "
                         f"Patience: {patience}")
@@ -517,7 +538,7 @@ class Florence2:
                             torch.cuda.empty_cache()
 
                     except RuntimeError as e:
-                        logger.error(f"Error in training batch {batch_idx}: {str(e)}")
+                        self.logger.error(f"Error in training batch {batch_idx}: {str(e)}")
                         continue
 
                 avg_train_loss = train_loss / len(self.train_loader)
@@ -546,7 +567,7 @@ class Florence2:
                             val_loss += outputs.loss.item()
 
                         except RuntimeError as e:
-                            logger.error(f"Error in validation batch: {str(e)}")
+                            self.logger.error(f"Error in validation batch: {str(e)}")
                             continue
 
                 avg_val_loss = val_loss / len(self.val_loader)
@@ -580,7 +601,7 @@ class Florence2:
                         'metrics': metrics
                     }, os.path.join(save_path, "training_state.pt"))
 
-                logger.info(
+                self.logger.info(
                     f"Epoch {epoch + 1}/{epochs} - "
                     f"Train Loss: {avg_train_loss:.4f} - "
                     f"Val Loss: {avg_val_loss:.4f} - "
@@ -588,7 +609,7 @@ class Florence2:
                 )
 
                 if patience_counter >= patience:
-                    logger.info(f"Early stopping triggered at epoch {epoch + 1}")
+                    self.logger.info(f"Early stopping triggered at epoch {epoch + 1}")
                     break
 
                 if (epoch + 1) % 5 == 0:
@@ -602,7 +623,7 @@ class Florence2:
             return metrics
 
         except Exception as e:
-            logger.error(f"Training failed: {str(e)}")
+            self.logger.error(f"Training failed: {str(e)}")
             emergency_path = os.path.join(save_dir, "emergency_checkpoint")
             os.makedirs(emergency_path, exist_ok=True)
             self.peft_model.save_pretrained(emergency_path)
