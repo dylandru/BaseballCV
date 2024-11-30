@@ -360,7 +360,7 @@ class Florence2:
         return [random_color_jitter, random_blur, random_noise]
 
     def inference(self, image_path: str, task: str = "<OD>", 
-                 text_input: str = None, visualize: bool = True):
+                 text_input: str = None):
         image = Image.open(image_path)
         prompt = task + text_input if text_input else task
 
@@ -370,8 +370,8 @@ class Florence2:
             return_tensors="pt"
         ).to(self.device)
         
+        self.model.eval()
 
-        
         generated_ids = self.model.generate(
             input_ids=inputs["input_ids"],
             pixel_values=inputs["pixel_values"],
@@ -388,9 +388,14 @@ class Florence2:
             task=task,
             image_size=(image.width, image.height)
         )
-
-        if visualize:
+        if task == "<OD>":
             self._visualize_results(image, parsed_answer[task])
+
+        if task == "CAPTION_TO_PHASE_GROUNDING":
+            if text_input != None:
+                self._visualize_results(image, parsed_answer[task])
+            else:
+                raise ValueError("Text input is needed for CAPTION_TO_PHASE_GROUNDING task")
             
         return parsed_answer[task]
 
