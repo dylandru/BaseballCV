@@ -36,6 +36,7 @@ model_aliases = {
     'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
     'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
     'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
+    'ball_trackingv4': 'models/ball_tracking/model_weights/ball_trackingv4.txt'
 }
 
 dataset_aliases = {
@@ -43,6 +44,7 @@ dataset_aliases = {
     'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
     'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
     'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
-    'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt'
+    'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
+    'baseball': 'datasets/yolo/baseball.txt'
 }
 

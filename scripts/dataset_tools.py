@@ -8,6 +8,7 @@ import shutil
 from scripts.load_tools import LoadTools
 from ultralytics import YOLO
 from tqdm import tqdm
+from datetime import datetime
 
 class DataTools:
     '''
@@ -58,6 +59,8 @@ class DataTools:
         """
 
         self.output_folder = output_frames_folder
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date, "%Y-%m-%d")
         self.scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
                                 download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game)
                 

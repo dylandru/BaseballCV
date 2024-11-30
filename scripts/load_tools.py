@@ -32,27 +32,34 @@ class LoadTools:
         self.chunk_size = 1024
         self.BDL_MODEL_API = "https://balldatalab.com/api/models/"
         self.BDL_DATASET_API = "https://balldatalab.com/api/datasets/"
-        self.model_aliases = {
-            'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
-            'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
-            'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
-            'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
+        self.yolo_model_aliases = {
+            'phc_detector': 'models/YOLO/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
+            'bat_tracking': 'models/YOLO/bat_tracking/model_weights/bat_tracking.txt',
+            'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
+            'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
+            'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt'
+        }
+        self.florence_model_aliases = {
+            'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
         }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
             'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
             'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
             'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
-            'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt'
+            'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
+            'baseball_rubber_home_COCO': 'datasets/COCO/baseball_rubber_home_COCO.txt',
+            'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
+            'baseball': 'datasets/yolo/baseball.txt'
         }
 
-    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_dataset: bool = False, is_labeled: bool = False) -> None:
+    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
             progress_bar = tqdm(total=total_size, unit='iB', unit_scale=True, desc=f"Downloading {os.path.basename(dest)}")
             
-            if is_dataset: 
+            if is_folder: 
                 content = io.BytesIO()
                 for data in response.iter_content(chunk_size=self.chunk_size):
                     size = content.write(data)
@@ -114,21 +121,31 @@ class LoadTools:
         Returns:
             model_weights_path (str):  Path to where the model weights are saved within the repo.
         '''
-        if model_type != 'YOLO':
-            raise ValueError(f"Invalid Model Type... Only 'YOLO' is supported (right now).")
-
-        model_txt_path = self.model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        if model_type == 'YOLO':
+            model_txt_path = self.yolo_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        elif model_type == 'FLORENCE2':
+            model_txt_path = self.florence_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        else:
+            raise ValueError(f"Invalid model type: {model_type}")
+        
         if not model_txt_path:
             raise ValueError(f"Invalid alias: {model_alias}")
 
-        model_weights_path = f"{os.path.dirname(model_txt_path)}/{os.path.splitext(os.path.basename(model_txt_path))[0]}.pt"
+        base_dir = os.path.dirname(model_txt_path)
+        base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
+
+        if model_type == 'YOLO':
+            model_weights_path = f"{base_dir}/{base_name}.pt"
+        else:
+            model_weights_path = f"{base_dir}/{base_name}"
+            os.makedirs(model_weights_path, exist_ok=True)
 
         if os.path.exists(model_weights_path):
             print(f"Model found at {model_weights_path}")
             return model_weights_path
 
         url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
-        self._download_files(url, model_weights_path)
+        self._download_files(url, model_weights_path, is_folder=(model_type=='FLORENCE2'))
         
         return model_weights_path
 
@@ -158,6 +175,6 @@ class LoadTools:
 
         url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
         os.makedirs(dir_name, exist_ok=True)
-        self._download_files(url, dir_name, is_dataset=True)
+        self._download_files(url, dir_name, is_folder=True)
 
         return dir_name
