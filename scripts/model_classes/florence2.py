@@ -1,5 +1,5 @@
 import torch
-import torch.nn
+import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoModelForCausalLM, AutoProcessor, get_scheduler, AdamW
 from peft import LoraConfig, get_peft_model
@@ -14,9 +14,10 @@ import random
 import shutil
 from typing import List, Dict, Any, Tuple
 import logging
-import time
 import seaborn as sns
 import torch.multiprocessing as mp
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class YOLOToFlorence2(Dataset):
 
 
 class Florence2:
-    def __init__(self, model_id: str = 'microsoft/Florence-2-large', batch_size: int=6):
+    def __init__(self, model_id: str = 'microsoft/Florence-2-large', batch_size: int=1):
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                   else "mps" if torch.backends.mps.is_available() 
                                   else "cpu")
@@ -529,7 +530,7 @@ class Florence2:
                         loss = outputs.loss
                         loss.backward()
 
-                        torch.nn.utils.clip_grad_norm_(self.peft_model.parameters(), max_norm=1.0)
+                        nn.utils.clip_grad_norm_(self.peft_model.parameters(), max_norm=1.0)
                         
                         optimizer.step()
                         lr_scheduler.step()
