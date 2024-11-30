@@ -309,21 +309,39 @@ class Florence2:
             pin_memory=True if self.device == 'cuda' else False
         )
 
-    def _setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05):
-        config = LoraConfig(
-            r=r,
-            lora_alpha=alpha,
-            target_modules=["q_proj", "o_proj", "k_proj", "v_proj", 
-                          "linear", "Conv2d", "lm_head", "fc2"],
-            task_type="CAUSAL_LM",
-            lora_dropout=dropout,
-            bias="none",
-            inference_mode=False,
-            use_rslora=True,
-            init_lora_weights="gaussian",
-        )
+    def _setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True):
+
+        if create_peft_config:
+            if hasattr(self.model, 'peft_config'):
+                self.logger.info("Existing PEFT configuration found. Removing old configuration...")
+                peft_core_attrs = ['peft_config', 'base_model_prepare_inputs']
+        
+                for attr in peft_core_attrs:
+                    if hasattr(self.model, attr):
+                        delattr(self.model, attr)
+                    
+                self.logger.info("PEFT configuration successfully removed - Adding new configuration...")
+
+            config = LoraConfig(
+                r=r,
+                lora_alpha=alpha,
+                target_modules=["q_proj", "o_proj", "k_proj", "v_proj", 
+                            "linear", "Conv2d", "lm_head", "fc2"],
+                task_type="CAUSAL_LM",
+                lora_dropout=dropout,
+                bias="none",
+                inference_mode=False,
+                use_rslora=True,
+                init_lora_weights="gaussian"
+            )
+
+        else:
+            if hasattr(self, 'peft_config'):
+                self.logger.info("PEFT model already exists.. Skipping configuration.")
+
         self.peft_model = get_peft_model(self.model, config)
-        return self.logger.info(self.peft_model.print_trainable_parameters())
+        trainable_params_info = self.peft_model.print_trainable_parameters()
+        return trainable_params_info
     
     def _save_training_plots(self, vis_path: str, metrics: Dict[str, List[float]], epoch: int):
         
@@ -429,7 +447,7 @@ class Florence2:
                 train_test_split: Tuple[int, int, int] = (80, 10, 10), 
                 epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints", 
                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5, 
-                lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine"):
+                lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine", create_peft_config: bool = True):
         
         self.logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
         
@@ -466,7 +484,9 @@ class Florence2:
 
             self.logger.info(f"Data Loader Setup Complete")
 
-            self._setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout)
+            trainable_params_info = self._setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout, create_peft_config=create_peft_config)
+
+            self.logger.info(trainable_params_info)
 
             self.logger.info(f"PEFT Setup Complete w/ SpecifiedParams: \n"
                         f"LoRA r: {lora_r}, Scaling: {lora_scaling}, Dropout: {lora_dropout}")
