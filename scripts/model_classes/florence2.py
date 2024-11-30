@@ -254,7 +254,7 @@ class Florence2:
             for annotation in annotations:
                 f.write(json.dumps(annotation) + '\n')
 
-    def _setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 10):
+    def _setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 0):
         self.train_dataset = self._create_detection_dataset(
             jsonl_file_path=f"{train_path}train_annotations.json",
             image_directory_path=train_path,
@@ -366,61 +366,6 @@ class Florence2:
             return image
         
         return [random_color_jitter, random_blur, random_noise]
-
-    def inference(self, image_path: str, task: str = "<OD>", 
-                 text_input: str = None):
-        image = Image.open(image_path)
-        prompt = task + text_input if text_input else task
-
-        inputs = self.processor(
-            text=prompt,
-            images=image,
-            return_tensors="pt"
-        ).to(self.device)
-        
-        self.model.eval()
-
-        generated_ids = self.model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            early_stopping=False,
-            do_sample=False,
-            num_beams=3,
-        )
-        
-        generated_text = self.processor.batch_decode(
-            generated_ids, skip_special_tokens=False)[0]
-        parsed_answer = self.processor.post_process_generation(
-            generated_text,
-            task=task,
-            image_size=(image.width, image.height)
-        )
-
-        text_output = parsed_answer[task]
-
-        if task == "<OD>":
-            self._visualize_results(image, text_output)
-
-        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
-            if text_input != None:
-                if task == "CAPTION_TO_PHASE_GROUNDING":
-                    self._visualize_results(image, text_output)
-                else:
-                    boxes = text_output.get('bboxes', [])
-                    labels = text_output.get('bboxes_labels', [])
-                    results = {
-                        'bboxes': boxes,
-                        'labels': labels
-                    }
-                    self._visualize_results(image, results)
-            else:
-                raise ValueError("Text input is needed for this type of task")
-            
-        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
-            print(self._return_clean_text_output(text_output))
-
-        return text_output
     
     def _return_clean_text_output(self, results: Dict) -> str:
         return next(iter(results.values())).strip()
@@ -642,3 +587,58 @@ class Florence2:
             os.makedirs(emergency_path, exist_ok=True)
             self.peft_model.save_pretrained(emergency_path)
             raise e
+        
+    def inference(self, image_path: str, task: str = "<OD>", 
+                 text_input: str = None):
+        image = Image.open(image_path)
+        prompt = task + text_input if text_input else task
+
+        inputs = self.processor(
+            text=prompt,
+            images=image,
+            return_tensors="pt"
+        ).to(self.device)
+        
+        self.model.eval()
+
+        generated_ids = self.model.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=1024,
+            early_stopping=False,
+            do_sample=False,
+            num_beams=3,
+        )
+        
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False)[0]
+        parsed_answer = self.processor.post_process_generation(
+            generated_text,
+            task=task,
+            image_size=(image.width, image.height)
+        )
+
+        text_output = parsed_answer[task]
+
+        if task == "<OD>":
+            self._visualize_results(image, text_output)
+
+        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
+            if text_input != None:
+                if task == "CAPTION_TO_PHASE_GROUNDING":
+                    self._visualize_results(image, text_output)
+                else:
+                    boxes = text_output.get('bboxes', [])
+                    labels = text_output.get('bboxes_labels', [])
+                    results = {
+                        'bboxes': boxes,
+                        'labels': labels
+                    }
+                    self._visualize_results(image, results)
+            else:
+                raise ValueError("Text input is needed for this type of task")
+            
+        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
+            print(self._return_clean_text_output(text_output))
+
+        return text_output
