@@ -210,7 +210,7 @@ class AppPages:
             st.error("No project selected")
             return
             
-        st.markdown(f"<h1 style='color: orange; text-align: center; padding: 3rem; font-size: 3.5rem'>Project: {st.session_state.project_type}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1 style='color: orange; text-align: center; padding: 3rem; font-size: 3.5rem'>Project: {st.session_state.selected_project}</h1>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         
         with col1:
