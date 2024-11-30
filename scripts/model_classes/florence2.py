@@ -388,24 +388,35 @@ class Florence2:
             task=task,
             image_size=(image.width, image.height)
         )
+
+        text_output = parsed_answer[task]
+
         if task == "<OD>":
-            self._visualize_results(image, parsed_answer[task])
+            self._visualize_results(image, text_output)
 
-        if task == "CAPTION_TO_PHASE_GROUNDING":
+        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
             if text_input != None:
-                self._visualize_results(image, parsed_answer[task])
+                if task == "CAPTION_TO_PHASE_GROUNDING":
+                    self._visualize_results(image, text_output)
+                else:
+                    boxes = text_output.get('bboxes', [])
+                    labels = text_output.get('bboxes_labels', [])
+                    results = {
+                        'bboxes': boxes,
+                        'labels': labels
+                    }
+                    self._visualize_results(image, results)
             else:
-                raise ValueError("Text input is needed for CAPTION_TO_PHASE_GROUNDING task")
+                raise ValueError("Text input is needed for this type of task")
             
-        if task == "<CAPTION>" or task == "<MORE_DETAILED_CAPTION>" or task == "<CAPTION_TO_PHASE_GROUNDING>":
-            print(self._return_text_output(parsed_answer[task]))
+        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
+            print(self._return_clean_text_output(text_output))
 
-        return parsed_answer[task]
+        return text_output
     
-    def _return_text_output(self, results: Dict) -> str:
+    def _return_clean_text_output(self, results: Dict) -> str:
         return next(iter(results.values())).strip()
         
-
     def _visualize_results(self, image: Image.Image, results: Dict):
         plt.figure(figsize=(10, 8))
         plt.imshow(image)
