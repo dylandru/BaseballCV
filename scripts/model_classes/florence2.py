@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
 
-class CustomData(Dataset):
+class YOLOToFlorence2(Dataset):
             def __init__(self, parent, entries, image_directory_path, augment=True):
                 self.parent = parent
                 self.entries = entries
@@ -71,29 +71,62 @@ class Florence2:
 
     def _load_jsonl_entries(self, jsonl_file_path: str) -> List[Dict[str, Any]]:
         entries = []
-        with open(jsonl_file_path, 'r') as file:
-            for line in file:
-                data = json.loads(line)
-                entries.append(data)
-        return entries
+        try:
+            with open(jsonl_file_path, 'r') as file:
+                for line in file:
+                    try:
+                        data = json.loads(line.strip())
+                        if isinstance(data, dict):
+                            entries.append(data)
+                        else:
+                            logger.warning(f"Skipping invalid entry: not dictionary - {data}")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON line: {e}")
+                        continue
+            
+            if not entries:
+                logger.error(f"No valid entries found in {jsonl_file_path}")
+                raise ValueError(f"No valid entries found in {jsonl_file_path}")
+                
+            logger.info(f"Loaded {len(entries)} valid entries from {jsonl_file_path}")
+            return entries
+
+        except Exception as e:
+            logger.error(f"Error loading entries from {jsonl_file_path}: {str(e)}")
+            raise
 
     def _get_jsonl_item(self, entries: List[Dict[str, Any]], idx: int, 
-                       image_directory_path: str) -> Tuple[Image.Image, Dict[str, Any]]:
-        if idx < 0 or idx >= len(entries):
-            raise IndexError("Index out of range")
-        entry = entries[idx]
-        image_path = os.path.join(image_directory_path, entry['image'])
+                   image_directory_path: str) -> Tuple[Image.Image, Dict[str, Any]]:
+            
         try:
+            entry = entries[idx]
+            if not isinstance(entry, dict):
+                raise TypeError(f"Entry must be a dictionary, got {type(entry)}")
+                
+            image_name = entry['image']
+            if not isinstance(image_name, (str, bytes, os.PathLike)):
+                raise TypeError(f"Image name must be a string or path-like object, got {type(image_name)}")
+                
+            image_path = os.path.join(image_directory_path, image_name)
+            
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+                
             image = Image.open(image_path)
-            return (image, entry)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Image file {image_path} not found.")
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+                
+            return image, entry
+            
+        except Exception as e:
+            logger.error(f"Error processing item at index {idx}: {str(e)}")
+            raise
 
     def _create_detection_dataset(self, jsonl_file_path: str, image_directory_path: str, 
                            augment: bool = True) -> Dataset:
         entries = self._load_jsonl_entries(jsonl_file_path)
                 
-        return CustomData(self, entries, image_directory_path, augment)
+        return YOLOToFlorence2(self, entries, image_directory_path, augment)
 
     def _collate_fn(self, batch):
         questions, answers, images = zip(*batch)
@@ -210,7 +243,8 @@ class Florence2:
             })
         
         with open(output_file, 'w') as f:
-            json.dump(annotations, f)
+            for annotation in annotations:
+                f.write(json.dumps(annotation) + '\n')
 
     def _setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 10):
         self.train_dataset = self._create_detection_dataset(
@@ -259,7 +293,6 @@ class Florence2:
         return self.peft_model.print_trainable_parameters()
     
     def _save_training_plots(self, vis_path: str, metrics: Dict[str, List[float]], epoch: int):
-        timestamp = time.strftime("%Y%m%d-%H%M")
         
         plt.figure(figsize=(12, 6))
         plt.plot(metrics['train_losses'], label='Training Loss')
@@ -269,7 +302,7 @@ class Florence2:
         plt.ylabel('Loss')
         plt.legend()
         plt.grid(True)
-        plt.savefig(os.path.join(vis_path, f'loss_curves_{timestamp}.png'))
+        plt.savefig(os.path.join(vis_path, f'loss_curves.png'))
         plt.close()
 
         plt.figure(figsize=(12, 6))
@@ -279,7 +312,7 @@ class Florence2:
         plt.ylabel('Learning Rate')
         plt.legend()
         plt.grid(True)
-        plt.savefig(os.path.join(vis_path, f'learning_rate_{timestamp}.png'))
+        plt.savefig(os.path.join(vis_path, f'learning_rate.png'))
         plt.close()
 
         if 'confusion_matrix' in metrics:
@@ -288,7 +321,7 @@ class Florence2:
             plt.title(f'Confusion Matrix - Epoch {epoch}')
             plt.ylabel('True Label')
             plt.xlabel('Predicted Label')
-            plt.savefig(os.path.join(vis_path, f'confusion_matrix_{timestamp}.png'))
+            plt.savefig(os.path.join(vis_path, f'confusion_matrix.png'))
             plt.close()
 
     def _get_augmentation_transforms(self):
