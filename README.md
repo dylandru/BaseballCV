@@ -44,11 +44,16 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 **Clone and install requirements**
 
 # Clone the repository
-!git clone https://github.com/dylandru/BaseballCV.git
+```bash
+git clone https://github.com/dylandru/BaseballCV.git
+```
 
-# Change directory to the repository
-%cd BaseballCV
-!pip install -r requirements.txt
+# Change directory to the repo and install dependencies
+```bash
+cd BaseballCV
+# Install dependencies
+pip install -r requirements.txt
+```
 
 **Downloading Datasets**
 
@@ -235,6 +240,32 @@ Along with our datasets and models, we have provided a few notebooks to help you
 - `okd_nokd_classifier.ipynb`: A notebook to get you started with our OKD_NOKD dataset.
 - `glove_framing_tracking.ipynb`: A notebook to get you started with our glove tracking model which also transposes the predictions to a 2D plane, while also extracting the predictions.
 - `autolabeling_semisupervised.ipynb`: A notebook that shows how to create a base dataset of raw images, auto annotate it and then view the results for manual filtering.
+
+## Streamlit Applications
+
+BaseballCV provides Streamlit-based web apps for interacting with our computer vision models and tools:
+
+### Annotation App
+Located in `/streamlit/annotation_app/`
+
+A web interface for managing and annotating baseball images/videos:
+- Open-source project designed to crowdsource baseball annotations
+- Upload baseball videos or photos to annotate
+- Annotation interface for labeling objects and keypoints
+- Integration with AWS S3 for data / photo storage
+- Built-in BaseballCV models for predicted annotations
+
+Quick start:
+```bash
+cd BaseballCV/streamlit/annotation_app/
+docker-compose up -d
+```
+
+Visit the folder's README for setup and usage instructions.
+
+### Future Streamlit Apps Available Soon
+
+We are currently looking to expand our Streamlit app library, and are open to suggestions and contributions (please consult our contributing guidelines beforehand below).
 
 ## Installation and Setup
 
