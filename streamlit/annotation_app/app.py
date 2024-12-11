@@ -28,7 +28,7 @@ def app():
     atexit.register(cleanup)
 
     file_tools = FileTools()
-    baseballcv_logo = file_tools.load_image_from_endpoint("https://data.balldatalab.com/index.php/s/ppFSndAn3soSQn2/download/baseballcvlogo.png")
+    baseballcv_logo = file_tools.load_image_from_endpoint("https://data.balldatalab.com/index.php/s/3PnEp3yw2WQRMQs/download/baseballcvlogo.png")
     
     if 'page' not in st.session_state:
         st.session_state.page = "welcome"
