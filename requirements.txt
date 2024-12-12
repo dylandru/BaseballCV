@@ -12,4 +12,6 @@ streamlit-image-coordinates==0.1.6
 Pillow==10.2.0
 streamlit-drawable-canvas==0.9.3
 awscli==1.36.5
+pytest-cov==6.0.0
+pytest==8.3.2
 git+https://github.com/Jensen-holm/statcast-era-pitches.git

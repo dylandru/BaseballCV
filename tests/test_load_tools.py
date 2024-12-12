@@ -1,43 +1,41 @@
 import os
-import pytest
-from scripts.load_tools import load_model, load_dataset
-from unittest.mock import patch, mock_open
+import shutil
 
-@patch("requests.get")
-def test_load_model(mock_get, tmp_path):
+def test_load_model(load_tools):
     """
-    Test that the `load_model` function downloads and saves the model file correctly.
+    Tests loading a model using LoadTools with example call.
+    Verifies that the model is downloaded correctly and the file is in the expected location.
+    """
     
-    Args:
-        mock_get (MagicMock): Mock object for the requests.get method.
-        tmp_path (Path): Temporary directory path for storing the downloaded model.
-    """
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.iter_content = lambda chunk_size: [b'fake_model_weights']
-
-    model_alias = "phc_detector"
-    model_weights_path = load_model(model_alias)
-
-    assert os.path.exists(model_weights_path)  # Ensure the model file was downloaded
-
-@patch("requests.get")
-@patch("zipfile.ZipFile.extractall")
-def test_load_dataset(mock_extractall, mock_get, tmp_path):
-    """
-    Test that the `load_dataset` function downloads and extracts the dataset correctly.
+    # Test loading PHC Detector model
+    model_path = load_tools.load_model(
+        model_alias="phc_detector",
+        model_type="YOLO",
+        use_bdl_api=True
+    )
     
-    Args:
-        mock_extractall (MagicMock): Mock object for the ZipFile.extractall method.
-        mock_get (MagicMock): Mock object for the requests.get method.
-        tmp_path (Path): Temporary directory path for storing the dataset.
+    assert os.path.exists(model_path), "Model file should exist after download"
+    assert model_path.endswith('.pt'), "YOLO model should have .pt"
+    
+    if os.path.exists(model_path):
+        os.remove(model_path)
+
+def test_load_dataset(load_tools):
     """
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.iter_content = lambda chunk_size: [b'fake_zip_content']
-
-    txt_file_path = tmp_path / "dataset.txt"
-    with open(txt_file_path, "w") as f:
-        f.write("http://fakeurl.com/dataset.zip")
-
-    load_dataset(str(txt_file_path))
-
-    mock_extractall.assert_called_once()  # Ensure the dataset was extracted
+    Tests loading a dataset using LoadTools with example call.
+    Verifies that the dataset is downloaded and extracted correctly.
+    """ 
+    
+    # Test loading baseball dataset
+    dataset_path = load_tools.load_dataset(
+        dataset_alias="baseball",
+        use_bdl_api=True
+    )
+    
+    assert os.path.exists(dataset_path), "Dataset directory should exist"
+    assert os.path.isdir(dataset_path), "Dataset path should be a directory"
+    files = os.listdir(dataset_path)
+    assert len(files) > 0, "Dataset should contain files"
+    
+    if os.path.exists(dataset_path):
+        shutil.rmtree(dataset_path)
