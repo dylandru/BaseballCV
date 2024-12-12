@@ -33,10 +33,6 @@ def scraper() -> BaseballSavVideoScraper:
     """
     return BaseballSavVideoScraper()
 
-import pytest
-import requests
-from unittest.mock import Mock, patch
-
 @pytest.fixture
 def mock_responses() -> tuple:
     """
