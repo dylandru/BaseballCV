@@ -356,6 +356,14 @@ Our main need is for data annotation. With our new annotation app, you can help 
  - Select a Dataset (as of right now, we need with with `player_detection`)) 
  - Open the Annotation Interface and begin annotating!
 
+## Component Status
+
+Testing status of each component script:
+
+[![Dataset Tools](https://img.shields.io/badge/Dataset%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![Load Tools](https://img.shields.io/badge/Load%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![Savant Scraper](https://img.shields.io/badge/Savant%20Scraper-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![BDL API](https://img.shields.io/badge/BDL%20API-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
 
 ## License
 
