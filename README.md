@@ -1,5 +1,8 @@
 # BaseballCV
 
+[![BaseballCV Scripts](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml/badge.svg)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![codecov](https://codecov.io/gh/dylandru/baseballcv/branch/main/graph/badge.svg)](https://codecov.io/gh/dylandru/baseballcv)
+
 **Created By: Dylan Drummey ([@drummeydylan](https://x.com/DrummeyDylan)) and Carlos Marcano ([@camarcano](https://x.com/camarcano))  
 Maintained By: Carlos Marcano**
 
