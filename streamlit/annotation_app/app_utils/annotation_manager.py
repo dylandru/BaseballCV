@@ -45,7 +45,7 @@ class AnnotationManager:
             config (dict): Project configuration dictionary.
         """
         project_type = "Detection" if config["info"]["type"] == "detection" else "Keypoint"
-        project_dir = os.path.join(self.base_project_dir, project_type, project_name)
+        project_dir = os.path.join(self.base_dir, project_type, project_name)
         
         if not os.path.exists(project_dir):
             os.makedirs(project_dir, exist_ok=True)
