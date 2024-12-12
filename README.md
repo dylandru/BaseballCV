@@ -182,7 +182,9 @@ These videos showcase our models' ability to track multiple objects, including t
 
 ## Example Code
 
-### Inference Example
+### YOLO Models
+
+#### Inference Example
 
 Here's an example of how to use our pre-trained YOLO models to run inference on an image or video.
 
@@ -199,7 +201,8 @@ model.predict("example_baseball_broadcast.jpg", show=True)
 model.predict("assets/example_broadcast_video.mp4", show=True)
 ```
 
-### Extraction Example
+#### Extraction Example
+
 ```python
 from ultralytics import YOLO
 
@@ -217,6 +220,58 @@ for r in results: #loop through each frame
     print(f"Confidence: {box.conf}") #print confidence of the box
     print(f"Track ID: {box.id}") #print track id of the box (may not exist)
     print(f"Class Value: {box.cls}") #print class value of the box
+```
+
+### Florence 2 Models
+
+#### Inference Example
+
+Here's an example of how to use our pre-trained Florence 2 models to run inference on an image. The Florence 2 model supports multiple vision tasks including object detection, image captioning, and open vocabulary detection.
+
+```python
+from scripts import Florence2
+
+# Initialize our Florence 2 model - automatically selects the best available device (CUDA, MPS, or CPU)
+model = Florence2()
+
+# Run object detection
+detection_results = model.inference(
+    image_path='baseball_game.jpg', 
+    task='<OD>' 
+)
+
+# Run detailed captioning
+caption_results = model.inference(
+    image_path='baseball_game.jpg',
+    task='<DETAILED_CAPTION>'  
+)
+
+# Run open vocabulary detection
+specific_objects = model.inference(
+    image_path='baseball_game.jpg',
+    task='<OPEN_VOCABULARY_DETECTION>',
+    text_input='Find the baseball, pitcher, and catcher' 
+)
+```
+
+#### Extraction Example
+
+Here's an example of how to use our pre-trained Florence 2 models to extract predictions from an image. This example shows how to fine-tune the model on your own dataset and extract custom predictions.
+
+```python
+from scripts import Florence2
+
+# Initialize the model for training
+model = Florence2()
+
+# Run inference with model
+results = model.inference(
+    image_path='new_baseball_image.jpg',
+    task='<OD>'  # Use object detection to find the players
+)
+
+print(results)  #Prints coordinates of BBoxes in JSON as such: {'OD': {'bboxes': [[x1, y1, x2, y2], [x1, y1, x2, y2], ...], 'labels': ['label1', 'label2', ...]}}
+
 ```
 
 ## Notebooks
