@@ -235,7 +235,11 @@ Along with our datasets and models, we have provided a few notebooks to help you
 BaseballCV provides Streamlit-based web apps for interacting with our computer vision models and tools:
 
 ### Annotation App
-Located in `/streamlit/annotation_app/`
+
+Want to try out our annotation app in your browser? 
+[Try it here!](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
+
+Located in: `/streamlit/annotation_app/`
 
 A web interface for managing and annotating baseball images/videos:
 - Open-source project designed to crowdsource baseball annotations
@@ -277,13 +281,26 @@ pip install -r requirements.txt
 
 We welcome contributions from the community! Whether you're looking to improve our datasets, train better models, or build new tools on top of our work, feel free to open a pull request or start a discussion.
 
-### How to Contribute
+### How to Contribute (for repository maintainers)
+
+If you are interested in helping maintain or adding to the repository, please follow these steps:
 
  - Fork the repository
  - Create a new branch (git checkout -b feature/YourFeature)
  - Commit your changes (git commit -m 'Add YourFeature')
  - Push to the branch (git push origin feature/YourFeature)
  - Open a pull request
+
+### How to Contribute (for supporters)
+
+Our main need is for data annotation. With our new annotation app, you can help us annotate certain datasets. To do so, please follow these steps:
+
+ - Go to the App: [Annotation App](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
+ - Enter a Username and Email
+ - Open Existing Project
+ - Select a Dataset (as of right now, we need with with `player_detection`)) 
+ - Open the Annotation Interface and begin annotating!
+
 
 ## License
 
