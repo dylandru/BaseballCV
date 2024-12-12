@@ -1,14 +1,11 @@
 import os
 import shutil
-import pytest
-from scripts import LoadTools
 
-def test_load_model():
+def test_load_model(load_tools):
     """
     Tests loading a model using LoadTools with example call.
     Verifies that the model is downloaded correctly and the file is in the expected location.
     """
-    load_tools = LoadTools()
     
     # Test loading PHC Detector model
     model_path = load_tools.load_model(
@@ -23,12 +20,11 @@ def test_load_model():
     if os.path.exists(model_path):
         os.remove(model_path)
 
-def test_load_dataset():
+def test_load_dataset(load_tools):
     """
     Tests loading a dataset using LoadTools with example call.
     Verifies that the dataset is downloaded and extracted correctly.
-    """
-    load_tools = LoadTools()
+    """ 
     
     # Test loading baseball dataset
     dataset_path = load_tools.load_dataset(

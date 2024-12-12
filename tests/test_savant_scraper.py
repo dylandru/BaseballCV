@@ -1,11 +1,4 @@
-import pytest
 import os
-from scripts import BaseballSavVideoScraper
-
-@pytest.fixture
-def scraper():
-    """Creates a fresh scraper instance for each test."""
-    return BaseballSavVideoScraper()
 
 def test_run_statcast_pull_scraper(scraper):
     """

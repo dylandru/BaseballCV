@@ -1,15 +1,11 @@
 import shutil
-import pytest
 import os
-from scripts import DataTools
-from scripts import LoadTools
 
-def test_generate_photo_dataset():
+def test_generate_photo_dataset(data_tools):
     """
     Tests the generate_photo_dataset method using example call.
     Keeps part of output for the following test_automated_annotation method.
     """
-    data_tools = DataTools(max_workers=2)
     
     # Use small dates and limited plays for testing
     try:
@@ -36,13 +32,11 @@ def test_generate_photo_dataset():
         raise
             
 
-def test_automated_annotation():
+def test_automated_annotation(load_tools, data_tools):
     """
     Tests the automated_annotation method using example call.
     """
-    data_tools = DataTools()
-    load_tools = LoadTools()
-    test_generate_photo_dataset()  # Reuse dataset generation
+    test_generate_photo_dataset(data_tools)  # Reuse dataset generation
     
     try:
         data_tools.automated_annotation(
