@@ -44,20 +44,6 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 
-**Clone and install requirements**
-
-# Clone the repository
-```bash
-git clone https://github.com/dylandru/BaseballCV.git
-```
-
-# Change directory to the repo and install dependencies
-```bash
-cd BaseballCV
-# Install dependencies
-pip install -r requirements.txt
-```
-
 **Downloading Datasets**
 
 If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
