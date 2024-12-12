@@ -44,20 +44,6 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 
-**Clone and install requirements**
-
-# Clone the repository
-```bash
-git clone https://github.com/dylandru/BaseballCV.git
-```
-
-# Change directory to the repo and install dependencies
-```bash
-cd BaseballCV
-# Install dependencies
-pip install -r requirements.txt
-```
-
 **Downloading Datasets**
 
 If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
@@ -196,7 +182,9 @@ These videos showcase our models' ability to track multiple objects, including t
 
 ## Example Code
 
-### Inference Example
+### YOLO Models
+
+#### Inference Example
 
 Here's an example of how to use our pre-trained YOLO models to run inference on an image or video.
 
@@ -213,7 +201,8 @@ model.predict("example_baseball_broadcast.jpg", show=True)
 model.predict("assets/example_broadcast_video.mp4", show=True)
 ```
 
-### Extraction Example
+#### Extraction Example
+
 ```python
 from ultralytics import YOLO
 
@@ -233,6 +222,58 @@ for r in results: #loop through each frame
     print(f"Class Value: {box.cls}") #print class value of the box
 ```
 
+### Florence 2 Models
+
+#### Inference Example
+
+Here's an example of how to use our pre-trained Florence 2 models to run inference on an image. The Florence 2 model supports multiple vision tasks including object detection, image captioning, and open vocabulary detection.
+
+```python
+from scripts import Florence2
+
+# Initialize our Florence 2 model - automatically selects the best available device (CUDA, MPS, or CPU)
+model = Florence2()
+
+# Run object detection
+detection_results = model.inference(
+    image_path='baseball_game.jpg', 
+    task='<OD>' 
+)
+
+# Run detailed captioning
+caption_results = model.inference(
+    image_path='baseball_game.jpg',
+    task='<DETAILED_CAPTION>'  
+)
+
+# Run open vocabulary detection
+specific_objects = model.inference(
+    image_path='baseball_game.jpg',
+    task='<OPEN_VOCABULARY_DETECTION>',
+    text_input='Find the baseball, pitcher, and catcher' 
+)
+```
+
+#### Extraction Example
+
+Here's an example of how to use our pre-trained Florence 2 models to extract predictions from an image. This example shows how to fine-tune the model on your own dataset and extract custom predictions.
+
+```python
+from scripts import Florence2
+
+# Initialize the model for training
+model = Florence2()
+
+# Run inference with model
+results = model.inference(
+    image_path='new_baseball_image.jpg',
+    task='<OD>'  # Use object detection to find the players
+)
+
+print(results)  #Prints coordinates of BBoxes in JSON as such: {'OD': {'bboxes': [[x1, y1, x2, y2], [x1, y1, x2, y2], ...], 'labels': ['label1', 'label2', ...]}}
+
+```
+
 ## Notebooks
 
 Along with our datasets and models, we have provided a few notebooks to help you get started with our repo. These are designed to help you understand the application of our models to real-world baseball videos, which are all accessible in the `notebooks` folder.
@@ -249,7 +290,11 @@ Along with our datasets and models, we have provided a few notebooks to help you
 BaseballCV provides Streamlit-based web apps for interacting with our computer vision models and tools:
 
 ### Annotation App
-Located in `/streamlit/annotation_app/`
+
+Want to try out our annotation app in your browser? 
+[Try it here!](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
+
+Located in: `/streamlit/annotation_app/`
 
 A web interface for managing and annotating baseball images/videos:
 - Open-source project designed to crowdsource baseball annotations
@@ -291,13 +336,34 @@ pip install -r requirements.txt
 
 We welcome contributions from the community! Whether you're looking to improve our datasets, train better models, or build new tools on top of our work, feel free to open a pull request or start a discussion.
 
-### How to Contribute
+### How to Contribute (for repository maintainers)
+
+If you are interested in helping maintain or adding to the repository, please follow these steps:
 
  - Fork the repository
  - Create a new branch (git checkout -b feature/YourFeature)
  - Commit your changes (git commit -m 'Add YourFeature')
  - Push to the branch (git push origin feature/YourFeature)
  - Open a pull request
+
+### How to Contribute (for supporters)
+
+Our main need is for data annotation. With our new annotation app, you can help us annotate certain datasets. To do so, please follow these steps:
+
+ - Go to the App: [Annotation App](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
+ - Enter a Username and Email
+ - Open Existing Project
+ - Select a Dataset (as of right now, we need with with `player_detection`)) 
+ - Open the Annotation Interface and begin annotating!
+
+## Component Status
+
+Testing status of each component script:
+
+[![Dataset Tools](https://img.shields.io/badge/Dataset%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![Load Tools](https://img.shields.io/badge/Load%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![Savant Scraper](https://img.shields.io/badge/Savant%20Scraper-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+[![BDL API](https://img.shields.io/badge/BDL%20API-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
 
 ## License
 

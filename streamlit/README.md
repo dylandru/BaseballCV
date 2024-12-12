@@ -5,6 +5,9 @@ This directory contains various Streamlit applications for BaseballCV. Each app 
 ## Apps
 
 ### 1. Annotation App (`/annotation_app`)
+
+Run the App on your browser: [Annotation App](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
+
 A Streamlit-based app for managing and annotating baseball image and video using BaseballCV's computer vision models.
 
     - Open-source project designed to crowdsource baseball annotations for training of models
