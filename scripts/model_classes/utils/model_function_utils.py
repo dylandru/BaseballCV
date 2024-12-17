@@ -20,6 +20,8 @@ class ModelFunctionUtils:
             processor: Processor to use for training and validation.
             model: Model to use for training and validation.
             peft_model: PEFT model to use for training and validation.
+            logger: Logger to use for logging.
+            yolo_to_jsonl: YOLOToJSONLDetection to use for creating the dataset.
         """
         self.model_name = model_name
         self.model_run_path = model_run_path
