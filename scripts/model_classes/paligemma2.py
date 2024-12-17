@@ -1,24 +1,23 @@
 import torch
-import torch.nn as nn
-from torch.optim import AdamW
 from torch.utils.data import Dataset
-from transformers import PaliGemmaProcessor, PaliGemmaForConditionalGeneration, get_scheduler
+from transformers import PaliGemmaProcessor, PaliGemmaForConditionalGeneration, Trainer, TrainingArguments, EarlyStoppingCallback
 import torch.backends
 from tqdm import tqdm
 import os
-import json
 from PIL import Image
-import random
 from typing import Dict, Tuple
-import torch.multiprocessing as mp
 import numpy as np
 from datetime import datetime
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
-from utils import YOLOToJSONLDetection, ModelFunctionUtils, ModelVisualizationTools, ModelLogger
+from .utils import YOLOToJSONLDetection, ModelFunctionUtils, ModelVisualizationTools, ModelLogger
+
+"""
+To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
+"""
 
 class PaliGemma2:
-    def __init__(self, model_id: str = 'google/paligemma2-3b-pt-448', model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int = 1):
+    def __init__(self, model_id: str = 'google/paligemma2-3b-pt-224', model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int = 1):
         """
         Initialize the PaliGemma2 model.
 
@@ -36,19 +35,22 @@ class PaliGemma2:
         self.processor = None
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
-        self.logger = ModelLogger(self.model_name, self.model_run_path).orig_logging()
+        self.entries = [] 
+        self.image_directory_path = "" 
+        self.augment = True 
+        self._init_model()
+        self.logger = ModelLogger(self.model_name, self.model_run_path, self.model_id, self.batch_size, self.device).orig_logging()
         self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.logger, self.augment)
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, self.model_run_path, 
                                       self.batch_size, self.device, self.processor, self.model, self.peft_model, self.logger, self.YOLOToJSONLDetection)
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
-        self._init_model()
 
     def _init_model(self):
         """Initialize the model and processor."""
         self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-            self.model_id, trust_remote_code=True).to(self.device)
+            self.model_id).to(self.device)
         self.processor = PaliGemmaProcessor.from_pretrained(
-            self.model_id, trust_remote_code=True)
+            self.model_id)
 
     def inference(self, image_path: str, task: str = "<OD>", text_input: str = None):
         """
@@ -118,8 +120,12 @@ class PaliGemma2:
     def finetune(self, dataset: str, classes: Dict[int, str],
                  train_test_split: Tuple[int, int, int] = (80, 10, 10),
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
-                 num_workers: int = 4, lora_r: int = 8, lora_scaling: int = 8, patience: int = 5,
-                 lora_dropout: float = 0.05, warmup_epochs: int = 1, lr_schedule: str = "cosine", create_peft_config: bool = True):
+                 num_workers: int = 6, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
+                 patience_threshold: float = 0.0, gradient_accumulation_steps: int = 4,
+                 lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
+                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = True,
+                 optimizer: str = "adamw_torch_fused", weight_decay: float = 0.01, logging_steps: int = 100,
+                 save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
         """
         Fine-tune the model on the given dataset.
 
@@ -133,18 +139,61 @@ class PaliGemma2:
             num_workers: Number of worker processes for data loading.
             lora_r: Rank for LoRA.
             lora_scaling: Scaling factor for LoRA.
-            patience: Number of epochs to wait for improvement before early stopping.
             lora_dropout: Dropout rate for LoRA.
-            warmup_epochs: Number of warmup epochs.
-            lr_schedule: Learning rate schedule.
+            patience: Number of epochs to wait before early stopping.
+            patience_threshold: Threshold to beat for early stopping.
+            gradient_accumulation_steps: Number of gradient accumulation steps.
+            warmup_ratio: Ratio of warmup steps to total steps.
+            lr_schedule_type: Learning rate schedule type.
             create_peft_config: Whether to create a new PEFT configuration.
+            random_seed: Random seed for reproducibility.
+            use_fp16: Whether to use FP16 for training.
+            optimizer: Optimizer to use.
+            weight_decay: Weight decay for optimizer.
+            logging_steps: Number of steps to log training metrics.
+            save_eval_steps: Number of steps to save and evaluate model checkpoints.
+            save_limit: Maximum number of model checkpoints to save (from the last saved checkpoint)
+            metric_for_best_model: Metric to use for saving the best model.
 
         Returns:
             Dictionary containing training metrics.
         """
-        self.logger.info(f"Finetuning {self.model_id} on {dataset} for {epochs} epochs...")
+        self.logger.info(f"Finetuning {self.model_id} on {dataset}")
 
-        save_dir = os.path.join(self.model_run_path, save_dir)
+        if training_args is None:
+            save_dir = os.path.join(self.model_run_path, "model_checkpoints")
+            training_args = TrainingArguments(
+                seed=random_seed,
+                output_dir=save_dir,
+                num_train_epochs=epochs,
+                per_device_train_batch_size=self.batch_size,
+                per_device_eval_batch_size=self.batch_size,
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                warmup_ratio = warmup_ratio,
+                learning_rate=lr,
+                weight_decay=weight_decay,
+                logging_steps=logging_steps,
+                evaluation_strategy="steps",
+                save_strategy="steps", 
+                save_steps=save_eval_steps,
+                eval_steps=save_eval_steps,
+                save_total_limit=save_limit,
+                load_best_model_at_end=True,
+                metric_for_best_model=metric_for_best_model,
+                greater_is_better=False,
+                fp16=use_fp16,
+                optim=optimizer, 
+                lr_scheduler_type=lr_schedule_type,
+                report_to=["tensorboard", "wandb"],
+                dataloader_pin_memory=True,
+                dataloader_num_workers=num_workers,
+                dataloader_persistent_workers=True,
+                gradient_checkpointing=True, 
+                ddp_find_unused_parameters=False,
+                remove_unused_columns=True,
+                save_metrics="all"
+            )
+
         vis_path = os.path.join(
             self.model_run_path,
             'training_visualizations',
@@ -154,198 +203,65 @@ class PaliGemma2:
         )
         os.makedirs(vis_path, exist_ok=True)
 
-        metrics = {
-            'train_losses': [],
-            'val_losses': [],
-            'learning_rates': [],
-            'best_val_loss': float('inf'),
-            'best_epoch': -1
-        }
-
         try:
-
             train_path, valid_path = self.YOLOToJSONLDetection.prepare_dataset(
                 base_path=dataset,
                 dict_classes=classes,
                 train_test_split=train_test_split
             )
-
             self.logger.info(f"Dataset Preparation Complete - Train Path: {train_path}, Valid Path: {valid_path}")
 
-            self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(train_path, valid_path, num_workers=num_workers)
+            self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(
+                train_path, valid_path, num_workers=num_workers
+            )
+            self.logger.info("Data Loader Setup Complete")
 
-            self.logger.info(f"Data Loader Setup Complete")
-
-            trainable_params_info, self.peft_model = self.ModelFunctionUtils.setup_peft(r=lora_r, alpha=lora_scaling, dropout=lora_dropout, create_peft_config=create_peft_config)
-
+            trainable_params_info, self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
             self.logger.info(trainable_params_info)
 
-            self.logger.info(f"PEFT Setup Complete w/ Specified Params: \n"
-                        f"LoRA r: {lora_r}, Scaling: {lora_scaling}, Dropout: {lora_dropout}")
+            self.logger.info(
+                f"Training Configuration:\n"
+                f"- Model ID: {self.model_id}\n"
+                f"- Model Run Path: {self.model_run_path}\n"
+                f"- Dataset: {dataset}\n"
+                f"- Train Test Split: {train_test_split}\n"
+                f"- Epochs: {epochs}\n"
+                f"- Learning Rate: {lr}\n"
+                f"- Optimizer: {optimizer}\n" 
+                f"- Scheduler: {lr_schedule_type}\n"
+                f"- Batch Size: {self.batch_size}\n"
+                f"- Gradient Accumulation: {gradient_accumulation_steps}\n"
+                f"- Warmup Ratio: {warmup_ratio}\n"
+                f"- Early Stopping Patience: {patience}\n"
+                f"- Patience Threshold: {patience_threshold}\n"
+                f"- Mixed Precision: {'fp16' if use_fp16 else 'none'}\n"
+                f"- Number of Workers: {num_workers}\n"
+                f"- Save & Eval Steps: {save_eval_steps}\n"
+                f"- Save Limit: {save_limit}\n"
+                f"- Metric for Best Model: {metric_for_best_model}\n"
 
-            config = {
-                'model_id': self.model_id,
-                'dataset': dataset,
-                'classes': classes,
-                'epochs': epochs,
-                'learning_rate': lr,
-                'batch_size': self.batch_size,
-                'lora_config': {
-                    'r': lora_r,
-                    'scaling': lora_scaling,
-                    'dropout': lora_dropout
-                }
-            }
-            with open(os.path.join(vis_path, 'training_config.json'), 'w') as f:
-                json.dump(config, f, indent=4)
-
-            optimizer = AdamW(self.peft_model.parameters(), lr=lr, weight_decay=0.01)
-            num_steps = epochs * len(self.train_loader)
-            warmup_steps = warmup_epochs * len(self.train_loader)
-            lr_scheduler = get_scheduler(
-                lr_schedule,
-                optimizer=optimizer,
-                num_warmup_steps=warmup_steps,
-                num_training_steps=num_steps
             )
 
-            patience_counter = 0
+            trainer = Trainer(
+                model=self.peft_model,
+                args=training_args,
+                train_dataset=self.train_loader.dataset,
+                eval_dataset=self.val_loader.dataset,
+                data_collator=self.ModelFunctionUtils.collate_fn,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
+            )
 
-            self.logger.info(f"Beginning Training Loop w/ Specified Params: \n"
-                        f"Optimizer: AdamW, Learning Rate: {lr}, Scheduler: {lr_schedule}, "
-                        f"Warmup Epochs: {warmup_epochs}, Number of Steps: {num_steps}, "
-                        f"Patience: {patience}")
-
-            for epoch in range(epochs):
-                self.peft_model.train()
-                train_loss = 0
-
-                for batch_idx, (inputs, answers) in enumerate(tqdm(self.train_loader,
-                                                                desc=f"Training Epoch {epoch + 1}/{epochs}")):
-                    try:
-                        input_ids = inputs["input_ids"]
-                        pixel_values = inputs["pixel_values"]
-                        labels = self.processor.tokenizer(
-                            text=answers,
-                            return_tensors="pt",
-                            padding=True,
-                            return_token_type_ids=False
-                        ).input_ids.to(self.device)
-
-                        outputs = self.peft_model(
-                            input_ids=input_ids,
-                            pixel_values=pixel_values,
-                            labels=labels
-                        )
-
-                        loss = outputs.loss
-                        loss.backward()
-
-                        nn.utils.clip_grad_norm_(self.peft_model.parameters(), max_norm=1.0)
-
-                        optimizer.step()
-                        lr_scheduler.step()
-                        optimizer.zero_grad()
-
-                        current_lr = lr_scheduler.get_last_lr()[0]
-                        metrics['train_losses'].append(loss.item())
-                        metrics['learning_rates'].append(current_lr)
-                        train_loss += loss.item()
-
-                        if self.device == "cuda" and batch_idx % 10 == 0:
-                            torch.cuda.empty_cache()
-
-                    except RuntimeError as e:
-                        self.logger.error(f"Error in training batch {batch_idx}: {str(e)}")
-                        continue
-
-                avg_train_loss = train_loss / len(self.train_loader)
-
-                self.peft_model.eval()
-                val_loss = 0
-
-                with torch.no_grad():
-                    for inputs, answers in tqdm(self.val_loader,
-                                            desc=f"Validation Epoch {epoch + 1}/{epochs}"):
-                        try:
-                            input_ids = inputs["input_ids"]
-                            pixel_values = inputs["pixel_values"]
-                            labels = self.processor.tokenizer(
-                                text=answers,
-                                return_tensors="pt",
-                                padding=True,
-                                return_token_type_ids=False
-                            ).input_ids.to(self.device)
-
-                            outputs = self.peft_model(
-                                input_ids=input_ids,
-                                pixel_values=pixel_values,
-                                labels=labels
-                            )
-                            val_loss += outputs.loss.item()
-
-                        except RuntimeError as e:
-                            self.logger.error(f"Error in validation batch: {str(e)}")
-                            continue
-
-                avg_val_loss = val_loss / len(self.val_loader)
-                metrics['val_losses'].append(avg_val_loss)
-
-                self._save_training_plots(vis_path, metrics, epoch)
-
-                if avg_val_loss < metrics['best_val_loss']:
-                    metrics['best_val_loss'] = avg_val_loss
-                    metrics['best_epoch'] = epoch
-                    patience_counter = 0
-
-                    best_model_path = os.path.join(save_dir, "best_model")
-                    os.makedirs(best_model_path, exist_ok=True)
-                    self.peft_model.save_pretrained(best_model_path)
-                    self.processor.save_pretrained(best_model_path)
-                else:
-                    patience_counter += 1
-
-                if (epoch + 1) % 5 == 0:
-                    save_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch+1}")
-                    os.makedirs(save_path, exist_ok=True)
-
-                    self.peft_model.save_pretrained(save_path)
-                    self.processor.save_pretrained(save_path)
-
-                    torch.save({
-                        'epoch': epoch,
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'scheduler_state_dict': lr_scheduler.state_dict(),
-                        'metrics': metrics
-                    }, os.path.join(save_path, "training_state.pt"))
-
-                self.logger.info(
-                    f"Epoch {epoch + 1}/{epochs} - "
-                    f"Train Loss: {avg_train_loss:.4f} - "
-                    f"Val Loss: {avg_val_loss:.4f} - "
-                    f"LR: {current_lr:.2e}"
-                )
-
-                if patience_counter >= patience:
-                    self.logger.info(f"Early stopping triggered at epoch {epoch + 1}")
-                    break
-
-                if (epoch + 1) % 5 == 0:
-                    random_idx = random.randint(0, len(self.val_dataset) - 1)
-                    prefix, suffix, image = self.val_dataset[random_idx]
-                    _ = self.inference(image, task="<OD>", visualize=True)
-
-            with open(os.path.join(vis_path, 'final_metrics.json'), 'w') as f:
-                json.dump(metrics, f, indent=4)
-
-            return metrics
+            train_result = trainer.train()
+            trainer.save_model()
+            
+            return train_result
 
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
-            emergency_path = os.path.join(save_dir, "emergency_checkpoint")
-            os.makedirs(emergency_path, exist_ok=True)
-            self.peft_model.save_pretrained(emergency_path)
             raise e
+
+
+
 
     def evaluate(self, test_dataset: Dataset, classes: Dict[int, str], device: str = 'cpu'):
         """
