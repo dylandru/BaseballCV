@@ -3,10 +3,12 @@ import logging
 from datetime import datetime
 
 class ModelLogger:
-    def __init__(self, model_name: str, model_run_path: str, model_id: str):
+    def __init__(self, model_name: str, model_run_path: str, model_id: str, batch_size: int, device: str):
         self.model_name = model_name
         self.model_run_path = model_run_path
         self.model_id = model_id
+        self.batch_size = batch_size
+        self.device = device
 
     def orig_logging(self):
         """Set up logging for the model."""
