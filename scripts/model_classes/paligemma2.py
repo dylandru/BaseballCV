@@ -75,7 +75,7 @@ class YOLOToPaliGemma2(Dataset):
         return self.parent._get_jsonl_item(self.entries, idx, self.image_directory_path)
 
 class PaliGemma2:
-    def __init__(self, model_id: str = 'google/paligemma2-3b-pt-448', model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int=1):
+    def __init__(self, model_id: str = 'google/paligemma2-3b-pt-448', model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int = 1):
         """
         Initialize the PaliGemma2 model.
 
@@ -552,8 +552,8 @@ class PaliGemma2:
             xmin, ymin, xmax, ymax = bbox
             rect = plt.Rectangle(
                 (xmin, ymin),
-                xmax-xmin,
-                ymax-ymin,
+                xmax - xmin,
+                ymax - ymin,
                 fill=False,
                 edgecolor='red',
                 linewidth=2
@@ -572,6 +572,71 @@ class PaliGemma2:
         plt.show()
         os.makedirs(save_viz_dir, exist_ok=True)
         plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
+
+    def inference(self, image_path: str, task: str = "<OD>", text_input: str = None):
+        """
+        Perform inference on an image.
+
+        Args:
+            image_path: Path to the input image.
+            task: The task to perform (e.g., object detection).
+            text_input: Optional text input for the task.
+
+        Returns:
+            The result of the inference.
+        """
+        image = Image.open(image_path)
+        prompt = task + (text_input if text_input else "")
+
+        inputs = self.processor(
+            text=prompt,
+            images=image,
+            return_tensors="pt"
+        ).to(self.device)
+
+        self.model.eval()
+
+        generated_ids = self.model.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=1024,
+            early_stopping=False,
+            do_sample=False,
+            num_beams=3,
+        )
+
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False)[0]
+        parsed_answer = self.processor.post_process_generation(
+            generated_text,
+            task=task,
+            image_size=(image.width, image.height)
+        )
+
+        text_output = parsed_answer[task]
+
+        if task == "<OD>":
+            self._visualize_results(image, text_output)
+
+        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
+            if text_input is not None:
+                if task == "CAPTION_TO_PHASE_GROUNDING":
+                    self._visualize_results(image, text_output)
+                else:
+                    boxes = text_output.get('bboxes', [])
+                    labels = text_output.get('bboxes_labels', [])
+                    results = {
+                        'bboxes': boxes,
+                        'labels': labels
+                    }
+                    self._visualize_results(image, results)
+            else:
+                raise ValueError("Text input is needed for this type of task")
+
+        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
+            print(self._return_clean_text_output(text_output))
+
+        return text_output
 
     def finetune(self, dataset: str, classes: Dict[int, str],
                  train_test_split: Tuple[int, int, int] = (80, 10, 10),
@@ -638,7 +703,7 @@ class PaliGemma2:
 
             self.logger.info(trainable_params_info)
 
-            self.logger.info(f"PEFT Setup Complete w/ SpecifiedParams: \n"
+            self.logger.info(f"PEFT Setup Complete w/ Specified Params: \n"
                         f"LoRA r: {lora_r}, Scaling: {lora_scaling}, Dropout: {lora_dropout}")
 
             config = {
@@ -669,7 +734,7 @@ class PaliGemma2:
 
             patience_counter = 0
 
-            self.logger.info(f"Beginning Training Loop w/ SpecifiedParams: \n"
+            self.logger.info(f"Beginning Training Loop w/ Specified Params: \n"
                         f"Optimizer: AdamW, Learning Rate: {lr}, Scheduler: {lr_schedule}, "
                         f"Warmup Epochs: {warmup_epochs}, Number of Steps: {num_steps}, "
                         f"Patience: {patience}")
@@ -805,72 +870,6 @@ class PaliGemma2:
             self.peft_model.save_pretrained(emergency_path)
             raise e
 
-    def inference(self, image_path: str, task: str = "<OD>",
-                 text_input: str = None):
-        """
-        Perform inference on an image.
-
-        Args:
-            image_path: Path to the input image.
-            task: The task to perform (e.g., object detection).
-            text_input: Optional text input for the task.
-
-        Returns:
-            The result of the inference.
-        """
-        image = Image.open(image_path)
-        prompt = task + text_input if text_input else task
-
-        inputs = self.processor(
-            text=prompt,
-            images=image,
-            return_tensors="pt"
-        ).to(self.device)
-
-        self.model.eval()
-
-        generated_ids = self.model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            early_stopping=False,
-            do_sample=False,
-            num_beams=3,
-        )
-
-        generated_text = self.processor.batch_decode(
-            generated_ids, skip_special_tokens=False)[0]
-        parsed_answer = self.processor.post_process_generation(
-            generated_text,
-            task=task,
-            image_size=(image.width, image.height)
-        )
-
-        text_output = parsed_answer[task]
-
-        if task == "<OD>":
-            self._visualize_results(image, text_output)
-
-        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
-            if text_input != None:
-                if task == "CAPTION_TO_PHASE_GROUNDING":
-                    self._visualize_results(image, text_output)
-                else:
-                    boxes = text_output.get('bboxes', [])
-                    labels = text_output.get('bboxes_labels', [])
-                    results = {
-                        'bboxes': boxes,
-                        'labels': labels
-                    }
-                    self._visualize_results(image, results)
-            else:
-                raise ValueError("Text input is needed for this type of task")
-
-        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
-            print(self._return_clean_text_output(text_output))
-
-        return text_output
-
     def evaluate(self, test_dataset: Dataset, classes: Dict[int, str], device: str = 'cpu'):
         """
         Evaluate the model on a test dataset.
@@ -944,7 +943,6 @@ class PaliGemma2:
         _ = confusion_matrix.plot()
 
         annotated_images = []
-
         for i in range(25):
             image = images[i]
             detections = predictions[i]
@@ -989,10 +987,10 @@ class PaliGemma2:
                 class_id = int(parts[0])
                 x_center, y_center, width, height = map(float, parts[1:5])
 
-                x1 = int((x_center - width/2) * 1000)
-                y1 = int((y_center - height/2) * 1000)
-                x2 = int((x_center + width/2) * 1000)
-                y2 = int((y_center + height/2) * 1000)
+                x1 = int((x_center - width / 2) * 1000)
+                y1 = int((y_center - height / 2) * 1000)
+                x2 = int((x_center + width / 2) * 1000)
+                y2 = int((y_center + height / 2) * 1000)
 
                 class_name = classes.get(class_id, f"Unknown Class {class_id}")
                 suffix_line = f"{class_name}<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>"
@@ -1009,3 +1007,4 @@ class PaliGemma2:
                 f.write(json.dumps(annotation) + '\n')
 
         print(f"Converted {len(annotations)} annotations to {output_jsonl_path}")
+
