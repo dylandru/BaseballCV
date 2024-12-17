@@ -1,12 +1,14 @@
 import torch
 import logging
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from peft import LoraConfig, get_peft_model
 from .yolo_to_jsonl import YOLOToJSONLDetection
+from typing import Dict
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
-                 device: torch.device, processor: None, model: None, peft_model: None, logger: logging.Logger):
+                 device: torch.device, processor: None, model: None, 
+                 peft_model: None, logger: logging.Logger, yolo_to_jsonl: YOLOToJSONLDetection):
         """
         Initialize the ModelFunctionUtils class.
 
@@ -27,7 +29,7 @@ class ModelFunctionUtils:
         self.model = model
         self.peft_model = peft_model
         self.logger = logger
-        self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.augment, self.logger)
+        self.YOLOToJSONLDetection = yolo_to_jsonl
 
     def collate_fn(self, batch):
         prefixes, suffixes, images = zip(*batch)
@@ -76,6 +78,7 @@ class ModelFunctionUtils:
             persistent_workers=False if num_workers == 0 else True,
             pin_memory=True if self.device == 'cuda' else False
         )
+        return self.train_loader, self.val_loader
 
     def setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True):
         """
@@ -119,7 +122,36 @@ class ModelFunctionUtils:
 
         self.peft_model = get_peft_model(self.model, config)
         trainable_params_info = self.peft_model.print_trainable_parameters()
-        return trainable_params_info
+        return trainable_params_info, self.peft_model
+    
+    def create_detection_dataset(self, jsonl_file_path: str, image_directory_path: str,
+                           augment: bool = True) -> Dataset:
+        """
+        Create a detection dataset from a JSONL file.
+
+        Args:
+            jsonl_file_path: Path to the JSONL file.
+            image_directory_path: Path to the directory containing images.
+            augment: Whether to apply data augmentation.
+
+        Returns:
+            An instance of the YOLOToPaliGemma2 dataset.
+        """
+        entries = self._load_jsonl_entries(jsonl_file_path)
+
+        return self.YOLOToJSONLDetection(self, entries, image_directory_path, augment)
+    
+    def return_clean_text_output(self, results: Dict) -> str:
+        """
+        Return clean text output from the results.
+
+        Args:
+            results: Dictionary containing the results.
+
+        Returns:
+            Clean text output.
+        """
+        return next(iter(results.values())).strip()
     
     
     
