@@ -1,14 +1,12 @@
-import os
-import logging
-from datetime import datetime
 import torch
+import logging
 from torch.utils.data import DataLoader
 from peft import LoraConfig, get_peft_model
 from .yolo_to_jsonl import YOLOToJSONLDetection
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
-                 device: torch.device, processor: None, model: None, peft_model: None):
+                 device: torch.device, processor: None, model: None, peft_model: None, logger: logging.Logger):
         """
         Initialize the ModelFunctionUtils class.
 
@@ -19,6 +17,7 @@ class ModelFunctionUtils:
             device: Device to use for training and validation.
             processor: Processor to use for training and validation.
             model: Model to use for training and validation.
+            peft_model: PEFT model to use for training and validation.
         """
         self.model_name = model_name
         self.model_run_path = model_run_path
@@ -27,29 +26,8 @@ class ModelFunctionUtils:
         self.processor = processor
         self.model = model
         self.peft_model = peft_model
-        self.logger = self.orig_logging()
+        self.logger = logger
         self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.augment, self.logger)
-
-    def orig_logging(self):
-        """Set up logging for the model."""
-        log_dir = os.path.join(self.model_run_path, "logs")
-        os.makedirs(log_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(log_dir, f"{self.model_name}_{timestamp}.log")
-
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[  
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
-        )
-        self.logger = logging.getLogger(f"{self.model_name}_({self.model_id})")
-        self.logger.info(f"Initializing {self.model_name} model with Batch Size: {self.batch_size}")
-        self.logger.info(f"Device: {self.device}")
-        return self.logger
 
     def collate_fn(self, batch):
         prefixes, suffixes, images = zip(*batch)

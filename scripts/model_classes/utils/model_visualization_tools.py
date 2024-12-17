@@ -2,12 +2,14 @@ import os
 import matplotlib.pyplot as plt
 from typing import Dict
 from PIL import Image
+import logging
 
 
 class ModelVisualizationTools:
-    def __init__(self, model_name: str, model_run_path: str):
+    def __init__(self, model_name: str, model_run_path: str, logger: logging.Logger):
         self.model_name = model_name
         self.model_run_path = model_run_path
+        self.logger = logger
 
     def visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations'):
         """
@@ -46,5 +48,7 @@ class ModelVisualizationTools:
         plt.show()
         os.makedirs(save_viz_dir, exist_ok=True)
         plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
+        self.logger.info(f"Visualization saved to {os.path.join(self.model_run_path, save_viz_dir, 'result.png')}")
+        plt.close()
 
     

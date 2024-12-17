@@ -1,15 +1,15 @@
 import random
 import shutil
+import logging
 from typing import List, Dict, Any, Tuple
 from PIL import Image
 import os
 import json
 from tqdm import tqdm
-import logging
 from torch.utils.data import Dataset
 
 class YOLOToJSONLDetection(Dataset):
-    def __init__(self, parent, entries, image_directory_path, augment=True, logger: logging.Logger = None):
+    def __init__(self, parent, entries, image_directory_path, logger: logging.Logger, augment=True):
         """
         Initialize the YOLOToJSONL dataset.
 
