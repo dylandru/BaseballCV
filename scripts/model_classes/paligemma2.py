@@ -17,7 +17,10 @@ To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License 
 """
 
 class PaliGemma2:
-    def __init__(self, model_id: str = 'google/paligemma2-3b-pt-224', model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', batch_size: int = 1):
+    def __init__(self, 
+                 model_id: str = 'google/paligemma2-3b-pt-224', 
+                 model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
+                 batch_size: int = 8):
         """
         Initialize the PaliGemma2 model.
 
@@ -33,6 +36,7 @@ class PaliGemma2:
         self.batch_size = batch_size
         self.model = None
         self.processor = None
+        self.peft_model = None
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
         self.entries = [] 
@@ -123,7 +127,7 @@ class PaliGemma2:
                  num_workers: int = 6, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 4,
                  lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
-                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = True,
+                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = False,
                  optimizer: str = "adamw_torch_fused", weight_decay: float = 0.01, logging_steps: int = 100,
                  save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
         """
@@ -160,9 +164,8 @@ class PaliGemma2:
         """
         self.logger.info(f"Finetuning {self.model_id} on {dataset}")
 
-        if training_args is None:
-            save_dir = os.path.join(self.model_run_path, "model_checkpoints")
-            training_args = TrainingArguments(
+        save_dir = os.path.join(self.model_run_path, "model_checkpoints")
+        training_args = TrainingArguments(
                 seed=random_seed,
                 output_dir=save_dir,
                 num_train_epochs=epochs,
@@ -173,7 +176,7 @@ class PaliGemma2:
                 learning_rate=lr,
                 weight_decay=weight_decay,
                 logging_steps=logging_steps,
-                evaluation_strategy="steps",
+                eval_strategy="steps",
                 save_strategy="steps", 
                 save_steps=save_eval_steps,
                 eval_steps=save_eval_steps,
@@ -191,7 +194,6 @@ class PaliGemma2:
                 gradient_checkpointing=True, 
                 ddp_find_unused_parameters=False,
                 remove_unused_columns=True,
-                save_metrics="all"
             )
 
         vis_path = os.path.join(
@@ -263,7 +265,7 @@ class PaliGemma2:
 
 
 
-    def evaluate(self, test_dataset: Dataset, classes: Dict[int, str], device: str = 'cpu'):
+    def evaluate(self, test_dataset: Dataset, classes: Dict[int, str]):
         """
         Evaluate the model on a test dataset.
 
