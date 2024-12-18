@@ -127,7 +127,7 @@ class PaliGemma2:
                  num_workers: int = 6, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 4,
                  lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
-                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = False,
+                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = True,
                  optimizer: str = "adamw_torch_fused", weight_decay: float = 0.01, logging_steps: int = 100,
                  save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
         """
@@ -163,8 +163,14 @@ class PaliGemma2:
             Dictionary containing training metrics.
         """
         self.logger.info(f"Finetuning {self.model_id} on {dataset}")
-
         save_dir = os.path.join(self.model_run_path, "model_checkpoints")
+
+        if self.device != "cuda":
+            optimizer = "adamw_torch"
+            use_fp16 = False
+            self.logger.info("Using CPU / MPS... FP16 and Fused Optimizer are disabled.")
+ 
+
         training_args = TrainingArguments(
                 seed=random_seed,
                 output_dir=save_dir,
@@ -218,8 +224,7 @@ class PaliGemma2:
             )
             self.logger.info("Data Loader Setup Complete")
 
-            trainable_params_info, self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
-            self.logger.info(trainable_params_info)
+            _, self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
 
             self.logger.info(
                 f"Training Configuration:\n"
