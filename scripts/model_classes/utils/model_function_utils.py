@@ -52,12 +52,12 @@ class ModelFunctionUtils:
             valid_path: Path to the validation dataset.
             num_workers: Number of worker processes for data loading.
         """
-        self.train_dataset = self.YOLOToJSONLDetection.create_detection_dataset(
+        self.train_dataset = self.create_detection_dataset(
             jsonl_file_path=f"{train_path}train_annotations.json",
             image_directory_path=train_path,
             augment=True
         )
-        self.val_dataset = self.YOLOToJSONLDetection.create_detection_dataset(
+        self.val_dataset = self.create_detection_dataset(
             jsonl_file_path=f"{valid_path}valid_annotations.json",
             image_directory_path=valid_path,
             augment=False
