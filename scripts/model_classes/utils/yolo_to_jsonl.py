@@ -24,7 +24,7 @@ class YOLOToJSONLDetection(Dataset):
         self.entries = entries
         self.image_directory_path = image_directory_path
         self.augment = augment
-        self.transforms = parent.get_augmentation_transforms() if augment else []
+        self.transforms = self.get_augmentation_transforms() if augment else []
         self.logger = logger
 
     def __len__(self):
@@ -259,20 +259,8 @@ class YOLOToJSONLDetection(Dataset):
             self.convert_annotations(base_path, split, dict_classes)
 
         return os.path.join(base_path, "train", "images/"), os.path.join(base_path, "valid", "images/")
-
-    def return_clean_text_output(self, results: Dict) -> str:
-        """
-        Return clean text output from the results.
-
-        Args:
-            results: Dictionary containing the results.
-
-        Returns:
-            Clean text output.
-        """
-        return next(iter(results.values())).strip()
     
-    def _get_augmentation_transforms(self):
+    def get_augmentation_transforms(self):
         """
         Get data augmentation transforms.
 
