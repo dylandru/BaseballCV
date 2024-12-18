@@ -31,7 +31,8 @@ class ModelFunctionUtils:
         self.model = model
         self.peft_model = peft_model
         self.logger = logger
-        self.YOLOToJSONLDetection = yolo_to_jsonl
+        self.YOLOToJSONLDetection_instance = yolo_to_jsonl
+        self.YOLOToJSONLDetection_class = YOLOToJSONLDetection
 
     def collate_fn(self, batch):
         prefixes, suffixes, images = zip(*batch)
@@ -139,9 +140,9 @@ class ModelFunctionUtils:
         Returns:
             An instance of the YOLOToPaliGemma2 dataset.
         """
-        entries = self._load_jsonl_entries(jsonl_file_path)
+        entries = self.YOLOToJSONLDetection_instance.load_jsonl_entries(jsonl_file_path)
 
-        return self.YOLOToJSONLDetection(self, entries, image_directory_path, augment)
+        return self.YOLOToJSONLDetection_class(self, entries, image_directory_path, augment)
     
     def return_clean_text_output(self, results: Dict) -> str:
         """
