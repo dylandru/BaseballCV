@@ -44,12 +44,12 @@ class PaliGemma2:
         self.image_directory_path = "" 
         self.torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         self.augment = True 
-        self._init_model()
         self.logger = ModelLogger(self.model_name, self.model_run_path, self.model_id, self.batch_size, self.device).orig_logging()
         self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.logger, self.augment)
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, self.model_run_path, 
                                       self.batch_size, self.device, self.processor, self.model, self.peft_model, self.logger, self.YOLOToJSONLDetection, self.torch_dtype)
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
+        self._init_model()
 
     def _init_model(self):
         """Initialize the model and processor."""
