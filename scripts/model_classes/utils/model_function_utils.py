@@ -59,7 +59,6 @@ class ModelFunctionUtils:
         
         for k, v in training_inputs.items():
             if isinstance(v, torch.Tensor):
-                training_inputs[k] = v.cpu()
                 if v.dtype in [torch.float32, torch.float64, torch.float16]:
                     training_inputs[k] = training_inputs[k].requires_grad_(True)
         

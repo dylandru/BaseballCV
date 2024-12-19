@@ -52,7 +52,7 @@ class PaliGemma2:
     def _init_model(self):
         """Initialize the model and processor."""
         self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-            self.model_id).to("cpu")
+            self.model_id)
         
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
@@ -253,18 +253,14 @@ class PaliGemma2:
             )
 
             trainer = Trainer(
-                model=self.peft_model.to("cpu"),
+                model=self.peft_model,
                 args=training_args,
                 train_dataset=self.train_loader.dataset,
                 eval_dataset=self.val_loader.dataset,
-                data_collator=lambda x: self.ModelFunctionUtils.transfer_to_device(
-                    self.ModelFunctionUtils.collate_fn(x),
-                    'cpu'
-                ),
+                data_collator=self.ModelFunctionUtils.collate_fn,
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
             )
 
-            self.peft_model.to(self.device)
 
             train_result = trainer.train()
             trainer.save_model()
