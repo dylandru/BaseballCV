@@ -36,15 +36,73 @@ class ModelFunctionUtils:
 
     def collate_fn(self, batch):
         prefixes, suffixes, images = zip(*batch)
+        
+        formatted_texts = [f"<image>{prefix}{suffix}<bos>" for prefix, suffix in zip(prefixes, suffixes)]
+        
         inputs = self.processor(
-            text=list(prefixes), 
-            images=list(images), 
-            return_tensors="pt", 
+            text=formatted_texts,
+            images=list(images),
+            return_tensors="pt",
             padding=True
-        ).to(self.device)
-        return inputs, suffixes
+        )
+        
+        training_inputs = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+            "pixel_values": inputs["pixel_values"],
+        }
+        
+        labels = inputs["input_ids"].clone()
+        labels = labels.roll(-1)  
+        labels[:, -1] = -100  
+        training_inputs["labels"] = labels
+        
+        for k, v in training_inputs.items():
+            if isinstance(v, torch.Tensor):
+                training_inputs[k] = v.cpu()
+                if v.dtype in [torch.float32, torch.float64, torch.float16]:
+                    training_inputs[k] = training_inputs[k].requires_grad_(True)
+        
+        return training_inputs
     
-    def setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 0):
+    def transfer_to_device(self, batch, target_device) -> torch.Tensor:
+        """
+        Transfers data to a specified device, handling different data structures recursively.
+        Can be used to transfer DataLoader batches to a device.
+        
+        Args:
+            batch: The data to transfer (can be a tensor, dict, list, DataLoader batch, or other type)
+            target_device: The target device to transfer to ('cpu' or GPU device)
+        
+        Returns:
+            Batch with all tensors moved to the specified device
+        """
+        # Handle DataLoader batch tuples
+        if isinstance(batch, tuple):
+            return tuple(self.transfer_to_device(item, target_device) for item in batch)
+
+        if isinstance(batch, torch.Tensor):
+            return batch.to(target_device)
+        
+        elif isinstance(batch, dict):
+            return {
+                key: self.transfer_to_device(value, target_device) 
+                if isinstance(value, (torch.Tensor, dict, list, tuple)) 
+                else value
+                for key, value in batch.items()
+            }
+        
+        elif isinstance(batch, list):
+            return [
+                self.transfer_to_device(item, target_device)
+                if isinstance(item, (torch.Tensor, dict, list, tuple))
+                else item
+                for item in batch
+            ]
+        
+        return batch
+    
+    def setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 8):
         """
         Set up data loaders for training and validation.
 
@@ -54,10 +112,10 @@ class ModelFunctionUtils:
             num_workers: Number of worker processes for data loading.
         """
         self.train_dataset = self.create_detection_dataset(
-            jsonl_file_path=f"{train_path}train_annotations.json",
-            image_directory_path=train_path,
-            augment=True
-        )
+                jsonl_file_path=f"{train_path}train_annotations.json",
+                image_directory_path=train_path,
+                augment=True
+            )
         self.val_dataset = self.create_detection_dataset(
             jsonl_file_path=f"{valid_path}valid_annotations.json",
             image_directory_path=valid_path,
@@ -71,7 +129,8 @@ class ModelFunctionUtils:
             num_workers=num_workers,
             shuffle=True,
             persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True if self.device == 'cuda' else False
+            pin_memory=True if self.device == 'cuda' else False,
+            multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
         )
         self.val_loader = DataLoader(
             self.val_dataset,
@@ -79,7 +138,8 @@ class ModelFunctionUtils:
             collate_fn=self.collate_fn,
             num_workers=num_workers,
             persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True if self.device == 'cuda' else False
+            pin_memory=True if self.device == 'cuda' else False,
+            multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
         )
         return self.train_loader, self.val_loader
 

@@ -52,7 +52,8 @@ class PaliGemma2:
     def _init_model(self):
         """Initialize the model and processor."""
         self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-            self.model_id).to(self.device)
+            self.model_id).to("cpu")
+        
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
 
@@ -124,7 +125,7 @@ class PaliGemma2:
     def finetune(self, dataset: str, classes: Dict[int, str],
                  train_test_split: Tuple[int, int, int] = (80, 10, 10),
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
-                 num_workers: int = 6, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
+                 num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 4,
                  lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
                  create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = True,
@@ -196,10 +197,12 @@ class PaliGemma2:
                 report_to=["tensorboard", "wandb"],
                 dataloader_pin_memory=True,
                 dataloader_num_workers=num_workers,
-                dataloader_persistent_workers=True,
+                dataloader_persistent_workers=True if num_workers > 0 else False,
                 gradient_checkpointing=True, 
                 ddp_find_unused_parameters=False,
                 remove_unused_columns=True,
+                use_cpu=True if self.device != 'cuda' else False,
+                use_mps_device=True if self.device == 'mps' else False,
             )
 
         vis_path = os.path.join(
@@ -250,13 +253,18 @@ class PaliGemma2:
             )
 
             trainer = Trainer(
-                model=self.peft_model,
+                model=self.peft_model.to("cpu"),
                 args=training_args,
                 train_dataset=self.train_loader.dataset,
                 eval_dataset=self.val_loader.dataset,
-                data_collator=self.ModelFunctionUtils.collate_fn,
+                data_collator=lambda x: self.ModelFunctionUtils.transfer_to_device(
+                    self.ModelFunctionUtils.collate_fn(x),
+                    'cpu'
+                ),
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
             )
+
+            self.peft_model.to(self.device)
 
             train_result = trainer.train()
             trainer.save_model()

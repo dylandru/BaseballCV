@@ -41,7 +41,7 @@ class YOLOToJSONLDetection(Dataset):
         Returns:
             Tuple containing the prefix, suffix, and image.
         """
-        image, data = self.parent.get_jsonl_item(self.entries, idx, self.image_directory_path)
+        image, data = self.get_jsonl_item(self.entries, idx, self.image_directory_path)
 
         if self.augment and random.random() > 0.5:
             for transform in self.transforms:
@@ -63,7 +63,7 @@ class YOLOToJSONLDetection(Dataset):
         """
         return self.parent.get_jsonl_item(self.entries, idx, self.image_directory_path)
     
-    def load_jsonl_entries(self, jsonl_file_path: str, logger: logging.Logger) -> List[Dict[str, Any]]:
+    def load_jsonl_entries(self, jsonl_file_path: str) -> List[Dict[str, Any]]:
         """
         Load entries from a JSONL file.
 
