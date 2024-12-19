@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, 
-                          Trainer, TrainingArguments, EarlyStoppingCallback,BitsAndBytesConfig)
+                          Trainer, TrainingArguments, EarlyStoppingCallback)
 import torch.backends
 from tqdm import tqdm
 import os
@@ -30,37 +30,60 @@ class PaliGemma2:
             model_run_path: The path to save model run information.
             batch_size: The batch size for training and inference.
         """
+    
         self.device = torch.device("cuda" if torch.cuda.is_available()
-                                  else "mps" if torch.backends.mps.is_available()
-                                  else "cpu")
+                                else "mps" if torch.backends.mps.is_available()
+                                else "cpu")
         self.model_id = model_id
         self.batch_size = batch_size
-        self.model = None
-        self.processor = None
-        self.peft_model = None
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
         self.entries = [] 
         self.image_directory_path = "" 
         self.torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         self.augment = True 
-        self.logger = ModelLogger(self.model_name, self.model_run_path, self.model_id, self.batch_size, self.device).orig_logging()
-        self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.logger, self.augment)
-        self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, self.model_run_path, 
-                                      self.batch_size, self.device, self.processor, self.model, self.peft_model, self.logger, self.YOLOToJSONLDetection, self.torch_dtype)
-        self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
+
+        self.logger = ModelLogger(self.model_name, self.model_run_path, 
+                                self.model_id, self.batch_size, self.device).orig_logging()
+
+        self.quantization_config = None
+        if self.device == "cuda":
+            self.quantization_config = ModelFunctionUtils.setup_quantization()
+        self.model = None
+        self.processor = None
+        self.peft_model = None
         self._init_model()
+
+        self.YOLOToJSONLDetection = YOLOToJSONLDetection(
+            self, self.entries, self.image_directory_path, self.logger, self.augment
+        )
+        
+        self.ModelFunctionUtils = ModelFunctionUtils(
+            self.model_name, 
+            self.model_run_path,
+            self.batch_size, 
+            self.device, 
+            self.processor, 
+            self.model, 
+            self.peft_model,
+            self.logger,
+            self.YOLOToJSONLDetection,
+            self.torch_dtype
+        )
+        
+        self.ModelVisualizationTools = ModelVisualizationTools(
+            self.model_name, self.model_run_path, self.logger
+        )
 
     def _init_model(self):
         """Initialize the model and processor."""
         if self.device == "cuda":
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, device_map="auto", quantization_config=self.ModelFunctionUtils.setup_quantization(), torch_dtype=self.torch_dtype)
+                self.model_id, device_map="auto", quantization_config=self.quantization_config, torch_dtype=self.torch_dtype)
         else:
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
                 self.model_id, torch_dtype=self.torch_dtype)
         
-        self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
 
@@ -130,7 +153,7 @@ class PaliGemma2:
         return text_output
 
     def finetune(self, dataset: str, classes: Dict[int, str],
-                 train_test_split: Tuple[int, int, int] = (80, 10, 10),
+                 train_test_split: Tuple[int, int, int] = (80, 10, 10), freeze_vision_encoders: bool = True,
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
                  num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 16,
@@ -171,6 +194,9 @@ class PaliGemma2:
         """
         self.logger.info(f"Finetuning {self.model_id} on {dataset}")
         save_dir = os.path.join(self.model_run_path, "model_checkpoints")
+
+        if freeze_vision_encoders:
+            self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
 
         if self.device != "cuda":
             optimizer = "adamw_torch"
@@ -249,7 +275,6 @@ class PaliGemma2:
                 f"- Warmup Ratio: {warmup_ratio}\n"
                 f"- Early Stopping Patience: {patience}\n"
                 f"- Patience Threshold: {patience_threshold}\n"
-                f"- Mixed Precision: {'fp16' if use_fp16 else 'none'}\n"
                 f"- Number of Workers: {num_workers}\n"
                 f"- Save & Eval Steps: {save_eval_steps}\n"
                 f"- Save Limit: {save_limit}\n"

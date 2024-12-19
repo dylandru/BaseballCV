@@ -184,17 +184,6 @@ class ModelFunctionUtils:
         trainable_params_info = self.peft_model.print_trainable_parameters()
         return trainable_params_info, self.peft_model
     
-    def setup_quantization(self, load_in_4bit: bool = True, bnb_4but_quant_type: str = "nf4"):
-        """
-        Set up quantization for the model.
-        """
-        quant_config = BitsAndBytesConfig(
-            load_in_4bit=load_in_4bit,
-            bnb_4but_quant_type=bnb_4but_quant_type,
-            bnb_4but_quant_storage=torch.bfloat16
-        )
-        return quant_config
-    
     def freeze_vision_encoders(self, model):
         """
         Freeze the vision encoders of the model.
@@ -237,6 +226,18 @@ class ModelFunctionUtils:
             Clean text output.
         """
         return next(iter(results.values())).strip()
+    
+    @staticmethod
+    def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4"):
+        """
+        Set up a static method for a quantization config. 
+        """
+        quant_config = BitsAndBytesConfig(
+            load_in_4bit=load_in_4bit,
+            bnb_4bit_quant_type=bnb_4bit_quant_type,
+            bnb_4bit_quant_storage=torch.bfloat16
+        )
+        return quant_config
     
     
     
