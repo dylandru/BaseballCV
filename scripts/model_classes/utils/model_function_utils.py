@@ -2,13 +2,14 @@ import torch
 import logging
 from torch.utils.data import DataLoader, Dataset
 from peft import LoraConfig, get_peft_model
+from transformers import BitsAndBytesConfig
 from .yolo_to_jsonl import YOLOToJSONLDetection
 from typing import Dict
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: None, model: None, 
-                 peft_model: None, logger: logging.Logger, yolo_to_jsonl: YOLOToJSONLDetection):
+                 peft_model: None, logger: logging.Logger, yolo_to_jsonl: YOLOToJSONLDetection, torch_dtype: torch.dtype):
         """
         Initialize the ModelFunctionUtils class.
 
@@ -33,6 +34,7 @@ class ModelFunctionUtils:
         self.logger = logger
         self.YOLOToJSONLDetection_instance = yolo_to_jsonl
         self.YOLOToJSONLDetection_class = YOLOToJSONLDetection
+        self.torch_dtype = torch_dtype
 
     def collate_fn(self, batch):
         prefixes, suffixes, images = zip(*batch)
@@ -43,8 +45,9 @@ class ModelFunctionUtils:
             text=formatted_texts,
             images=list(images),
             return_tensors="pt",
-            padding=True
-        )
+            suffix=suffixes,
+            padding="longest"
+        ).to(self.torch_dtype).to(self.device)
         
         training_inputs = {
             "input_ids": inputs["input_ids"],
@@ -56,11 +59,6 @@ class ModelFunctionUtils:
         labels = labels.roll(-1)  
         labels[:, -1] = -100  
         training_inputs["labels"] = labels
-        
-        for k, v in training_inputs.items():
-            if isinstance(v, torch.Tensor):
-                if v.dtype in [torch.float32, torch.float64, torch.float16]:
-                    training_inputs[k] = training_inputs[k].requires_grad_(True)
         
         return training_inputs
     
@@ -185,6 +183,31 @@ class ModelFunctionUtils:
         self.peft_model = get_peft_model(self.model, config)
         trainable_params_info = self.peft_model.print_trainable_parameters()
         return trainable_params_info, self.peft_model
+    
+    def setup_quantization(self, load_in_4bit: bool = True, bnb_4but_quant_type: str = "nf4"):
+        """
+        Set up quantization for the model.
+        """
+        quant_config = BitsAndBytesConfig(
+            load_in_4bit=load_in_4bit,
+            bnb_4but_quant_type=bnb_4but_quant_type,
+            bnb_4but_quant_storage=torch.bfloat16
+        )
+        return quant_config
+    
+    def freeze_vision_encoders(self, model):
+        """
+        Freeze the vision encoders of the model.
+        """
+        for param in model.vision_tower.parameters():
+            param.requires_grad = False
+
+        for param in model.multi_modal_projector.parameters():
+            param.requires_grad = False
+
+        self.logger.info("Vision encoders frozen.")
+
+        return model
     
     def create_detection_dataset(self, jsonl_file_path: str, image_directory_path: str,
                            augment: bool = True) -> Dataset:

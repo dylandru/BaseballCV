@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset
-from transformers import PaliGemmaProcessor, PaliGemmaForConditionalGeneration, Trainer, TrainingArguments, EarlyStoppingCallback
+from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, 
+                          Trainer, TrainingArguments, EarlyStoppingCallback,BitsAndBytesConfig)
 import torch.backends
 from tqdm import tqdm
 import os
@@ -41,19 +42,25 @@ class PaliGemma2:
         self.model_name = "PaliGemma2"
         self.entries = [] 
         self.image_directory_path = "" 
+        self.torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         self.augment = True 
         self._init_model()
         self.logger = ModelLogger(self.model_name, self.model_run_path, self.model_id, self.batch_size, self.device).orig_logging()
         self.YOLOToJSONLDetection = YOLOToJSONLDetection(self, self.entries, self.image_directory_path, self.logger, self.augment)
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, self.model_run_path, 
-                                      self.batch_size, self.device, self.processor, self.model, self.peft_model, self.logger, self.YOLOToJSONLDetection)
+                                      self.batch_size, self.device, self.processor, self.model, self.peft_model, self.logger, self.YOLOToJSONLDetection, self.torch_dtype)
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
 
     def _init_model(self):
         """Initialize the model and processor."""
-        self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-            self.model_id)
+        if self.device == "cuda":
+            self.model = PaliGemmaForConditionalGeneration.from_pretrained(
+                self.model_id, device_map="auto", quantization_config=self.ModelFunctionUtils.setup_quantization(), torch_dtype=self.torch_dtype)
+        else:
+            self.model = PaliGemmaForConditionalGeneration.from_pretrained(
+                self.model_id, torch_dtype=self.torch_dtype)
         
+        self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
 
@@ -126,10 +133,10 @@ class PaliGemma2:
                  train_test_split: Tuple[int, int, int] = (80, 10, 10),
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
                  num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
-                 patience_threshold: float = 0.0, gradient_accumulation_steps: int = 4,
+                 patience_threshold: float = 0.0, gradient_accumulation_steps: int = 16,
                  lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
-                 create_peft_config: bool = True, random_seed: int = 22, use_fp16: bool = True,
-                 optimizer: str = "adamw_torch_fused", weight_decay: float = 0.01, logging_steps: int = 100,
+                 create_peft_config: bool = True, random_seed: int = 22,
+                 optimizer: str = "paged_adamw_8bit", weight_decay: float = 0.01, logging_steps: int = 100,
                  save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
         """
         Fine-tune the model on the given dataset.
@@ -152,7 +159,6 @@ class PaliGemma2:
             lr_schedule_type: Learning rate schedule type.
             create_peft_config: Whether to create a new PEFT configuration.
             random_seed: Random seed for reproducibility.
-            use_fp16: Whether to use FP16 for training.
             optimizer: Optimizer to use.
             weight_decay: Weight decay for optimizer.
             logging_steps: Number of steps to log training metrics.
@@ -168,8 +174,7 @@ class PaliGemma2:
 
         if self.device != "cuda":
             optimizer = "adamw_torch"
-            use_fp16 = False
-            self.logger.info("Using CPU / MPS... FP16 and Fused Optimizer are disabled.")
+            self.logger.info("Using CPU / MPS... 16-bit and Fused Optimizer are disabled.")
  
 
         training_args = TrainingArguments(
@@ -191,11 +196,11 @@ class PaliGemma2:
                 load_best_model_at_end=True,
                 metric_for_best_model=metric_for_best_model,
                 greater_is_better=False,
-                fp16=use_fp16,
+                bf16=True if self.device == "cuda" else False,
                 optim=optimizer, 
                 lr_scheduler_type=lr_schedule_type,
                 report_to=["tensorboard", "wandb"],
-                dataloader_pin_memory=True,
+                dataloader_pin_memory=False,
                 dataloader_num_workers=num_workers,
                 dataloader_persistent_workers=True if num_workers > 0 else False,
                 gradient_checkpointing=True, 
