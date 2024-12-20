@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, 
-                          Trainer, TrainingArguments, EarlyStoppingCallback)
+                          Trainer, TrainingArguments, EarlyStoppingCallback, DefaultFlowCallback, ProgressCallback)
 import torch.backends
 from tqdm import tqdm
 import os
@@ -12,7 +12,6 @@ from datetime import datetime
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
 from .utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger, DataProcessor
-from multiprocess import set_start_method
 
 """
 To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
@@ -77,10 +76,10 @@ class PaliGemma2:
         """Initialize the model and processor."""
         if self.device == "cuda":
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, device_map="auto", quantization_config=self.quantization_config, torch_dtype=self.torch_dtype)
+                self.model_id, device_map="auto", quantization_config=self.quantization_config)
         else:
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, torch_dtype=self.torch_dtype)
+                self.model_id)
         
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
@@ -151,7 +150,7 @@ class PaliGemma2:
         return text_output
 
     def finetune(self, dataset: str, classes: Dict[int, str],
-                 train_test_split: Tuple[int, int, int] = (80, 10, 10), freeze_vision_encoders: bool = True,
+                 train_test_split: Tuple[int, int, int] = (80, 10, 10), freeze_vision_encoders: bool = False,
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
                  num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 16,
@@ -215,19 +214,13 @@ class PaliGemma2:
                 save_total_limit=save_limit,
                 load_best_model_at_end=True,
                 metric_for_best_model=metric_for_best_model,
-                greater_is_better=False,
-                tf32=False,
-                bf16=False,
                 lr_scheduler_type=lr_schedule_type,
                 report_to=["tensorboard", "wandb"],
                 dataloader_pin_memory=False,
                 dataloader_num_workers=num_workers,
                 dataloader_persistent_workers=True if num_workers > 0 else False,
-                gradient_checkpointing=False, 
-                ddp_find_unused_parameters=False,
-                remove_unused_columns=True,
-                use_cpu=True if self.device != 'cuda' else False,
-                use_mps_device=True if self.device == 'mps' else False,
+                gradient_checkpointing=True, 
+                remove_unused_columns=True
             )
 
         vis_path = os.path.join(
@@ -282,10 +275,16 @@ class PaliGemma2:
                 train_dataset=self.train_dataset,
                 eval_dataset=self.val_dataset,
                 data_collator=self.ModelFunctionUtils.collate_fn,
-                callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
+                callbacks=[
+                    EarlyStoppingCallback(
+                        early_stopping_patience=patience,
+                        early_stopping_threshold=patience_threshold
+                    ),
+                    DefaultFlowCallback(),
+                    ProgressCallback()
+                ]
             )
 
-            set_start_method(self.mp_method)
             train_result = trainer.train()
             trainer.save_model()
             
