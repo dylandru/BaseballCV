@@ -6,7 +6,7 @@ import torch.backends
 from tqdm import tqdm
 import os
 from PIL import Image
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import numpy as np
 from datetime import datetime
 import supervision as sv
@@ -84,71 +84,101 @@ class PaliGemma2:
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
 
-    def inference(self, image_path: str, task: str = "<OD>", text_input: str = None):
+    def inference(self, image_path: str, text_input: str, task: str = "<TEXT_TO_TEXT>",
+                  classes: List[str] = None) -> Tuple[str, str]:
         """
         Perform inference on an image.
 
         Args:
-            image_path: Path to the input image.
-            task: The task to perform (e.g., object detection).
-            text_input: Optional text input for the task.
-
+            image_path (str): Path to the input image.
+            text_input (str): Optional text input for the task.
+            task (str): The task to perform (e.g., object detection).
+            classes (List[str]): Optional list of classes for object detection.
         Returns:
-            The result of the inference.
+            generated_text (str): The result of the inference.
+            image_path (str): The path to the annotated image if task is <TEXT_TO_OD>, else None.
         """
         image = Image.open(image_path)
-        prompt = task + (text_input if text_input else "")
-
-        inputs = self.processor(
-            text=prompt,
-            images=image,
-            return_tensors="pt"
-        ).to(self.device)
-
+        prompt = text_input
         self.model.eval()
 
-        generated_ids = self.model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            early_stopping=False,
-            do_sample=False,
-            num_beams=3,
-        )
+        
+        if task == "<TEXT_TO_TEXT>":
+            inputs = self.processor(
+                text=prompt,
+                images=image.convert("RGB"),
+                return_tensors="pt"
+            )
 
-        generated_text = self.processor.batch_decode(
-            generated_ids, skip_special_tokens=False)[0]
-        parsed_answer = self.processor.post_process_generation(
-            generated_text,
-            task=task,
-            image_size=(image.width, image.height)
-        )
+            generation = self.model.generate(
+                **inputs,
+                max_new_tokens=256,
+                early_stopping=True,
+                do_sample=True,
+                num_beams=2,
+            )
 
-        text_output = parsed_answer[task]
+            generated_text = (self.processor.decode(
+                generation[0], skip_special_tokens=False))[len(prompt):]
+            
+            print(f"Output: {generated_text}")
 
-        if task == "<OD>":
-            self.ModelVisualizationTools.visualize_results(image, text_output)
+            return generated_text
+        
+        elif task == "<TEXT_TO_OD>":
+            if self.device != "cuda":
+                self.model.to("cpu")
 
-        if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
-            if text_input is not None:
-                if task == "CAPTION_TO_PHASE_GROUNDING":
-                    self.ModelVisualizationTools.visualize_results(image, text_output)
-                else:
-                    boxes = text_output.get('bboxes', [])
-                    labels = text_output.get('bboxes_labels', [])
-                    results = {
-                        'bboxes': boxes,
-                        'labels': labels
-                    }
-                    self.ModelVisualizationTools.visualize_results(image, results)
+            inputs = self.processor(
+                text="".join(["<image>", text_input if text_input else "detect all objects"]),
+                images=image.convert("RGB"),
+                return_tensors="pt"
+            )
+        
+            prefix_length = inputs["input_ids"].shape[-1]
+
+            self.logger.info("Conduncting Object Detection Generation...")
+
+            with torch.inference_mode():
+                generation = self.model.generate(**inputs, 
+                                                 max_new_tokens=256, 
+                                                 do_sample=True,
+                                                 num_beams=3,
+                                                 early_stopping=True)
+                
+                generation = generation[0][prefix_length:]
+                generated_text = self.processor.decode(generation, skip_special_tokens=True)
+
+            w, h = image.size
+
+            self.logger.info("Processing Detections")
+
+            if classes:
+                detections = sv.Detections.from_lmm(
+                    lmm='paligemma',
+                    result=generated_text,
+                    resolution_wh=(w, h),
+                    classes=classes)
             else:
-                raise ValueError("Text input is needed for this type of task")
+                detections = sv.Detections.from_lmm(
+                    lmm='paligemma',
+                    result=generated_text,
+                    resolution_wh=(w, h))
 
-        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
-            print(self.ModelFunctionUtils.return_clean_text_output(text_output))
+            self.logger.info("Annotating Image")
 
-        return text_output
+            annotated_image = image.copy()
+            annotated_image = sv.BoxAnnotator().annotate(scene=annotated_image, detections=detections)
+            annotated_image = sv.LabelAnnotator(smart_position=True).annotate(scene=annotated_image, detections=detections)
+            os.makedirs(os.path.join(self.model_run_path, "inference_results"), exist_ok=True)
+            image_path = os.path.join(self.model_run_path, "inference_results", "annotated_image.png")
+            annotated_image.save(image_path)
+            return generated_text, image_path
 
+        else:
+            raise ValueError(f"Task {task} not supported")
+
+    
     def finetune(self, dataset: str, classes: Dict[int, str],
                  train_test_split: Tuple[int, int, int] = (80, 10, 10), freeze_vision_encoders: bool = False,
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
@@ -157,37 +187,37 @@ class PaliGemma2:
                  lora_dropout: float = 0.05, warmup_ratio: float = 0.03, lr_schedule_type: str = "cosine", 
                  create_peft_config: bool = True, random_seed: int = 22, 
                  optimizer: str = "adamw_hf", weight_decay: float = 0.01, logging_steps: int = 100,
-                 save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
+                 save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss") -> Dict:
         """
         Fine-tune the model on the given dataset.
 
         Args:
-            dataset: Path to the dataset.
-            classes: Dictionary mapping class IDs to class names.
-            train_test_split: Tuple specifying the train, test, and validation split ratios.
-            epochs: Number of epochs to train.
-            lr: Learning rate.
-            save_dir: Directory to save the model checkpoints.
-            num_workers: Number of worker processes for data loading.
-            lora_r: Rank for LoRA.
-            lora_scaling: Scaling factor for LoRA.
-            lora_dropout: Dropout rate for LoRA.
-            patience: Number of epochs to wait before early stopping.
-            patience_threshold: Threshold to beat for early stopping.
-            gradient_accumulation_steps: Number of gradient accumulation steps.
-            warmup_ratio: Ratio of warmup steps to total steps.
-            lr_schedule_type: Learning rate schedule type.
-            create_peft_config: Whether to create a new PEFT configuration.
-            random_seed: Random seed for reproducibility.
-            optimizer: Optimizer to use.
-            weight_decay: Weight decay for optimizer.
-            logging_steps: Number of steps to log training metrics.
-            save_eval_steps: Number of steps to save and evaluate model checkpoints.
-            save_limit: Maximum number of model checkpoints to save (from the last saved checkpoint)
-            metric_for_best_model: Metric to use for saving the best model.
+            dataset (str): Path to the dataset.
+            classes (Dict[int, str]): Dictionary mapping class IDs to class names.
+            train_test_split (Tuple[int, int, int]): Tuple specifying the train, test, and validation split ratios.
+            epochs (int): Number of epochs to train.
+            lr (float): Learning rate.
+            save_dir (str): Directory to save the model checkpoints.
+            num_workers (int): Number of worker processes for data loading.
+            lora_r (int): Rank for LoRA.
+            lora_scaling (int): Scaling factor for LoRA.
+            lora_dropout (float): Dropout rate for LoRA.
+            patience (int): Number of epochs to wait before early stopping.
+            patience_threshold (float): Threshold to beat for early stopping.
+            gradient_accumulation_steps (int): Number of gradient accumulation steps.
+            warmup_ratio (float): Ratio of warmup steps to total steps.
+            lr_schedule_type (str): Learning rate schedule type.
+            create_peft_config (bool): Whether to create a new PEFT configuration.
+            random_seed (int): Random seed for reproducibility.
+            optimizer (str): Optimizer to use.
+            weight_decay (float): Weight decay for optimizer.
+            logging_steps (int): Number of steps to log training metrics.
+            save_eval_steps (int): Number of steps to save and evaluate model checkpoints.
+            save_limit (int): Maximum number of model checkpoints to save (from the last saved checkpoint)
+            metric_for_best_model (str): Metric to use for saving the best model.
 
         Returns:
-            Dictionary containing training metrics.
+            train_result (Dict): Dictionary containing training metrics.
         """
         self.logger.info(f"Finetuning {self.model_id} on {dataset}")
         save_dir = os.path.join(self.model_run_path, "model_checkpoints")
