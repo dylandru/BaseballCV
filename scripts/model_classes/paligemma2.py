@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
-from .utils import YOLOToJSONLDetection, ModelFunctionUtils, ModelVisualizationTools, ModelLogger
+from .utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger, DataProcessor
 
 """
 To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
@@ -21,7 +21,7 @@ class PaliGemma2:
     def __init__(self, 
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
-                 batch_size: int = 8):
+                 batch_size: int = 8, torch_dtype: torch.dtype = torch.float32):
         """
         Initialize the PaliGemma2 model.
 
@@ -38,9 +38,8 @@ class PaliGemma2:
         self.batch_size = batch_size
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
-        self.entries = [] 
         self.image_directory_path = "" 
-        self.torch_dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
+        self.torch_dtype = torch_dtype
         self.augment = True 
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
@@ -54,9 +53,7 @@ class PaliGemma2:
         self.peft_model = None
         self._init_model()
 
-        self.YOLOToJSONLDetection = YOLOToJSONLDetection(
-            self, self.entries, self.image_directory_path, self.logger, self.augment
-        )
+        self.DataProcessor = DataProcessor(self.logger)
         
         self.ModelFunctionUtils = ModelFunctionUtils(
             self.model_name, 
@@ -67,7 +64,6 @@ class PaliGemma2:
             self.model, 
             self.peft_model,
             self.logger,
-            self.YOLOToJSONLDetection,
             self.torch_dtype
         )
         
@@ -157,9 +153,9 @@ class PaliGemma2:
                  epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
                  num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
                  patience_threshold: float = 0.0, gradient_accumulation_steps: int = 16,
-                 lora_dropout: float = 0.05, warmup_ratio: float = 0.1, lr_schedule_type: str = "cosine", 
-                 create_peft_config: bool = True, random_seed: int = 22,
-                 optimizer: str = "paged_adamw_8bit", weight_decay: float = 0.01, logging_steps: int = 100,
+                 lora_dropout: float = 0.05, warmup_ratio: float = 0.03, lr_schedule_type: str = "cosine", 
+                 create_peft_config: bool = True, random_seed: int = 22, 
+                 optimizer: str = "adamw_hf", weight_decay: float = 0.01, logging_steps: int = 100,
                  save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss"):
         """
         Fine-tune the model on the given dataset.
@@ -198,10 +194,6 @@ class PaliGemma2:
         if freeze_vision_encoders:
             self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
 
-        if self.device != "cuda":
-            optimizer = "adamw_torch"
-            self.logger.info("Using CPU / MPS... 16-bit and Fused Optimizer are disabled.")
- 
 
         training_args = TrainingArguments(
                 seed=random_seed,
@@ -222,14 +214,14 @@ class PaliGemma2:
                 load_best_model_at_end=True,
                 metric_for_best_model=metric_for_best_model,
                 greater_is_better=False,
-                bf16=True if self.device == "cuda" else False,
-                optim=optimizer, 
+                tf32=False,
+                bf16=False,
                 lr_scheduler_type=lr_schedule_type,
                 report_to=["tensorboard", "wandb"],
                 dataloader_pin_memory=False,
                 dataloader_num_workers=num_workers,
                 dataloader_persistent_workers=True if num_workers > 0 else False,
-                gradient_checkpointing=True, 
+                gradient_checkpointing=False, 
                 ddp_find_unused_parameters=False,
                 remove_unused_columns=True,
                 use_cpu=True if self.device != 'cuda' else False,
@@ -246,19 +238,19 @@ class PaliGemma2:
         os.makedirs(vis_path, exist_ok=True)
 
         try:
-            train_path, valid_path = self.YOLOToJSONLDetection.prepare_dataset(
+            train_image_path, valid_image_path, train_jsonl_path, test_jsonl_path, valid_jsonl_path = self.DataProcessor.prepare_dataset(
                 base_path=dataset,
                 dict_classes=classes,
                 train_test_split=train_test_split
             )
-            self.logger.info(f"Dataset Preparation Complete - Train Path: {train_path}, Valid Path: {valid_path}")
+            self.logger.info(f"Dataset Preparation Complete - Train Path: {train_image_path}, Valid Path: {valid_image_path}")
 
             self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(
-                train_path, valid_path, num_workers=num_workers
+                train_image_path, valid_image_path, train_jsonl_path, valid_jsonl_path, num_workers=num_workers
             )
             self.logger.info("Data Loader Setup Complete")
 
-            _, self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
+            self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
 
             self.logger.info(
                 f"Training Configuration:\n"
@@ -285,8 +277,8 @@ class PaliGemma2:
             trainer = Trainer(
                 model=self.peft_model,
                 args=training_args,
-                train_dataset=self.train_loader.dataset,
-                eval_dataset=self.val_loader.dataset,
+                train_dataset=self.train_loader,
+                eval_dataset=self.val_loader,
                 data_collator=self.ModelFunctionUtils.collate_fn,
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
             )

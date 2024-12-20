@@ -3,13 +3,15 @@ import logging
 from torch.utils.data import DataLoader, Dataset
 from peft import LoraConfig, get_peft_model
 from transformers import BitsAndBytesConfig
-from .yolo_to_jsonl import YOLOToJSONLDetection
+from .yolo_to_jsonl import JSONLDetection
 from typing import Dict
+import random
+import string
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: None, model: None, 
-                 peft_model: None, logger: logging.Logger, yolo_to_jsonl: YOLOToJSONLDetection, torch_dtype: torch.dtype):
+                 peft_model: None, logger: logging.Logger, torch_dtype: torch.dtype):
         """
         Initialize the ModelFunctionUtils class.
 
@@ -22,7 +24,7 @@ class ModelFunctionUtils:
             model: Model to use for training and validation.
             peft_model: PEFT model to use for training and validation.
             logger: Logger to use for logging.
-            yolo_to_jsonl: YOLOToJSONLDetection to use for creating the dataset.
+            yolo_to_jsonl: JSONLDetection to use for creating the dataset.
         """
         self.model_name = model_name
         self.model_run_path = model_run_path
@@ -32,113 +34,90 @@ class ModelFunctionUtils:
         self.model = model
         self.peft_model = peft_model
         self.logger = logger
-        self.YOLOToJSONLDetection_instance = yolo_to_jsonl
-        self.YOLOToJSONLDetection_class = YOLOToJSONLDetection
+        self.JSONLDetection_class = JSONLDetection
         self.torch_dtype = torch_dtype
 
+    def augment_suffix(self, suffix: str) -> str:
+        """
+        Augment the suffix with a random string.
+        """
+        return suffix + "_" + "".join(random.choices(string.ascii_letters + string.digits, k=4))
+
+
     def collate_fn(self, batch):
-        prefixes, suffixes, images = zip(*batch)
-        
-        formatted_texts = [f"<image>{prefix}{suffix}<bos>" for prefix, suffix in zip(prefixes, suffixes)]
-        
+        images, labels = zip(*batch)
+
+        paths = [label["image"] for label in labels]
+        prefixes = ["<image>" + label["prefix"] for label in labels]
+        suffixes = [self.augment_suffix(label["suffix"]) for label in labels]
+
         inputs = self.processor(
-            text=formatted_texts,
-            images=list(images),
+            text=prefixes,
+            images=images,
             return_tensors="pt",
             suffix=suffixes,
             padding="longest"
-        ).to(self.torch_dtype).to(self.device)
-        
-        training_inputs = {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
-            "pixel_values": inputs["pixel_values"],
-        }
-        
-        labels = inputs["input_ids"].clone()
-        labels = labels.roll(-1)  
-        labels[:, -1] = -100  
-        training_inputs["labels"] = labels
-        
-        return training_inputs
-    
-    def transfer_to_device(self, batch, target_device) -> torch.Tensor:
-        """
-        Transfers data to a specified device, handling different data structures recursively.
-        Can be used to transfer DataLoader batches to a device.
-        
-        Args:
-            batch: The data to transfer (can be a tensor, dict, list, DataLoader batch, or other type)
-            target_device: The target device to transfer to ('cpu' or GPU device)
-        
-        Returns:
-            Batch with all tensors moved to the specified device
-        """
-        # Handle DataLoader batch tuples
-        if isinstance(batch, tuple):
-            return tuple(self.transfer_to_device(item, target_device) for item in batch)
+        ).to(self.torch_dtype)
 
-        if isinstance(batch, torch.Tensor):
-            return batch.to(target_device)
-        
-        elif isinstance(batch, dict):
-            return {
-                key: self.transfer_to_device(value, target_device) 
-                if isinstance(value, (torch.Tensor, dict, list, tuple)) 
-                else value
-                for key, value in batch.items()
-            }
-        
-        elif isinstance(batch, list):
-            return [
-                self.transfer_to_device(item, target_device)
-                if isinstance(item, (torch.Tensor, dict, list, tuple))
-                else item
-                for item in batch
-            ]
-        
-        return batch
+        processed_inputs = {}
+        for key, value in inputs.items():
+            if isinstance(value, torch.Tensor):
+                if key == "pixel_values":
+                    processed_inputs[key] = value.requires_grad_(True)
+                else:
+                    processed_inputs[key] = value.requires_grad_(False)
+            else:
+                processed_inputs[key] = value
+
+        processed_inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                        for k, v in processed_inputs.items()}
+
+        return processed_inputs
     
-    def setup_data_loaders(self, train_path: str, valid_path: str, num_workers: int = 8):
+    def setup_data_loaders(self, train_image_path: str, valid_image_path: str, train_jsonl_path: str, valid_jsonl_path: str, num_workers: int = 8):
         """
         Set up data loaders for training and validation.
 
         Args:
-            train_path: Path to the training dataset.
-            valid_path: Path to the validation dataset.
+            train_image_path: Path to the training images.
+            valid_image_path: Path to the validation images.
+            train_jsonl_path: Path to the training JSONL file.
+            valid_jsonl_path: Path to the validation JSONL file.
             num_workers: Number of worker processes for data loading.
         """
         self.train_dataset = self.create_detection_dataset(
-                jsonl_file_path=f"{train_path}train_annotations.json",
-                image_directory_path=train_path,
+                jsonl_file_path=train_jsonl_path,
+                image_directory_path=train_image_path,
                 augment=True
             )
         self.val_dataset = self.create_detection_dataset(
-            jsonl_file_path=f"{valid_path}valid_annotations.json",
-            image_directory_path=valid_path,
+            jsonl_file_path=valid_jsonl_path,
+            image_directory_path=valid_image_path,
             augment=False
         )
 
-        self.train_loader = DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
-            num_workers=num_workers,
-            shuffle=True,
-            persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True if self.device == 'cuda' else False,
-            multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
-        )
-        self.val_loader = DataLoader(
-            self.val_dataset,
-            batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
-            num_workers=num_workers,
-            persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True if self.device == 'cuda' else False,
-            multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
-        )
-        return self.train_loader, self.val_loader
+        # Test without DataLoader
+        # self.train_loader = DataLoader(
+        #     self.train_dataset,
+        #     batch_size=self.batch_size,
+        #     collate_fn=self.collate_fn,
+        #     num_workers=num_workers,
+        #     shuffle=True,
+        #     persistent_workers=False if num_workers == 0 else True,
+        #     pin_memory=True if self.device == 'cuda' else False,
+        #     multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
+        # )
+        # self.val_loader = DataLoader(
+        #     self.val_dataset,
+        #     batch_size=self.batch_size,
+        #     collate_fn=self.collate_fn,
+        #     num_workers=num_workers,
+        #     persistent_workers=False if num_workers == 0 else True,
+        #     pin_memory=True if self.device == 'cuda' else False,
+        #     multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
+        # )
+        # return self.train_loader, self.val_loader
+        return self.train_dataset, self.val_dataset
 
     def setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True):
         """
@@ -153,16 +132,14 @@ class ModelFunctionUtils:
         Returns:
             Information about trainable parameters.
         """
+
         if create_peft_config:
             if hasattr(self.model, 'peft_config'):
                 self.logger.info("Existing PEFT configuration found. Removing old configuration...")
                 peft_core_attrs = ['peft_config', 'base_model_prepare_inputs']
-
                 for attr in peft_core_attrs:
                     if hasattr(self.model, attr):
                         delattr(self.model, attr)
-
-                self.logger.info("PEFT configuration successfully removed - Adding new configuration...")
 
             config = LoraConfig(
                 r=r,
@@ -176,13 +153,27 @@ class ModelFunctionUtils:
                 init_lora_weights="gaussian"
             )
 
-        else:
-            if hasattr(self, 'peft_config'):
-                self.logger.info("PEFT model already exists.. Skipping configuration.")
+        self.model.train()
+        if hasattr(self.model, "enable_input_require_grads"):
+            self.model.enable_input_require_grads()
+            self.logger.info("Input gradients enabled for base model")
+        
+        if hasattr(self.model, "gradient_checkpointing_enable"):
+            self.model.gradient_checkpointing_enable()
+            self.logger.info("Gradient checkpointing enabled for base model")
 
         self.peft_model = get_peft_model(self.model, config)
-        trainable_params_info = self.peft_model.print_trainable_parameters()
-        return trainable_params_info, self.peft_model
+    
+        total_params = sum(p.numel() for p in self.peft_model.parameters())
+        trainable_params = sum(p.numel() for p in self.peft_model.parameters() if p.requires_grad)
+        
+        self.logger.info(
+            f"PEFT Model Configuration Complete:\n"
+            f"- Total Parameters: {total_params:,}\n"
+            f"- Trainable Parameters: {trainable_params:,}\n"
+            f"- Trainable Percentage: {100 * trainable_params / total_params:.2f}%\n")
+            
+        return self.peft_model
     
     def freeze_vision_encoders(self, model):
         """
@@ -211,9 +202,12 @@ class ModelFunctionUtils:
         Returns:
             An instance of the YOLOToPaliGemma2 dataset.
         """
-        entries = self.YOLOToJSONLDetection_instance.load_jsonl_entries(jsonl_file_path)
+        entries = JSONLDetection.load_jsonl_entries(jsonl_file_path=jsonl_file_path, logger=self.logger)
 
-        return self.YOLOToJSONLDetection_class(self, entries, image_directory_path, augment)
+        return self.JSONLDetection_class(entries=entries, 
+                                       image_directory_path=image_directory_path, 
+                                       logger=self.logger, 
+                                       augment=augment)
     
     def return_clean_text_output(self, results: Dict) -> str:
         """
