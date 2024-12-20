@@ -2,10 +2,10 @@ import os
 import random
 from collections import defaultdict
 import concurrent.futures
-from scripts.savant_scraper import BaseballSavVideoScraper
-from scripts.function_utils.utils import extract_frames_from_video
+from .savant_scraper import BaseballSavVideoScraper
+from .function_utils.utils import extract_frames_from_video
 import shutil
-from scripts.load_tools import LoadTools
+from .load_tools import LoadTools
 from ultralytics import YOLO
 from tqdm import tqdm
 from datetime import datetime
