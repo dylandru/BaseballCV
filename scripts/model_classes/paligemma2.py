@@ -12,6 +12,7 @@ from datetime import datetime
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
 from .utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger, DataProcessor
+from multiprocess import set_start_method
 
 """
 To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
@@ -41,6 +42,7 @@ class PaliGemma2:
         self.image_directory_path = "" 
         self.torch_dtype = torch_dtype
         self.augment = True 
+        self.mp_method = "spawn" if self.device == "cuda" else "fork"
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
@@ -245,7 +247,7 @@ class PaliGemma2:
             )
             self.logger.info(f"Dataset Preparation Complete - Train Path: {train_image_path}, Valid Path: {valid_image_path}")
 
-            self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(
+            self.train_dataset, self.val_dataset = self.ModelFunctionUtils.setup_data_loaders(
                 train_image_path, valid_image_path, train_jsonl_path, valid_jsonl_path, num_workers=num_workers
             )
             self.logger.info("Data Loader Setup Complete")
@@ -277,13 +279,13 @@ class PaliGemma2:
             trainer = Trainer(
                 model=self.peft_model,
                 args=training_args,
-                train_dataset=self.train_loader,
-                eval_dataset=self.val_loader,
+                train_dataset=self.train_dataset,
+                eval_dataset=self.val_dataset,
                 data_collator=self.ModelFunctionUtils.collate_fn,
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=patience, early_stopping_threshold=patience_threshold)]
             )
 
-
+            set_start_method(self.mp_method)
             train_result = trainer.train()
             trainer.save_model()
             

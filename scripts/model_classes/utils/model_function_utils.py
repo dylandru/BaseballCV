@@ -96,7 +96,6 @@ class ModelFunctionUtils:
             augment=False
         )
 
-        # Test without DataLoader
         # self.train_loader = DataLoader(
         #     self.train_dataset,
         #     batch_size=self.batch_size,
@@ -105,7 +104,7 @@ class ModelFunctionUtils:
         #     shuffle=True,
         #     persistent_workers=False if num_workers == 0 else True,
         #     pin_memory=True if self.device == 'cuda' else False,
-        #     multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
+        #     multiprocessing_context="spawn" if self.device == "cuda" else None
         # )
         # self.val_loader = DataLoader(
         #     self.val_dataset,
@@ -114,7 +113,7 @@ class ModelFunctionUtils:
         #     num_workers=num_workers,
         #     persistent_workers=False if num_workers == 0 else True,
         #     pin_memory=True if self.device == 'cuda' else False,
-        #     multiprocessing_context='fork' if torch.backends.mps.is_available() and num_workers > 0 else None
+        #     multiprocessing_context="spawn" if self.device == "cuda" else None
         # )
         # return self.train_loader, self.val_loader
         return self.train_dataset, self.val_dataset
