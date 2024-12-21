@@ -76,9 +76,11 @@ class PaliGemma2:
     def _init_model(self):
         """Initialize the model and processor."""
         if self.device == "cuda":
+            mp.set_start_method('spawn', force=True)
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, device_map="auto", quantization_config=self.quantization_config)
+                self.model_id, devic_map="auto", quantization_config=self.quantization_config)
         else:
+            mp.set_start_method('fork', force=True)
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
                 self.model_id)
         
