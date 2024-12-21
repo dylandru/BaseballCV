@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset
+import torch.multiprocessing as mp
 from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, 
                           Trainer, TrainingArguments, EarlyStoppingCallback, DefaultFlowCallback, ProgressCallback)
 import torch.backends
@@ -314,8 +315,11 @@ class PaliGemma2:
                     ProgressCallback()
                 ]
             )
-
-            train_result = trainer.train()
+            
+            if self.device == "cuda":
+                train_result = mp.spawn(trainer.train, nprocs=1, args=(self.device,))
+            else:
+                train_result = trainer.train()
             trainer.save_model()
             
             return train_result
