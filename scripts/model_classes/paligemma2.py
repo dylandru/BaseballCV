@@ -347,6 +347,8 @@ class PaliGemma2:
                 val_loss = 0
                 with torch.no_grad():
                     for batch in self.val_loader:
+                        batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                                for k, v in batch.items()}
                         outputs = self.model(**batch)
                         val_loss += outputs.loss.item()
                         val_loss = val_loss / len(self.val_loader)
