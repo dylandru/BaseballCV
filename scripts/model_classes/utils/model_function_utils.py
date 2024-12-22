@@ -10,6 +10,8 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import get_scheduler
 from .yolo_to_jsonl import JSONLDetection
 from functools import partial
+
+
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: None, model: None, 
@@ -95,28 +97,35 @@ class ModelFunctionUtils:
             image_directory_path=valid_image_path,
             augment=False
         )
+        if self.is_colab():
+            loader_kwargs = {
+                "collate_fn": self.collate_fn,
+                "pin_memory": True if self.device == "cuda" else False,
+                "num_workers": num_workers,
+                "persistent_workers": False
+            }
+        else:
+            loader_kwargs = {
+                "collate_fn": partial(self.collate_fn),
+                "num_workers": num_workers,
+                "persistent_workers": False if num_workers == 0 else True,
+                "pin_memory": True,
+                "prefetch_factor": 2 if num_workers > 0 else None,
+                "multiprocessing_context": mp.get_context('spawn'),
+            }
+
 
         self.train_loader = DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            collate_fn=partial(self.collate_fn),
-            num_workers=num_workers,
             shuffle=True,
-            persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True,
-            prefetch_factor=2 if num_workers > 0 else None,
-            multiprocessing_context=mp.get_context('spawn'),
+            **loader_kwargs
         )
         self.val_loader = DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
-            collate_fn=partial(self.collate_fn),
-            num_workers=num_workers,
-            persistent_workers=False if num_workers == 0 else True,
-            pin_memory=True,
             shuffle=False,
-            prefetch_factor=2 if num_workers > 0 else None,
-            multiprocessing_context=mp.get_context('spawn'),
+            **loader_kwargs
         )
 
         return self.train_loader, self.val_loader
@@ -231,6 +240,13 @@ class ModelFunctionUtils:
         self.processor.save_pretrained(os.path.dirname(path))
 
         return self.logger.info(f"Checkpoint saved to {path}")
+
+    def is_colab(self):
+        try:
+            from google.colab import get_ipython
+            return get_ipython().__class__.__module__.startswith('google.colab')
+        except ImportError:
+            return False
     
     
     @staticmethod

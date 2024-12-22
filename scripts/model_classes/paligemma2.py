@@ -44,15 +44,13 @@ class PaliGemma2:
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
         self.image_directory_path = "" 
-        self.torch_dtype = torch_dtype if device != "cuda" else torch.float16
+        self.torch_dtype = torch_dtype
         self.augment = True
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
 
         self.quantization_config = None
-        if self.device == "cuda":
-            self.quantization_config = ModelFunctionUtils.setup_quantization()
         self.model = None
         self.processor = None
         self.peft_model = None
@@ -81,11 +79,7 @@ class PaliGemma2:
         if self.device == "cuda":
             mp.set_start_method('spawn', force=True)
             self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, devic_map="auto", quantization_config=self.quantization_config)
-        else:
-            mp.set_start_method('fork', force=True)
-            self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id)
+                self.model_id, device_map="auto", torch_dtype=self.torch_dtype)
         
         self.processor = PaliGemmaProcessor.from_pretrained(
             self.model_id)
