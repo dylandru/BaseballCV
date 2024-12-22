@@ -1,8 +1,10 @@
 import torch
 from torch.utils.data import Dataset
+from torch.utils.tensorboard import SummaryWriter
+import time
 import torch.multiprocessing as mp
-from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, 
-                          Trainer, TrainingArguments, EarlyStoppingCallback, DefaultFlowCallback, ProgressCallback)
+from torch.optim import AdamW
+from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, get_scheduler)
 import torch.backends
 from tqdm import tqdm
 import os
@@ -20,6 +22,7 @@ To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License 
 
 class PaliGemma2:
     def __init__(self, 
+                 device: str, 
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8, torch_dtype: torch.dtype = torch.float32):
@@ -34,15 +37,15 @@ class PaliGemma2:
     
         self.device = torch.device("cuda" if torch.cuda.is_available()
                                 else "mps" if torch.backends.mps.is_available()
-                                else "cpu")
+                                else "cpu") if device is None else torch.device(device)
+                                
         self.model_id = model_id
         self.batch_size = batch_size
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
         self.image_directory_path = "" 
         self.torch_dtype = torch_dtype
-        self.augment = True 
-        self.mp_method = "spawn" if self.device == "cuda" else "fork"
+        self.augment = True
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
@@ -183,155 +186,210 @@ class PaliGemma2:
 
     
     def finetune(self, dataset: str, classes: Dict[int, str],
-                 train_test_split: Tuple[int, int, int] = (80, 10, 10), freeze_vision_encoders: bool = False,
-                 epochs: int = 20, lr: float = 4e-6, save_dir: str = "model_checkpoints",
-                 num_workers: int = 0, lora_r: int = 8, lora_scaling: int = 8, patience: int = 10,
-                 patience_threshold: float = 0.0, gradient_accumulation_steps: int = 16,
-                 lora_dropout: float = 0.05, warmup_ratio: float = 0.03, lr_schedule_type: str = "cosine", 
-                 create_peft_config: bool = True, random_seed: int = 22, 
-                 optimizer: str = "adamw_hf", weight_decay: float = 0.01, logging_steps: int = 100,
-                 save_eval_steps: int = 1000, save_limit: int = 3, metric_for_best_model: str = "loss") -> Dict:
+            train_test_split: Tuple[int, int, int] = (80, 10, 10),
+            freeze_vision_encoders: bool = False,
+            epochs: int = 20,
+            lr: float = 4e-6,
+            save_dir: str = "model_checkpoints",
+            num_workers: int = None,
+            lora_r: int = 8,
+            lora_scaling: int = 8,
+            patience: int = 10,
+            patience_threshold: float = 0.0,
+            gradient_accumulation_steps: int = 16,
+            lora_dropout: float = 0.05,
+            warmup_ratio: float = 0.03,
+            lr_schedule_type: str = "cosine",
+            create_peft_config: bool = True,
+            random_seed: int = 22,
+            weight_decay: float = 0.01,
+            logging_steps: int = 100,
+            save_eval_steps: int = 1000,
+            save_limit: int = 3,
+            metric_for_best_model: str = "loss") -> Dict:
+
         """
-        Fine-tune the model on the given dataset.
-
-        Args:
-            dataset (str): Path to the dataset.
-            classes (Dict[int, str]): Dictionary mapping class IDs to class names.
-            train_test_split (Tuple[int, int, int]): Tuple specifying the train, test, and validation split ratios.
-            epochs (int): Number of epochs to train.
-            lr (float): Learning rate.
-            save_dir (str): Directory to save the model checkpoints.
-            num_workers (int): Number of worker processes for data loading.
-            lora_r (int): Rank for LoRA.
-            lora_scaling (int): Scaling factor for LoRA.
-            lora_dropout (float): Dropout rate for LoRA.
-            patience (int): Number of epochs to wait before early stopping.
-            patience_threshold (float): Threshold to beat for early stopping.
-            gradient_accumulation_steps (int): Number of gradient accumulation steps.
-            warmup_ratio (float): Ratio of warmup steps to total steps.
-            lr_schedule_type (str): Learning rate schedule type.
-            create_peft_config (bool): Whether to create a new PEFT configuration.
-            random_seed (int): Random seed for reproducibility.
-            optimizer (str): Optimizer to use.
-            weight_decay (float): Weight decay for optimizer.
-            logging_steps (int): Number of steps to log training metrics.
-            save_eval_steps (int): Number of steps to save and evaluate model checkpoints.
-            save_limit (int): Maximum number of model checkpoints to save (from the last saved checkpoint)
-            metric_for_best_model (str): Metric to use for saving the best model.
-
-        Returns:
-            train_result (Dict): Dictionary containing training metrics.
+        Enhanced training loop with comprehensive options for fine-tuning control.
+        Uses TensorBoard for visualization and metric tracking.
         """
-        self.logger.info(f"Finetuning {self.model_id} on {dataset}")
-        save_dir = os.path.join(self.model_run_path, "model_checkpoints")
 
-        if freeze_vision_encoders:
-            self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
-
-
-        training_args = TrainingArguments(
-                seed=random_seed,
-                output_dir=save_dir,
-                num_train_epochs=epochs,
-                per_device_train_batch_size=self.batch_size,
-                per_device_eval_batch_size=self.batch_size,
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                warmup_ratio = warmup_ratio,
-                learning_rate=lr,
-                weight_decay=weight_decay,
-                logging_steps=logging_steps,
-                eval_strategy="steps",
-                save_strategy="steps", 
-                save_steps=save_eval_steps,
-                eval_steps=save_eval_steps,
-                save_total_limit=save_limit,
-                load_best_model_at_end=True,
-                metric_for_best_model=metric_for_best_model,
-                lr_scheduler_type=lr_schedule_type,
-                report_to=["tensorboard", "wandb"],
-                dataloader_pin_memory=False,
-                dataloader_num_workers=num_workers,
-                dataloader_persistent_workers=True if num_workers > 0 else False,
-                gradient_checkpointing=True, 
-                remove_unused_columns=True
-            )
-
-        vis_path = os.path.join(
-            self.model_run_path,
-            'training_visualizations',
-            self.model_id.replace('/', '_'),
-            'finetuning_info',
-            os.path.basename(dataset.rstrip('/'))
-        )
-        os.makedirs(vis_path, exist_ok=True)
-
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
+        
+        save_dir = os.path.join(self.model_run_path, save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        
+        run_name = f"run_{time.strftime('%Y%m%d-%H%M%S')}"
+        tensorboard_dir = os.path.join(self.model_run_path, "tensorboard_logs", run_name)
+        writer = SummaryWriter(tensorboard_dir)
+        
         try:
-            train_image_path, valid_image_path, train_jsonl_path, test_jsonl_path, valid_jsonl_path = self.DataProcessor.prepare_dataset(
-                base_path=dataset,
-                dict_classes=classes,
-                train_test_split=train_test_split
+            train_image_path, valid_image_path, train_jsonl_path, test_jsonl_path, valid_jsonl_path = (
+                self.DataProcessor.prepare_dataset(
+                    base_path=dataset,
+                    dict_classes=classes,
+                    train_test_split=train_test_split
+                )
             )
             self.logger.info(f"Dataset Preparation Complete - Train Path: {train_image_path}, Valid Path: {valid_image_path}")
 
-            self.train_dataset, self.val_dataset = self.ModelFunctionUtils.setup_data_loaders(
-                train_image_path, valid_image_path, train_jsonl_path, valid_jsonl_path, num_workers=num_workers
-            )
-            self.logger.info("Data Loader Setup Complete")
-
-            self.peft_model = self.ModelFunctionUtils.setup_peft(lora_r, lora_scaling, lora_dropout, create_peft_config)
-
-            self.logger.info(
-                f"Training Configuration:\n"
-                f"- Model ID: {self.model_id}\n"
-                f"- Model Run Path: {self.model_run_path}\n"
-                f"- Dataset: {dataset}\n"
-                f"- Train Test Split: {train_test_split}\n"
-                f"- Epochs: {epochs}\n"
-                f"- Learning Rate: {lr}\n"
-                f"- Optimizer: {optimizer}\n" 
-                f"- Scheduler: {lr_schedule_type}\n"
-                f"- Batch Size: {self.batch_size}\n"
-                f"- Gradient Accumulation: {gradient_accumulation_steps}\n"
-                f"- Warmup Ratio: {warmup_ratio}\n"
-                f"- Early Stopping Patience: {patience}\n"
-                f"- Patience Threshold: {patience_threshold}\n"
-                f"- Number of Workers: {num_workers}\n"
-                f"- Save & Eval Steps: {save_eval_steps}\n"
-                f"- Save Limit: {save_limit}\n"
-                f"- Metric for Best Model: {metric_for_best_model}\n"
-
-            )
-
-            trainer = Trainer(
-                model=self.peft_model,
-                args=training_args,
-                train_dataset=self.train_dataset,
-                eval_dataset=self.val_dataset,
-                data_collator=self.ModelFunctionUtils.collate_fn,
-                callbacks=[
-                    EarlyStoppingCallback(
-                        early_stopping_patience=patience,
-                        early_stopping_threshold=patience_threshold
-                    ),
-                    DefaultFlowCallback(),
-                    ProgressCallback()
-                ]
-            )
+            if not num_workers and self.device != "mps":
+                num_workers = min(12, mp.cpu_count() - 1)
+                self.logger.info(f"Using Default of {num_workers} workers for Data Loading")
+            elif num_workers and num_workers > 0 and self.device == "mps":
+                num_workers = 0
+                self.logger.info("Using 0 workers for Data Loading on MPS")
             
-            if self.device == "cuda":
-                train_result = mp.spawn(trainer.train, nprocs=1, args=(self.device,))
-            else:
-                train_result = trainer.train()
-            trainer.save_model()
-            
-            return train_result
+            self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(
+                train_image_path=train_image_path,
+                valid_image_path=valid_image_path,
+                train_jsonl_path=train_jsonl_path,
+                valid_jsonl_path=valid_jsonl_path,
+                num_workers=num_workers
+            )
 
+            if freeze_vision_encoders:
+                self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
+
+            self.peft_model = self.ModelFunctionUtils.setup_peft(
+                lora_r, lora_scaling, lora_dropout, create_peft_config)
+            self.model = self.peft_model.to(self.device)
+
+            optimizer_group_params = [
+                {
+                    'params': [p for n, p in self.model.named_parameters() 
+                            if p.requires_grad and not any(nd in n for nd in ['bias', 'LayerNorm.weight'])],
+                    'weight_decay': weight_decay
+                },
+                {
+                    'params': [p for n, p in self.model.named_parameters() 
+                            if p.requires_grad and any(nd in n for nd in ['bias', 'LayerNorm.weight'])],
+                    'weight_decay': 0.0
+                }
+            ]
+            optimizer = AdamW(optimizer_group_params, lr=lr) #hardcoded AdamW for now...
+            
+            num_training_steps = epochs * len(self.train_loader)
+            num_warmup_steps = int(warmup_ratio * num_training_steps)
+            scheduler = get_scheduler(
+                name=lr_schedule_type,
+                optimizer=optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=num_training_steps
+            )
+
+            best_metric = float('inf') if metric_for_best_model == "loss" else float('-inf')
+            patience_counter = 0
+            saved_checkpoints = []
+            global_step = 0
+            scaler = torch.cuda.amp.GradScaler() if self.device == "cuda" else None
+
+            for epoch in range(epochs):
+                self.model.train()
+                train_loss = 0
+                
+                for step, batch in enumerate(tqdm(self.train_loader, desc=f"Epoch {epoch + 1}/{epochs}")):
+
+                    batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                            for k, v in batch.items()}
+                            
+                    if scaler is not None:
+                        with torch.cuda.amp.autocast():
+                            outputs = self.model(**batch)
+                            loss = outputs.loss / gradient_accumulation_steps
+                        scaler.scale(loss).backward()
+                    else:
+                        outputs = self.model(**batch)
+                        loss = outputs.loss / gradient_accumulation_steps
+                        loss.backward()
+                    
+                    train_loss += loss.item()
+                    
+                    if (step + 1) % gradient_accumulation_steps == 0:
+                        if scaler is not None:
+                            scaler.unscale_(optimizer)
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                            scaler.step(optimizer)
+                            scaler.update()
+                        else:
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                            optimizer.step()
+                        
+                        scheduler.step()
+                        optimizer.zero_grad()
+                        
+                        if global_step % logging_steps == 0:
+                            writer.add_scalar('Training/Loss', loss.item(), global_step)
+                            writer.add_scalar('Training/LearningRate', scheduler.get_last_lr()[0], global_step)
+                        
+                        global_step += 1
+                
+                avg_train_loss = train_loss / len(self.train_loader)
+                self.model.eval()
+                val_loss = 0
+                with torch.no_grad():
+                    for batch in self.val_loader:
+                        outputs = self.model(**batch)
+                        val_loss += outputs.loss.item()
+                        val_loss = val_loss / len(self.val_loader)
+                
+                writer.add_scalars('Loss', {
+                    'train': avg_train_loss,
+                    'validation': val_loss
+                }, epoch)
+                
+                current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
+                is_better = current_metric < best_metric
+                
+                if is_better:
+                    best_metric = current_metric
+                    patience_counter = 0
+                    self.ModelFunctionUtils.save_checkpoint(
+                        path=checkpoint_path,
+                        epoch=epoch,
+                        model=self.model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        loss=val_loss,
+                        scaler=scaler
+                    )
+                    
+                else:
+                    patience_counter += 1
+                
+                if epoch % (epochs // save_eval_steps) == 0:
+                    checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
+                    self.ModelFunctionUtils.save_checkpoint(
+                        path=checkpoint_path,
+                        epoch=epoch,
+                        model=self.model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        loss=val_loss,
+                        scaler=scaler
+                    )
+                    saved_checkpoints.append(checkpoint_path)
+                    
+                    if len(saved_checkpoints) > save_limit:
+                        os.remove(saved_checkpoints.pop(0))
+                
+                if patience_counter >= patience and abs(current_metric - best_metric) > patience_threshold:
+                    self.logger.info(f"Early stopping triggered at epoch {epoch + 1}")
+                    break
+            
+            return {
+                'best_metric': best_metric,
+                'final_train_loss': avg_train_loss,
+                'final_val_loss': val_loss,
+                'tensorboard_dir': tensorboard_dir,
+                'early_stopped': patience_counter >= patience,
+                'model_path': os.path.join(save_dir, "best_model.pt")
+            }
+            
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
+            writer.close()
             raise e
-
-
-
 
     def evaluate(self, test_dataset: Dataset, classes: Dict[int, str]):
         """
