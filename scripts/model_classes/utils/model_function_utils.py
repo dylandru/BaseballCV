@@ -3,13 +3,10 @@ import random
 import string
 from typing import Dict
 import torch
-import torch.multiprocessing as mp
 from peft import LoraConfig, get_peft_model
-from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
-from transformers import get_scheduler
+from transformers import BitsAndBytesConfig
 from .yolo_to_jsonl import JSONLDetection
-from functools import partial
 
 
 class ModelFunctionUtils:
@@ -228,13 +225,6 @@ class ModelFunctionUtils:
         self.processor.save_pretrained(os.path.dirname(path))
 
         return self.logger.info(f"Checkpoint saved to {path}")
-
-    def is_colab(self):
-        try:
-            from google.colab import get_ipython
-            return get_ipython().__class__.__module__.startswith('google.colab')
-        except ImportError:
-            return False
     
     
     @staticmethod
