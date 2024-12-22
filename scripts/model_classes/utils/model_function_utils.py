@@ -1,13 +1,15 @@
-import torch
 import logging
-from torch.utils.data import DataLoader, Dataset
-from peft import LoraConfig, get_peft_model
-from transformers import BitsAndBytesConfig
-from .yolo_to_jsonl import JSONLDetection
-from typing import Dict
 import random
 import string
-
+from typing import Dict
+import torch
+import torch.multiprocessing as mp
+from peft import LoraConfig, get_peft_model
+from torch.optim import AdamW
+from torch.utils.data import Dataset, DataLoader
+from transformers import get_scheduler
+from .yolo_to_jsonl import JSONLDetection
+from functools import partial
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: None, model: None, 
@@ -34,7 +36,6 @@ class ModelFunctionUtils:
         self.model = model
         self.peft_model = peft_model
         self.logger = logger
-        self.JSONLDetection_class = JSONLDetection
         self.torch_dtype = torch_dtype
 
     def augment_suffix(self, suffix: str) -> str:
@@ -57,24 +58,22 @@ class ModelFunctionUtils:
             return_tensors="pt",
             suffix=suffixes,
             padding="longest"
-        ).to(self.torch_dtype)
+        )
 
         processed_inputs = {}
         for key, value in inputs.items():
             if isinstance(value, torch.Tensor):
                 if key == "pixel_values":
+                    value = value.to(self.torch_dtype)
                     processed_inputs[key] = value.requires_grad_(True)
                 else:
-                    processed_inputs[key] = value.requires_grad_(False)
+                    processed_inputs[key] = value.long().requires_grad_(False)
             else:
                 processed_inputs[key] = value
 
-        processed_inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                        for k, v in processed_inputs.items()}
-
         return processed_inputs
     
-    def setup_data_loaders(self, train_image_path: str, valid_image_path: str, train_jsonl_path: str, valid_jsonl_path: str, num_workers: int = 8):
+    def setup_data_loaders(self, train_image_path: str, valid_image_path: str, train_jsonl_path: str, valid_jsonl_path: str, num_workers: int):
         """
         Set up data loaders for training and validation.
 
@@ -85,6 +84,7 @@ class ModelFunctionUtils:
             valid_jsonl_path: Path to the validation JSONL file.
             num_workers: Number of worker processes for data loading.
         """
+
         self.train_dataset = self.create_detection_dataset(
                 jsonl_file_path=train_jsonl_path,
                 image_directory_path=train_image_path,
@@ -96,27 +96,30 @@ class ModelFunctionUtils:
             augment=False
         )
 
-        # self.train_loader = DataLoader(
-        #     self.train_dataset,
-        #     batch_size=self.batch_size,
-        #     collate_fn=self.collate_fn,
-        #     num_workers=num_workers,
-        #     shuffle=True,
-        #     persistent_workers=False if num_workers == 0 else True,
-        #     pin_memory=True if self.device == 'cuda' else False,
-        #     multiprocessing_context="spawn" if self.device == "cuda" else None
-        # )
-        # self.val_loader = DataLoader(
-        #     self.val_dataset,
-        #     batch_size=self.batch_size,
-        #     collate_fn=self.collate_fn,
-        #     num_workers=num_workers,
-        #     persistent_workers=False if num_workers == 0 else True,
-        #     pin_memory=True if self.device == 'cuda' else False,
-        #     multiprocessing_context="spawn" if self.device == "cuda" else None
-        # )
-        # return self.train_loader, self.val_loader
-        return self.train_dataset, self.val_dataset
+        self.train_loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            collate_fn=partial(self.collate_fn),
+            num_workers=num_workers,
+            shuffle=True,
+            persistent_workers=False if num_workers == 0 else True,
+            pin_memory=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            multiprocessing_context=mp.get_context('spawn'),
+        )
+        self.val_loader = DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            collate_fn=partial(self.collate_fn),
+            num_workers=num_workers,
+            persistent_workers=False if num_workers == 0 else True,
+            pin_memory=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            multiprocessing_context=mp.get_context('spawn'),
+        )
+
+        return self.train_loader, self.val_loader
+
 
     def setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True):
         """
@@ -153,13 +156,6 @@ class ModelFunctionUtils:
             )
 
         self.model.train()
-        if hasattr(self.model, "enable_input_require_grads"):
-            self.model.enable_input_require_grads()
-            self.logger.info("Input gradients enabled for base model")
-        
-        if hasattr(self.model, "gradient_checkpointing_enable"):
-            self.model.gradient_checkpointing_enable()
-            self.logger.info("Gradient checkpointing enabled for base model")
 
         self.peft_model = get_peft_model(self.model, config)
     
@@ -203,7 +199,7 @@ class ModelFunctionUtils:
         """
         entries = JSONLDetection.load_jsonl_entries(jsonl_file_path=jsonl_file_path, logger=self.logger)
 
-        return self.JSONLDetection_class(entries=entries, 
+        return JSONLDetection(entries=entries, 
                                        image_directory_path=image_directory_path, 
                                        logger=self.logger, 
                                        augment=augment)
@@ -219,6 +215,22 @@ class ModelFunctionUtils:
             Clean text output.
         """
         return next(iter(results.values())).strip()
+
+    def save_checkpoint(self, path, epoch, model, optimizer, scheduler, loss, scaler=None) -> logging.Logger:
+        """Save a model checkpoint with all training state."""
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'loss': loss,
+            'scaler_state_dict': scaler.state_dict() if scaler else None
+        }
+        torch.save(checkpoint, path)
+        self.processor.save_pretrained(os.path.dirname(path))
+
+        return self.logger.info(f"Checkpoint saved to {path}")
+    
     
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4"):
@@ -231,6 +243,8 @@ class ModelFunctionUtils:
             bnb_4bit_quant_storage=torch.bfloat16
         )
         return quant_config
+
+
     
     
     
