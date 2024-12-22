@@ -51,7 +51,6 @@ class PaliGemma2:
                                 self.model_id, self.batch_size, self.device).orig_logging()
 
         self.quantization_config = None
-        self.model = None
         self.processor = None
         self.peft_model = None
         self._init_model()
@@ -76,13 +75,33 @@ class PaliGemma2:
 
     def _init_model(self):
         """Initialize the model and processor."""
-        if self.device == "cuda":
-            mp.set_start_method('spawn', force=True)
-            self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                self.model_id, device_map="auto", torch_dtype=self.torch_dtype)
-        
-        self.processor = PaliGemmaProcessor.from_pretrained(
-            self.model_id)
+        try:
+            if self.device == "cuda":
+                self.model = PaliGemmaForConditionalGeneration.from_pretrained(
+                    self.model_id, 
+                    device_map="auto", 
+                    use_flash_attention_2=True, 
+                    torch_dtype=self.torch_dtype, 
+                    torch_dtype_details={
+                        "compute_dtype": self.torch_dtype, 
+                        "storage_dtype": self.torch_dtype
+                    }
+                )
+            else:
+                self.model = PaliGemmaForConditionalGeneration.from_pretrained(
+                    self.model_id
+                )
+            
+            self.processor = PaliGemmaProcessor.from_pretrained(self.model_id)
+            
+            if self.model is None:
+                raise ValueError("Model failed to load")
+
+            self.logger.info("Model initialization successful")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to initialize model: {str(e)}")
+            raise RuntimeError(f"Model initialization failed: {str(e)}")
 
     def inference(self, image_path: str, text_input: str, task: str = "<TEXT_TO_TEXT>",
                   classes: List[str] = None) -> Tuple[str, str]:
@@ -226,6 +245,11 @@ class PaliGemma2:
                 )
             )
             self.logger.info(f"Dataset Preparation Complete - Train Path: {train_image_path}, Valid Path: {valid_image_path}")
+
+            if self.device == "cuda":
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                torch.backends.cudnn.benchmark = True
 
             if not num_workers and self.device != "mps":
                 num_workers = min(12, mp.cpu_count() - 1)

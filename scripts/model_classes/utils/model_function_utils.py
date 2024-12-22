@@ -164,7 +164,6 @@ class ModelFunctionUtils:
                 use_rslora=True,
                 init_lora_weights="gaussian"
             )
-
         self.model.train()
 
         self.peft_model = get_peft_model(self.model, config)
