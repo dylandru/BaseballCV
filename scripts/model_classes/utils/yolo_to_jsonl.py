@@ -1,10 +1,11 @@
 import random
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 from PIL import Image, ImageEnhance
 import os
 import json
 from torch.utils.data import Dataset
+import numpy as np
 
 class JSONLDetection(Dataset):
     def __init__(self, entries, image_directory_path, logger: logging.Logger, augment=True):
@@ -20,7 +21,7 @@ class JSONLDetection(Dataset):
         self.entries = entries
         self.image_directory_path = image_directory_path
         self.augment = augment
-        self.transforms = self.get_augmentation_transforms() if augment else []
+        self.transforms = [self.random_color_jitter, self.random_blur, self.random_noise] if augment else []
         self.logger = logger
 
     def __len__(self):
@@ -47,46 +48,42 @@ class JSONLDetection(Dataset):
 
         return image, entry
     
-    def get_augmentation_transforms(self):
-        """
-        Get data augmentation transforms.
+    @staticmethod
+    def random_color_jitter(image):
+        """Apply random color jittering to the image."""
+        factors = {
+            'brightness': random.uniform(0.8, 1.2),
+            'contrast': random.uniform(0.8, 1.2),
+            'color': random.uniform(0.8, 1.2)
+        }
 
-        Returns:
-            List of augmentation transform functions.
-        """
-        def random_color_jitter(image):
-            factors = {
-                'brightness': random.uniform(0.8, 1.2),
-                'contrast': random.uniform(0.8, 1.2),
-                'color': random.uniform(0.8, 1.2)
-            }
+        for enhance_type, factor in factors.items():
+            if random.random() > 0.5:
+                if enhance_type == 'brightness':
+                    image = ImageEnhance.Brightness(image).enhance(factor)
+                elif enhance_type == 'contrast':
+                    image = ImageEnhance.Contrast(image).enhance(factor)
+                elif enhance_type == 'color':
+                    image = ImageEnhance.Color(image).enhance(factor)
+        return image
 
-            for enhance_type, factor in factors.items():
-                if random.random() > 0.5:
-                    if enhance_type == 'brightness':
-                        image = ImageEnhance.Brightness(image).enhance(factor)
-                    elif enhance_type == 'contrast':
-                        image = ImageEnhance.Contrast(image).enhance(factor)
-                    elif enhance_type == 'color':
-                        image = ImageEnhance.Color(image).enhance(factor)
-            return image
+    @staticmethod
+    def random_blur(image):
+        """Apply random Gaussian blur to the image."""
+        if random.random() > 0.8:
+            from PIL import ImageFilter
+            return image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.0)))
+        return image
 
-        def random_blur(image):
-            if random.random() > 0.8:
-                from PIL import ImageFilter
-                return image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.0)))
-            return image
-
-        def random_noise(image):
-            if random.random() > 0.8:
-                import numpy as np
-                img_array = np.array(image)
-                noise = np.random.normal(0, 2, img_array.shape)
-                noisy_img = np.clip(img_array + noise, 0, 255).astype(np.uint8)
-                return Image.fromarray(noisy_img)
-            return image
-
-        return [random_color_jitter, random_blur, random_noise]
+    @staticmethod
+    def random_noise(image):
+        """Apply random noise to the image."""
+        if random.random() > 0.8:
+            img_array = np.array(image)
+            noise = np.random.normal(0, 2, img_array.shape)
+            noisy_img = np.clip(img_array + noise, 0, 255).astype(np.uint8)
+            return Image.fromarray(noisy_img)
+        return image
     
     @staticmethod
     def load_jsonl_entries(jsonl_file_path: str, logger: logging.Logger) -> List[Dict[str, Any]]:
