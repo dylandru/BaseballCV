@@ -56,18 +56,17 @@ class ModelFunctionUtils:
             images=images,
             return_tensors="pt",
             suffix=suffixes,
-            padding="longest",
-            truncation=True
+            padding="longest"
         )
 
         processed_inputs = {}
         for key, value in inputs.items():
             if isinstance(value, torch.Tensor):
                 if key == "pixel_values":
-                    value = value.to(device=self.device, dtype=self.torch_dtype)
+                    value = value.to(self.torch_dtype)
                     processed_inputs[key] = value.requires_grad_(True)
                 else:
-                    processed_inputs[key] = value.long().requires_grad_(False).to(device=self.device)
+                    processed_inputs[key] = value.long().requires_grad_(False)
             else:
                 processed_inputs[key] = value
 

@@ -303,7 +303,6 @@ class PaliGemma2:
             scaler = torch.cuda.amp.GradScaler() if self.device == "cuda" else None
 
             for epoch in range(epochs):
-                self.model.to(self.device)
                 self.model.train()
                 train_loss = 0
                 
