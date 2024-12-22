@@ -1,4 +1,6 @@
 import torch
+from tqdm.auto import tqdm
+import statistics
 from torch.utils.data import Dataset
 from torch.utils.tensorboard import SummaryWriter
 import time
@@ -6,7 +8,6 @@ import torch.multiprocessing as mp
 from torch.optim import AdamW
 from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, get_scheduler)
 import torch.backends
-from tqdm import tqdm
 import os
 from PIL import Image
 from typing import Dict, Tuple, List
@@ -302,12 +303,26 @@ class PaliGemma2:
             global_step = 0
             scaler = torch.cuda.amp.GradScaler() if self.device == "cuda" else None
 
+            print(f"\n=== Starting Training ===\n"
+                f"Model: {self.model_id}\n"
+                f"Total Epochs: {epochs}\n"
+                f"Batch Size: {self.batch_size}\n"
+                f"Learning Rate: {lr}\n"
+                f"Device: {self.device}\n")
+
             for epoch in range(epochs):
                 self.model.train()
                 train_loss = 0
+                epoch_losses = []
                 
-                for step, batch in enumerate(tqdm(self.train_loader, desc=f"Epoch {epoch + 1}/{epochs}")):
-
+                train_progress = tqdm(
+                    self.train_loader,
+                    desc=f"Epoch {epoch + 1}/{epochs} [Train]",
+                    bar_format='{l_bar}{bar:20}{r_bar}{bar:-10b}',
+                    dynamic_ncols=True
+                )
+                
+                for step, batch in enumerate(train_progress):
                     batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                             for k, v in batch.items()}
                             
@@ -321,7 +336,14 @@ class PaliGemma2:
                         loss = outputs.loss / gradient_accumulation_steps
                         loss.backward()
                     
-                    train_loss += loss.item()
+                    current_loss = loss.item()
+                    epoch_losses.append(current_loss)
+                    train_loss += current_loss
+                    
+                    train_progress.set_postfix({
+                        'loss': f'{statistics.mean(epoch_losses[-100:]):.4f}',
+                        'lr': f'{scheduler.get_last_lr()[0]:.2e}'
+                    })
                     
                     if (step + 1) % gradient_accumulation_steps == 0:
                         if scaler is not None:
@@ -337,33 +359,57 @@ class PaliGemma2:
                         optimizer.zero_grad()
                         
                         if global_step % logging_steps == 0:
-                            writer.add_scalar('Training/Loss', loss.item(), global_step)
+                            writer.add_scalar('Training/Loss', current_loss, global_step)
                             writer.add_scalar('Training/LearningRate', scheduler.get_last_lr()[0], global_step)
                         
                         global_step += 1
                 
                 avg_train_loss = train_loss / len(self.train_loader)
+                
                 self.model.eval()
                 val_loss = 0
+                val_losses = []
+                
+                val_progress = tqdm(
+                    self.val_loader,
+                    desc=f"Epoch {epoch + 1}/{epochs} [Valid]",
+                    bar_format='{l_bar}{bar:20}{r_bar}{bar:-10b}',
+                    dynamic_ncols=True
+                )
+                
                 with torch.no_grad():
-                    for batch in self.val_loader:
+                    for batch in val_progress:
                         batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                                 for k, v in batch.items()}
                         outputs = self.model(**batch)
-                        val_loss += outputs.loss.item()
-                        val_loss = val_loss / len(self.val_loader)
+                        current_val_loss = outputs.loss.item()
+                        val_losses.append(current_val_loss)
+                        val_loss += current_val_loss
+                        
+                        val_progress.set_postfix({
+                            'loss': f'{statistics.mean(val_losses[-100:]):.4f}'
+                        })
                 
+                val_loss = val_loss / len(self.val_loader)
+                current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
+                is_better = current_metric < best_metric
+
                 writer.add_scalars('Loss', {
                     'train': avg_train_loss,
                     'validation': val_loss
                 }, epoch)
                 
-                current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
-                is_better = current_metric < best_metric
+                print(f"\nEpoch {epoch + 1}/{epochs} Summary:")
+                print(f"Training Loss: {avg_train_loss:.4f}")
+                print(f"Validation Loss: {val_loss:.4f}")
+                print(f"Learning Rate: {scheduler.get_last_lr()[0]:.2e}")
                 
+
                 if is_better:
+                    print(f"New Best Model! Previous: {best_metric:.4f} | New: {current_metric:.4f}")
                     best_metric = current_metric
                     patience_counter = 0
+                    checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
                         epoch=epoch,
@@ -373,9 +419,11 @@ class PaliGemma2:
                         loss=val_loss,
                         scaler=scaler
                     )
-                    
                 else:
                     patience_counter += 1
+                    print(f"No improvement for {patience_counter} epochs. Best: {best_metric:.4f}")
+                
+                print("-" * 50)
                 
                 if epoch % (epochs // save_eval_steps) == 0:
                     checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
