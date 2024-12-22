@@ -318,8 +318,10 @@ class PaliGemma2:
                 train_progress = tqdm(
                     self.train_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Train]",
-                    bar_format='{l_bar}{bar:20}{r_bar}{bar:-10b}',
-                    dynamic_ncols=True
+                    bar_format="{desc}\n{percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n"
+                            "Loss: {postfix[loss]} - LR: {postfix[lr]}",
+                    dynamic_ncols=True,
+                    initial=0
                 )
                 
                 for step, batch in enumerate(train_progress):
@@ -343,7 +345,7 @@ class PaliGemma2:
                     train_progress.set_postfix({
                         'loss': f'{statistics.mean(epoch_losses[-100:]):.4f}',
                         'lr': f'{scheduler.get_last_lr()[0]:.2e}'
-                    })
+                    })  
                     
                     if (step + 1) % gradient_accumulation_steps == 0:
                         if scaler is not None:
@@ -369,12 +371,14 @@ class PaliGemma2:
                 self.model.eval()
                 val_loss = 0
                 val_losses = []
-                
+
                 val_progress = tqdm(
                     self.val_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Valid]",
-                    bar_format='{l_bar}{bar:20}{r_bar}{bar:-10b}',
-                    dynamic_ncols=True
+                    bar_format="{desc}\n{percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n"
+                            "Loss: {postfix[loss]}",
+                    dynamic_ncols=True,
+                    initial=0
                 )
                 
                 with torch.no_grad():
@@ -388,7 +392,7 @@ class PaliGemma2:
                         
                         val_progress.set_postfix({
                             'loss': f'{statistics.mean(val_losses[-100:]):.4f}'
-                        })
+                        })  
                 
                 val_loss = val_loss / len(self.val_loader)
                 current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
