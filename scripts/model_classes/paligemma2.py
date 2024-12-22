@@ -22,7 +22,7 @@ To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License 
 
 class PaliGemma2:
     def __init__(self, 
-                 device: str, 
+                 device: str = None, 
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8, torch_dtype: torch.dtype = torch.float32):
@@ -44,7 +44,7 @@ class PaliGemma2:
         self.model_run_path = model_run_path
         self.model_name = "PaliGemma2"
         self.image_directory_path = "" 
-        self.torch_dtype = torch_dtype
+        self.torch_dtype = torch_dtype if device != "cuda" else torch.float16
         self.augment = True
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
@@ -196,14 +196,14 @@ class PaliGemma2:
             lora_scaling: int = 8,
             patience: int = 10,
             patience_threshold: float = 0.0,
-            gradient_accumulation_steps: int = 16,
+            gradient_accumulation_steps: int = 2,
             lora_dropout: float = 0.05,
             warmup_ratio: float = 0.03,
             lr_schedule_type: str = "cosine",
             create_peft_config: bool = True,
             random_seed: int = 22,
             weight_decay: float = 0.01,
-            logging_steps: int = 100,
+            logging_steps: int = 1000,
             save_eval_steps: int = 1000,
             save_limit: int = 3,
             metric_for_best_model: str = "loss") -> Dict:

@@ -114,6 +114,7 @@ class ModelFunctionUtils:
             num_workers=num_workers,
             persistent_workers=False if num_workers == 0 else True,
             pin_memory=True,
+            shuffle=False,
             prefetch_factor=2 if num_workers > 0 else None,
             multiprocessing_context=mp.get_context('spawn'),
         )
