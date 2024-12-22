@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+import sys
 
 class ModelLogger:
     def __init__(self, model_name: str, model_run_path: str, model_id: str, batch_size: int, device: str):
@@ -23,7 +24,7 @@ class ModelLogger:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[  
                 logging.FileHandler(log_file),
-                logging.StreamHandler()
+                logging.StreamHandler(sys.stdout)
             ]
         )
         self.logger = logging.getLogger(f"{self.model_name}_({self.model_id})")
