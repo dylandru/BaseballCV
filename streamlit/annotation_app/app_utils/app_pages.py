@@ -297,11 +297,9 @@ class AppPages:
                                               st.session_state.project_type, 
                                               st.session_state.selected_project)
                     
-                        s3_folder = os.path.join(st.session_state.project_type, 
-                                            st.session_state.selected_project)
                         
                         photos = self.s3_manager.retrieve_raw_photos(
-                            s3_folder_name=s3_folder,
+                            s3_folder_name="frames", #could adjust to alternate name of photos
                             local_path=os.path.join(project_path, "images"),
                             max_images=num_images
                         )
@@ -868,7 +866,6 @@ class AppPages:
         try:
             task_manager = self.manager.get_task_manager(st.session_state.selected_project, st.session_state.project_type)
             annotations_file = os.path.join(self.project_dir, "annotations.json")
-            
             data = self.file_tools.load_json(annotations_file)
             
             image_filename = os.path.basename(st.session_state.current_image)
@@ -903,6 +900,7 @@ class AppPages:
                 data["annotations"].append(ann_data)
             
             self.file_tools.save_json(data, annotations_file)
+            print(data)        
             
             success = task_manager.complete_task(
                 st.session_state.current_image,

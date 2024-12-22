@@ -187,7 +187,7 @@ class TaskManager:
         
         image_filename = os.path.basename(image_path)
         raw_image_filename = image_filename.split(".")[0]
-        original_s3_path = f"{st.session_state.project_type}/{st.session_state.selected_project}/{image_filename}"
+        original_s3_path = f"frames/{image_filename}"
         completed_s3_path = f"{user_folder}/images/{image_filename}"
         
         try:
