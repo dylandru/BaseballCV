@@ -4,7 +4,7 @@ from datetime import datetime
 from PIL import Image
 from .task_manager import TaskManager
 from .file_tools import FileTools
-
+import streamlit as st
 class AnnotationManager:
     """
     Manages annotation data and project configuration.
@@ -16,6 +16,13 @@ class AnnotationManager:
     def __init__(self):
         self.base_dir = os.path.join('streamlit', 'annotation_app', 'projects')
         self.file_tools = FileTools()
+
+        super().__init__()
+        if 'current_project' not in st.session_state:
+            st.session_state.current_project = None
+        if 'processing_status' not in st.session_state:
+            st.session_state.processing_status = None
+
         
     def create_project(self, project_name: str, config: dict) -> None:
         """Create new project with configuration.

@@ -250,38 +250,61 @@ class AppPages:
                 type=["jpg", "jpeg", "png"],
                 accept_multiple_files=True
             )
-            print(uploaded_files)
             
             if uploaded_files:
-                if st.button("Add Images"):
-                    try:
-                        num_added = self.manager.add_images_to_task_queue(
-                            st.session_state.selected_project,
-                            st.session_state.project_type,
-                            uploaded_files
-                        )
-                        st.success(f"Added {num_added} images successfully")
-                        return st.rerun()
-                    except Exception as e:
-                        st.error(f"Error adding images: {str(e)}")
+                add_images = st.button("Add Images")
+                if add_images:
+                    with st.spinner("Processing images..."):
+                        try:
+                            num_added = self.manager.add_images_to_task_queue(
+                                st.session_state.selected_project,
+                                st.session_state.project_type,
+                                uploaded_files
+                            )
+                            if num_added > 0:
+                                st.success(f"Added {num_added} images successfully")
+                                st.session_state.uploaded_files = None 
+                                time.sleep(1) 
+                                st.rerun()
+                            else:
+                                st.warning("No images were added")
+                        except Exception as e:
+                            st.error(f"Error adding images: {str(e)}")
 
         with tab2:
             video_file = st.file_uploader(":orange[Upload Video]", type=["mp4", "avi", "mov"])
-            if video_file:
+            if video_file is not None:
                 frame_interval = st.slider("Extract every nth frame", 1, 60, 5)
                 if st.button("Process Video"):
                     try:
-                        frames = self.manager.handle_video_upload(
-                            st.session_state.selected_project,
-                            st.session_state.project_type,
-                            video_file,
-                            frame_interval
-                        )
-                        st.success(f"Extracted {len(frames)} frames from video")
-                        st.session_state.page = "project_dashboard"
-                        return st.rerun()
+                        with st.spinner("Processing video..."):
+                            if 'video_processing' not in st.session_state:
+                                st.session_state.video_processing = True
+                                
+                                video_file.seek(0)
+                                
+                                frames = self.manager.handle_video_upload(
+                                    st.session_state.selected_project,
+                                    st.session_state.project_type,
+                                    video_file,
+                                    frame_interval
+                                )
+                                
+                                if frames and len(frames) > 0:
+                                    st.success(f"Successfully extracted {len(frames)} frames!")
+                                    st.session_state.video_processing = False
+                                    time.sleep(1)
+                                    st.session_state.page = "project_dashboard"
+                                    st.rerun()
+                                else:
+                                    st.error("No frames were extracted from the video")
+                                    st.session_state.video_processing = False
+                                    
                     except Exception as e:
                         st.error(f"Error processing video: {str(e)}")
+                        if 'video_processing' in st.session_state:
+                            st.session_state.video_processing = False
+
         with tab3:
             st.markdown(":orange[Use our Images]")
             num_images = st.number_input("How many images would you like to download?", 

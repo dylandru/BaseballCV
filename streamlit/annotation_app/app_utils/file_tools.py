@@ -2,6 +2,7 @@ import os
 import json
 import cv2
 from typing import Any, List
+import tempfile
 import requests
 from PIL import Image
 import io
@@ -55,40 +56,53 @@ class FileTools:
 
     def extract_frames(self, video_file: Any, output_dir: str, frame_interval: int = 1) -> List[str]:
         """Extract frames from a video file and save them as images.
-
+        
         Args:
             video_file (Any): The video file for the frames to be extracted from.
             output_dir (str): The directory to save the extracted frames.
             frame_interval (int): The interval between frames to extract. Defaults to 1.
-
+            
         Returns:
             List[str]: List of paths to the extracted frames.
         """
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        
+        os.makedirs(output_dir, exist_ok=True)
+        frames = []
+        
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+                tmp_file.write(video_file.read())
+                tmp_file_path = tmp_file.name
             
-        video_name = os.path.splitext(video_file.name)[0]
+            video = cv2.VideoCapture(tmp_file_path)
+            if not video.isOpened():
+                raise Exception("Failed to open video file")
+                
+            frame_count = 0
+            while True:
+                success, frame = video.read()
+                if not success:
+                    break
+                    
+                if frame_count % frame_interval == 0:
+                    frame_filename = f"frame_{frame_count:06d}.jpg"
+                    frame_path = os.path.join(output_dir, frame_filename)
+                    success = cv2.imwrite(frame_path, frame)
+                    if not success:
+                        print(f"Failed to write frame {frame_count}")
+                    else:
+                        frames.append(frame_path)
+                        
+                frame_count += 1
+                
+            video.release()
             
-        temp_path = os.path.join(output_dir, "temp_video.mp4")
-        with open(temp_path, "wb") as f:
-            f.write(video_file.read())
-        
-        cap = cv2.VideoCapture(temp_path)
-        frame_count = 0
-        saved_frames = []
-        
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+            os.unlink(tmp_file_path)
+            
+            if not frames:
+                raise Exception(f"No frames were extracted from the video")
                 
-            if frame_count % frame_interval == 0:
-                frame_path = os.path.join(output_dir, f"{video_name}_frame_{frame_count}.jpg")
-                cv2.imwrite(frame_path, frame)
-                saved_frames.append(frame_path)
-                
-            frame_count += 1
-        
-        cap.release()
-        os.remove(temp_path)
-        return saved_frames
+            return frames
+            
+        except Exception as e:
+            raise Exception(f"Error extracting frames: {str(e)}")
