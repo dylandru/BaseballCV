@@ -97,33 +97,22 @@ class ModelFunctionUtils:
             image_directory_path=valid_image_path,
             augment=False
         )
-        if self.is_colab():
-            loader_kwargs = {
-                "collate_fn": self.collate_fn,
-                "pin_memory": True if self.device == "cuda" else False,
-                "num_workers": num_workers,
-                "persistent_workers": False
-            }
-        else:
-            loader_kwargs = {
-                "collate_fn": partial(self.collate_fn),
-                "num_workers": num_workers,
-                "persistent_workers": False if num_workers == 0 else True,
-                "pin_memory": True,
-                "prefetch_factor": 2 if num_workers > 0 else None,
-                "multiprocessing_context": mp.get_context('spawn'),
-            }
 
+        loader_kwargs = {
+            "batch_size": self.batch_size,
+            "collate_fn": self.collate_fn,
+            "pin_memory": True if self.device == "cuda" else False,
+            "num_workers": num_workers,
+            "persistent_workers": False
+        }
 
         self.train_loader = DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
             shuffle=True,
             **loader_kwargs
         )
         self.val_loader = DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
             shuffle=False,
             **loader_kwargs
         )
