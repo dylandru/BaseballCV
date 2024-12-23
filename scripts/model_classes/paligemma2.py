@@ -411,6 +411,7 @@ class PaliGemma2:
 
                 if is_better:
                     print(f"New Best Model! Previous: {best_metric:.4f} | New: {current_metric:.4f}")
+                    print("Saving checkpoint for Model...")
                     best_metric = current_metric
                     patience_counter = 0
                     checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
@@ -429,6 +430,7 @@ class PaliGemma2:
                 print("-" * 50)
                 
                 if epoch % (epochs // save_eval_steps) == 0:
+                    print("Saving checkpoint for Model...")
                     checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
