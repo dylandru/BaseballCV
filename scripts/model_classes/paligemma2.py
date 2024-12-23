@@ -218,7 +218,6 @@ class PaliGemma2:
             random_seed: int = 22,
             weight_decay: float = 0.01,
             logging_steps: int = 1000,
-            save_eval_steps: int = 1000,
             save_limit: int = 3,
             metric_for_best_model: str = "loss") -> Dict:
 
@@ -429,7 +428,7 @@ class PaliGemma2:
                 
                 print("-" * 50)
                 
-                if epoch % (epochs // save_eval_steps) == 0:
+                if (epoch + 1) % 3 == 0:
                     print("Saving checkpoint for Model...")
                     checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
