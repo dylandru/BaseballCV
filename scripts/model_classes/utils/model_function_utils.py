@@ -229,14 +229,6 @@ class ModelFunctionUtils:
             'scaler': scaler.state_dict() if scaler else None
         }
         torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
-
-        if hasattr(self.model, 'peft_config'):
-                peft_config_path = os.path.join(checkpoint_dir, "peft_config.json")
-                with open(peft_config_path, 'w') as f:
-                    if isinstance(self.model.peft_config, dict):
-                        json.dump(self.model.peft_config, f)
-                    else:
-                        json.dump(self.model.peft_config.to_dict(), f)
             
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4"):
