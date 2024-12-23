@@ -397,12 +397,14 @@ class PaliGemma2:
                 current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
                 is_better = current_metric < best_metric
 
+                epoch += 1
+
                 writer.add_scalars('Loss', {
                     'train': avg_train_loss,
                     'validation': val_loss
                 }, epoch)
                 
-                print(f"\nEpoch {epoch + 1}/{epochs} Summary:")
+                print(f"\nEpoch {epoch}/{epochs} Summary:")
                 print(f"Training Loss: {avg_train_loss:.4f}")
                 print(f"Validation Loss: {val_loss:.4f}")
                 print(f"Learning Rate: {scheduler.get_last_lr()[0]:.2e}")
@@ -428,7 +430,7 @@ class PaliGemma2:
                 
                 print("-" * 50)
                 
-                if (epoch + 1) % 3 == 0:
+                if (epoch) % 3 == 0:
                     print("Saving checkpoint for Model...")
                     checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
