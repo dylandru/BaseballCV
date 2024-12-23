@@ -217,61 +217,27 @@ class ModelFunctionUtils:
 
         checkpoint_dir = os.path.dirname(path)
         os.makedirs(checkpoint_dir, exist_ok=True)
-        
+
         self.model.save_pretrained(checkpoint_dir)
         self.processor.save_pretrained(checkpoint_dir)
         
         training_state = {
             'epoch': epoch,
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
             'loss': loss,
-            'scaler_state_dict': scaler.state_dict() if scaler else None,
-            'model_name': self.model_name,
-            'model_config': self.model.config.to_dict(),
-            'processor_config': self.processor.config.to_dict() if hasattr(self.processor, 'config') else None
+            'scaler': scaler.state_dict() if scaler else None
         }
-        
         torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
-        
+
         if hasattr(self.model, 'peft_config'):
-            adapter_path = os.path.join(checkpoint_dir, "adapter_model")
-            self.model.save_pretrained(adapter_path)
-            self.processor.save_pretrained(adapter_path)
+                peft_config_path = os.path.join(checkpoint_dir, "peft_config.json")
+                with open(peft_config_path, 'w') as f:
+                    if isinstance(self.model.peft_config, dict):
+                        json.dump(self.model.peft_config, f)
+                    else:
+                        json.dump(self.model.peft_config.to_dict(), f)
             
-            peft_config_path = os.path.join(checkpoint_dir, "peft_config.json")
-            with open(peft_config_path, 'w') as f:
-                json.dump(self.model.peft_config, f)
-        
-        required_files = [
-            "config.json",
-            "generation_config.json", 
-            "preprocessor_config.json",
-            "tokenizer_config.json",
-            "tokenizer.json",
-            "special_tokens_map.json",
-            "pytorch_model.bin",
-            "model.safetensors",
-            "vocab.json",
-            "merges.txt"
-        ]
-        
-        missing_files = [f for f in required_files 
-                        if not os.path.exists(os.path.join(checkpoint_dir, f))]
-        
-        if missing_files:
-            self.logger.warning(f"Missing files in checkpoint: {missing_files}")
-            self.logger.warning("Some files may be optional... please check the checkpoint directory.")
-        
-        missing_critical = [f for f in ["config.json", "pytorch_model.bin", "training_state.pt"]
-                          if not os.path.exists(os.path.join(checkpoint_dir, f))]
-        
-        if missing_critical:
-            raise FileNotFoundError(f"Critical files missing from checkpoint: {missing_critical}")
-            
-        return self.logger.info(f"Checkpoint saved to {checkpoint_dir}")
-    
-    
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4"):
         """
