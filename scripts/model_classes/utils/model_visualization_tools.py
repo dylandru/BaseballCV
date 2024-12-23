@@ -6,19 +6,33 @@ import logging
 
 
 class ModelVisualizationTools:
-    def __init__(self, model_name: str, model_run_path: str, logger: logging.Logger):
+    '''
+    A class to visualize the results of a model.
+    '''
+    def __init__(self, model_name: str, model_run_path: str, logger: logging.Logger) -> None:
+        """
+        Initialize the ModelVisualizationTools class.
+
+        Args:
+            model_name (str): The name of the model.
+            model_run_path (str): The path to the model run directory.
+            logger (logging.Logger): The logger instance for logging.
+        """
         self.model_name = model_name
         self.model_run_path = model_run_path
         self.logger = logger
 
-    def visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations'):
+    def visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations') -> logging.Logger:
         """
         Visualize the results.
 
         Args:
-            image: The input image.
-            results: Dictionary containing the results.
-            save_viz_dir: Directory to save the visualizations.
+            image (PIL.Image.Image): The input image.
+            results (Dict): Dictionary containing the results.
+            save_viz_dir (str): Directory to save the visualizations.
+
+        Returns:
+            logger_message (logging.Logger): The logger message for logging the completed visualization saving.
         """
         plt.figure(figsize=(10, 8))
         plt.imshow(image)
@@ -48,7 +62,7 @@ class ModelVisualizationTools:
         plt.show()
         os.makedirs(save_viz_dir, exist_ok=True)
         plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
-        self.logger.info(f"Visualization saved to {os.path.join(self.model_run_path, save_viz_dir, 'result.png')}")
         plt.close()
+        return self.logger.info(f"Visualization saved to {os.path.join(self.model_run_path, save_viz_dir, 'result.png')}")
 
     

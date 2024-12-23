@@ -1,9 +1,8 @@
-import json
 import logging
 import random
 import os
 import string
-from typing import Dict
+from typing import Dict, Tuple, Any
 import torch
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
@@ -12,21 +11,21 @@ from .yolo_to_jsonl import JSONLDetection
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
-                 device: torch.device, processor: None, model: None, 
-                 peft_model: None, logger: logging.Logger, torch_dtype: torch.dtype):
+                 device: torch.device, processor: Any, model: Any, 
+                 peft_model: Any, logger: logging.Logger, torch_dtype: torch.dtype) -> None:
         """
         Initialize the ModelFunctionUtils class.
 
         Args:
-            model_name: Name of the model.
-            model_run_path: Path to the model run directory.
-            batch_size: Batch size for training and validation.
-            device: Device to use for training and validation.
-            processor: Processor to use for training and validation.
-            model: Model to use for training and validation.
-            peft_model: PEFT model to use for training and validation.
-            logger: Logger to use for logging.
-            yolo_to_jsonl: JSONLDetection to use for creating the dataset.
+            model_name (str): Name of the model.
+            model_run_path (str): Path to the model run directory.
+            batch_size (int): Batch size for training and validation.
+            device (torch.device): Device to use for training and validation.
+            processor (Any): Processor to use for training and validation.
+            model (Any): Model to use for training and validation.
+            peft_model (Any): PEFT model to use for training and validation.
+            logger (logging.Logger): Logger to use for logging.
+            torch_dtype (torch.dtype): The torch dtype to use.
         """
         self.model_name = model_name
         self.model_run_path = model_run_path
@@ -41,11 +40,26 @@ class ModelFunctionUtils:
     def augment_suffix(self, suffix: str) -> str:
         """
         Augment the suffix with a random string.
+
+        Args:
+            suffix (str): The suffix to augment.
+
+        Returns:
+            augmented_suffix (str): The augmented suffix.
         """
         return suffix + "_" + "".join(random.choices(string.ascii_letters + string.digits, k=4))
 
 
-    def collate_fn(self, batch):
+    def collate_fn(self, batch) -> Dict[str, torch.Tensor]:
+        """
+        Collate function for dataset.
+
+        Args:
+            batch: Batch to collate.
+
+        Returns:
+            Dict[str, torch.Tensor]: The collated batch.
+        """
         images, labels = zip(*batch)
 
         paths = [label["image"] for label in labels]
@@ -73,16 +87,21 @@ class ModelFunctionUtils:
 
         return processed_inputs
     
-    def setup_data_loaders(self, train_image_path: str, valid_image_path: str, train_jsonl_path: str, valid_jsonl_path: str, num_workers: int):
+    def setup_data_loaders(self, train_image_path: str, valid_image_path: str, train_jsonl_path: str, 
+                           valid_jsonl_path: str, num_workers: int) -> Tuple[DataLoader, DataLoader]:
         """
         Set up data loaders for training and validation.
 
         Args:
-            train_image_path: Path to the training images.
-            valid_image_path: Path to the validation images.
-            train_jsonl_path: Path to the training JSONL file.
-            valid_jsonl_path: Path to the validation JSONL file.
-            num_workers: Number of worker processes for data loading.
+            train_image_path (str): Path to the training images.
+            valid_image_path (str): Path to the validation images.
+            train_jsonl_path (str): Path to the training JSONL file.
+            valid_jsonl_path (str): Path to the validation JSONL file.
+            num_workers (int): Number of worker processes for data loading.
+
+        Returns:
+            train_loader (DataLoader): The training data loader.
+            val_loader (DataLoader): The validation data loader.
         """
 
         self.train_dataset = self.create_detection_dataset(
@@ -118,18 +137,18 @@ class ModelFunctionUtils:
         return self.train_loader, self.val_loader
 
 
-    def setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True):
+    def setup_peft(self, r: int = 8, alpha: int = 8, dropout: float = 0.05, create_peft_config: bool = True) -> LoraConfig:
         """
-        Set up Parameter-Efficient Fine-Tuning (PEFT).
+        Set up Parameter-Efficient Fine-Tuning (PEFT) with LoRA.
 
         Args:
-            r: Rank for LoRA.
-            alpha: Scaling factor for LoRA.
-            dropout: Dropout rate for LoRA.
-            create_peft_config: Whether to create a new PEFT configuration.
+            r (int): Rank for LoRA.
+            alpha (int): Scaling factor for LoRA.
+            dropout (float): Dropout rate for LoRA.
+            create_peft_config (bool): Whether to create a new PEFT configuration.
 
         Returns:
-            Information about trainable parameters.
+            self.peft_model (LoraConfig): The PEFT model.
         """
 
         if create_peft_config:
@@ -166,9 +185,15 @@ class ModelFunctionUtils:
             
         return self.peft_model
     
-    def freeze_vision_encoders(self, model):
+    def freeze_vision_encoders(self, model: torch.nn.Module) -> torch.nn.Module:
         """
         Freeze the vision encoders of the model.
+
+        Args:
+            model (torch.nn.Module): The model to freeze.
+
+        Returns:
+            model (torch.nn.Module): The frozen model.
         """
         for param in model.vision_tower.parameters():
             param.requires_grad = False
@@ -186,9 +211,9 @@ class ModelFunctionUtils:
         Create a detection dataset from a JSONL file.
 
         Args:
-            jsonl_file_path: Path to the JSONL file.
-            image_directory_path: Path to the directory containing images.
-            augment: Whether to apply data augmentation.
+            jsonl_file_path (str): Path to the JSONL file.
+            image_directory_path (str): Path to the directory containing images.
+            augment (bool): Whether to apply data augmentation.
 
         Returns:
             An instance of the YOLOToPaliGemma2 dataset.
@@ -212,8 +237,20 @@ class ModelFunctionUtils:
         """
         return next(iter(results.values())).strip()
 
-    def save_checkpoint(self, path, epoch, optimizer, scheduler, loss, scaler=None) -> logging.Logger:
-        """Save checkpoint with all HF required files."""
+    def save_checkpoint(self, path: str, epoch: int, optimizer: torch.optim.Optimizer, 
+                        scheduler: torch.optim.lr_scheduler._LRScheduler, loss: float, 
+                        scaler: torch.cuda.amp.GradScaler = None) -> logging.Logger:
+        """
+        Save checkpoint with all HF required files.
+
+        Args:
+            path (str): Path to the checkpoint.
+            epoch (int): The epoch number.
+            optimizer (torch.optim.Optimizer): The optimizer.
+            scheduler (torch.optim.lr_scheduler._LRScheduler): The learning rate scheduler.
+            loss (float): The loss.
+            scaler (torch.cuda.amp.GradScaler): The scaler.
+        """
 
         checkpoint_dir = os.path.dirname(path)
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -229,11 +266,20 @@ class ModelFunctionUtils:
             'scaler': scaler.state_dict() if scaler else None
         }
         torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
-            
+
+        return self.logger.info(f"Checkpoint saved to {path}")
+    
     @staticmethod
-    def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4"):
+    def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4") -> BitsAndBytesConfig:
         """
-        Set up a static method for a quantization config. 
+        Static method for a quantization config. 
+
+        Args:
+            load_in_4bit (bool): Whether to load in 4-bit.
+            bnb_4bit_quant_type (str): The type of quantization.
+
+        Returns:
+            quant_config (BitsAndBytesConfig): The quantization config.
         """
         quant_config = BitsAndBytesConfig(
             load_in_4bit=load_in_4bit,

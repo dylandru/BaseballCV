@@ -22,6 +22,10 @@ To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License 
 """
 
 class PaliGemma2:
+    '''
+    A class to initialize and run PaliGemma2 from HuggingFace based in PyTorch.
+    '''
+
     def __init__(self, 
                  device: str = None, 
                  model_id: str = 'google/paligemma2-3b-pt-224', 

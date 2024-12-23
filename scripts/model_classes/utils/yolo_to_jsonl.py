@@ -1,6 +1,6 @@
 import random
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from PIL import Image, ImageEnhance
 import os
 import json
@@ -8,15 +8,18 @@ from torch.utils.data import Dataset
 import numpy as np
 
 class JSONLDetection(Dataset):
-    def __init__(self, entries, image_directory_path, logger: logging.Logger, augment=True):
+    '''
+    A class to load YOLO datasets into a JSONL format that can be used for training and validation in PyTorch.
+    '''
+    def __init__(self, entries: List[Dict[str, Any]], image_directory_path: str, logger: logging.Logger, augment: bool = True) -> None:
         """
         Initialize the JSONLDetection dataset.
 
         Args:
-            entries: List of entries (annotations) for the dataset.
-            image_directory_path: Path to the directory containing images.
-            logger: Logger instance for logging.
-            augment: Whether to apply data augmentation.
+            entries (List[Dict[str, Any]]): List of entries (annotations) for the dataset.
+            image_directory_path (str): Path to the directory containing images.
+            logger (logging.Logger): Logger instance for logging.
+            augment (bool): Whether to apply data augmentation.
         """
         self.entries = entries
         self.image_directory_path = image_directory_path
@@ -24,19 +27,25 @@ class JSONLDetection(Dataset):
         self.transforms = [self.random_color_jitter, self.random_blur, self.random_noise] if augment else []
         self.logger = logger
 
-    def __len__(self):
-        """Return the number of samples in the dataset."""
+    def __len__(self) -> int:
+        """
+        Return the number of samples in the dataset.
+
+        Returns:
+            int: The number of samples in the dataset.
+        """
         return len(self.entries)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[Image.Image, Dict[str, Any]]:
         """
         Get a sample from the dataset.
 
         Args:
-            idx: Index of the sample to retrieve.
+            idx (int): Index of the sample to retrieve.
 
         Returns:
-            Tuple containing the prefix, suffix, and image.
+            image (PIL.Image.Image): The image.
+            entry (Dict[str, Any]): The entry.
         """
         entry = self.entries[idx]
         image_path = os.path.join(self.image_directory_path, entry['image'])
@@ -49,8 +58,16 @@ class JSONLDetection(Dataset):
         return image, entry
     
     @staticmethod
-    def random_color_jitter(image):
-        """Apply random color jittering to the image."""
+    def random_color_jitter(image: Image.Image) -> Image.Image:
+        """
+        Apply random color jittering to image.
+
+        Args:
+            image (PIL.Image.Image): The image to apply the transformation to.
+
+        Returns:
+            image (PIL.Image.Image): The transformed image.
+        """
         factors = {
             'brightness': random.uniform(0.8, 1.2),
             'contrast': random.uniform(0.8, 1.2),
@@ -68,16 +85,32 @@ class JSONLDetection(Dataset):
         return image
 
     @staticmethod
-    def random_blur(image):
-        """Apply random Gaussian blur to the image."""
+    def random_blur(image: Image.Image) -> Image.Image:
+        """
+        Apply random Gaussian blur to the image.
+
+        Args:
+            image (PIL.Image.Image): The image to apply the transformation to.
+
+        Returns:
+            image (PIL.Image.Image): The transformed image.
+        """
         if random.random() > 0.8:
             from PIL import ImageFilter
             return image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.0)))
         return image
 
     @staticmethod
-    def random_noise(image):
-        """Apply random noise to the image."""
+    def random_noise(image: Image.Image) -> Image.Image:
+        """
+        Apply random noise to the image.
+
+        Args:
+            image (PIL.Image.Image): The image to apply the transformation to.
+
+        Returns:
+            image (PIL.Image.Image): The transformed image.
+        """
         if random.random() > 0.8:
             img_array = np.array(image)
             noise = np.random.normal(0, 2, img_array.shape)
@@ -91,11 +124,15 @@ class JSONLDetection(Dataset):
         Load entries from a JSONL file.
 
         Args:
-            jsonl_file_path: Path to the JSONL file.
-            logger: Logger instance for logging.
-        Returns:
+            jsonl_file_path (str): Path to the JSONL file.
+            logger (logging.Logger): Logger instance for logging.
 
-            List of entries loaded from the JSONL file.
+        Returns:
+            List[Dict[str, Any]]: List of entries loaded from the JSONL file.
+        
+        Raises:
+            ValueError: If no valid entries are found in the JSONL file.
+            Exception: If there is an error loading entries from the JSONL file.
         """
         entries = []
         try:

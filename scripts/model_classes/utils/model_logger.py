@@ -4,15 +4,20 @@ from datetime import datetime
 import sys
 
 class ModelLogger:
-    def __init__(self, model_name: str, model_run_path: str, model_id: str, batch_size: int, device: str):
+    def __init__(self, model_name: str, model_run_path: str, model_id: str, batch_size: int, device: str) -> None:
         self.model_name = model_name
         self.model_run_path = model_run_path
         self.model_id = model_id
         self.batch_size = batch_size
         self.device = device
 
-    def orig_logging(self):
-        """Set up logging for the model."""
+    def orig_logging(self) -> logging.Logger:
+        """
+        Set up logging for a given model.
+
+        Returns:
+            logging.Logger: The logger.
+        """
         log_dir = os.path.join(self.model_run_path, "logs")
         os.makedirs(log_dir, exist_ok=True)
 
