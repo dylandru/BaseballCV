@@ -241,7 +241,7 @@ class ModelFunctionUtils:
             
             peft_config_path = os.path.join(checkpoint_dir, "peft_config.json")
             with open(peft_config_path, 'w') as f:
-                json.dump(self.model.peft_config.to_dict(), f)
+                json.dump(self.model.peft_config, f)
         
         required_files = [
             "config.json",
