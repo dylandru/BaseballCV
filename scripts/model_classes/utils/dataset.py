@@ -138,5 +138,4 @@ class DataProcessor:
             for annotation in annotations:
                 f.write(json.dumps(annotation) + '\n')
                 
-        print(output_file)
         return output_file

@@ -216,14 +216,15 @@ class PaliGemma2:
             lr_schedule_type: str = "cosine",
             create_peft_config: bool = True,
             random_seed: int = 22,
-            weight_decay: float = 0.01,
             logging_steps: int = 1000,
+            weight_decay: float = 0.01,
             save_limit: int = 3,
             metric_for_best_model: str = "loss") -> Dict:
 
         """
-        Enhanced training loop with comprehensive options for fine-tuning control.
-        Uses TensorBoard for visualization and metric tracking.
+        FineTune PaliGemma2 on a custom dataset (currently configured for YOLO format)
+        Utilizes PyTorch Training Loop and LoRA with Hugging Face Model for training.
+        Has TensorBoard for visualization and metric tracking.
         """
 
         torch.manual_seed(random_seed)
@@ -310,6 +311,9 @@ class PaliGemma2:
                 f"Device: {self.device}\n")
 
             for epoch in range(epochs):
+
+                epoch_dir = os.path.join(save_dir, f"epoch_{epoch + 1}")
+                os.makedirs(epoch_dir, exist_ok=True)
                 self.model.train()
                 train_loss = 0
                 epoch_losses = []
@@ -415,7 +419,7 @@ class PaliGemma2:
                     print("Saving checkpoint for Model...")
                     best_metric = current_metric
                     patience_counter = 0
-                    checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
+                    checkpoint_path = os.path.join(epoch_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
                         epoch=epoch,
@@ -432,7 +436,7 @@ class PaliGemma2:
                 
                 if (epoch) % 3 == 0:
                     print("Saving checkpoint for Model...")
-                    checkpoint_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch}.pt")
+                    checkpoint_path = os.path.join(epoch_dir, f"checkpoint_epoch_{epoch}.pt")
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
                         epoch=epoch,
@@ -456,7 +460,7 @@ class PaliGemma2:
                 'final_val_loss': val_loss,
                 'tensorboard_dir': tensorboard_dir,
                 'early_stopped': patience_counter >= patience,
-                'model_path': os.path.join(save_dir, "best_model.pt")
+                'model_path': os.path.join(epoch_dir, "best_model.pt")
             }
             
         except Exception as e:
