@@ -318,12 +318,12 @@ class PaliGemma2:
                 train_progress = tqdm(
                     self.train_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Train]",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n"
-                            "Loss: {postfix[loss]} - LR: {postfix[lr]}",
+                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
+                    postfix=dict(loss="0.0000", lr="0.0"),  
                     dynamic_ncols=True,
                     initial=0
                 )
-                
+
                 for step, batch in enumerate(train_progress):
                     batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
                             for k, v in batch.items()}
@@ -375,8 +375,8 @@ class PaliGemma2:
                 val_progress = tqdm(
                     self.val_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Valid]",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n"
-                            "Loss: {postfix[loss]}",
+                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
+                    postfix=dict(loss="0.0000"),
                     dynamic_ncols=True,
                     initial=0
                 )
@@ -417,7 +417,6 @@ class PaliGemma2:
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
                         epoch=epoch,
-                        model=self.model,
                         optimizer=optimizer,
                         scheduler=scheduler,
                         loss=val_loss,
@@ -434,7 +433,6 @@ class PaliGemma2:
                     self.ModelFunctionUtils.save_checkpoint(
                         path=checkpoint_path,
                         epoch=epoch,
-                        model=self.model,
                         optimizer=optimizer,
                         scheduler=scheduler,
                         loss=val_loss,
