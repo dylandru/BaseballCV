@@ -257,6 +257,14 @@ class ModelFunctionUtils:
 
         self.model.save_pretrained(checkpoint_dir)
         self.processor.save_pretrained(checkpoint_dir)
+
+        for file in os.listdir(checkpoint_dir):
+            if file.endswith('.safetensors') and '-of-' in file:
+                parts = file.split('-of-')
+                if len(parts) == 2:
+                    correct = f"{parts[0]}-of-{parts[1][:5]}.safetensors" #error on saving safetensors file names, adjusted here
+                    os.rename(os.path.join(checkpoint_dir, file), 
+                            os.path.join(checkpoint_dir, correct))
         
         training_state = {
             'epoch': epoch,
