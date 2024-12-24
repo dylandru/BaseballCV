@@ -7,6 +7,7 @@ import time
 import torch.multiprocessing as mp
 from torch.optim import AdamW
 from transformers import (PaliGemmaProcessor, PaliGemmaForConditionalGeneration, get_scheduler)
+from torch.utils.data import DataLoader
 import torch.backends
 import os
 from PIL import Image
@@ -32,7 +33,7 @@ class PaliGemma2:
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8, torch_dtype: torch.dtype = torch.float32,
-                 use_lora: bool = True):
+                 use_lora: bool = False):
         """
         Initialize the PaliGemma2 model.
 
@@ -502,13 +503,14 @@ class PaliGemma2:
             writer.close()
             raise e
 
-    def evaluate(self, base_path: str, classes: Dict[int, str], dataset: Dataset = None, dataset_type: str = "yolo"):
+    def evaluate(self, base_path: str, classes: Dict[int, str], num_workers: int = 5, dataset: Dataset = None, dataset_type: str = "yolo"):
         """
         Evaluate the model on a dataset. Defaults to valid split if creating new dataset.
 
         Args:
             base_path: The path where the entire dataset is stored (or will be stored if non-existent).
             classes: Dictionary mapping class IDs to class names.
+            num_workers: The number of workers to use for data loading.
             dataset: The dataset to evaluate on, if one is provided. If None, the valid split of the full dataset is used.
             dataset_type: The type of dataset (yolo or paligemma). Default is yolo.
 
@@ -516,10 +518,12 @@ class PaliGemma2:
             The mean average precision result.
         """
         self.logger.info("Starting evaluation...")
+        self.model.eval().to(self.device)
 
         if hasattr(self.model, 'merge_and_unload'):
             self.logger.info("Merging LoRA weights for evaluation")
             self.model = self.model.merge_and_unload()
+
 
         if dataset:
             split_dataset = dataset
@@ -543,50 +547,51 @@ class PaliGemma2:
                 image_directory_path=valid_image_path,
                 augment=False
             )
-
-        images = []
-        targets = []
-        predictions = []
+        
+        eval_loader = DataLoader(
+            split_dataset,
+            batch_size=self.batch_size * 2,
+            shuffle=False,
+            collate_fn=self.ModelFunctionUtils.collate_fn,
+            num_workers=num_workers
+        )
 
         with torch.inference_mode():
-            for i in tqdm(range(len(split_dataset))):
-                image, label = split_dataset[i]
-                prefix = "<image>" + label["prefix"]
-                suffix = label["suffix"]
+            for batch in tqdm(eval_loader):
+                outputs = self.model.generate(
+                    **batch,
+                    max_new_tokens=256, 
+                    do_sample=False
+                )
 
-                inputs = self.processor(
-                    text=prefix,
-                    images=image,
-                    return_tensors="pt"
-                ).to(self.device)
+                prefix_length = batch["input_ids"].shape[-1]
+                batch_images = batch["pixel_values"]
+                batch_suffixes = [suffix.split('_')[0] for suffix in batch["suffix"]]  # Remove augmentation
 
-                prefix_length = inputs["input_ids"].shape[-1]
-
-                generation = self.model.generate(**inputs, max_new_tokens=256, do_sample=False)
-                generation = generation[0][prefix_length:]
-                generated_text = self.processor.decode(generation, skip_special_tokens=True)
-
-                w, h = image.size
-                prediction = sv.Detections.from_lmm(
-                    lmm='paligemma',
-                    result=generated_text,
-                    resolution_wh=(w, h),
-                    classes=classes)
-
-                prediction.class_id = np.array([classes.index(class_name) for class_name in prediction['class_name']])
-                prediction.confidence = np.ones(len(prediction))
-
-                target = sv.Detections.from_lmm(
-                    lmm='paligemma',
-                    result=suffix,
-                    resolution_wh=(w, h),
-                    classes=classes)
-
-                target.class_id = np.array([classes.index(class_name) for class_name in target['class_name']])
-
-                images.append(image)
-                targets.append(target)
-                predictions.append(prediction)
+                for idx, (image, generation, suffix) in enumerate(zip(batch_images, outputs, batch_suffixes)):
+                    generated_text = self.processor.decode(generation[prefix_length:], skip_special_tokens=True)
+                    
+                    w, h = image.size
+                    prediction = sv.Detections.from_lmm(
+                        lmm='paligemma',
+                        result=generated_text,
+                        resolution_wh=(w, h),
+                        classes=classes)
+                    
+                    prediction.class_id = np.array([classes.index(class_name) for class_name in prediction['class_name']])
+                    prediction.confidence = np.ones(len(prediction))
+                    
+                    target = sv.Detections.from_lmm(
+                        lmm='paligemma',
+                        result=suffix,
+                        resolution_wh=(w, h),
+                        classes=classes)
+                    
+                    target.class_id = np.array([classes.index(class_name) for class_name in target['class_name']])
+                    
+                    images.append(image)
+                    targets.append(target)
+                    predictions.append(prediction)
 
         map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
         map_result = map_metric.update(predictions, targets).compute()
