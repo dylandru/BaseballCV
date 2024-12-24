@@ -555,6 +555,9 @@ class PaliGemma2:
             collate_fn=self.ModelFunctionUtils.collate_fn,
             num_workers=num_workers
         )
+        images = []
+        targets = []
+        predictions = []
 
         with torch.inference_mode():
             for batch in tqdm(eval_loader):
