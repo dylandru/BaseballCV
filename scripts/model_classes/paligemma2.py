@@ -12,6 +12,7 @@ import os
 from PIL import Image
 from typing import Dict, Tuple, List
 import numpy as np
+from peft import PeftModel
 from datetime import datetime
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
@@ -96,14 +97,23 @@ class PaliGemma2:
                 self.model = PaliGemmaForConditionalGeneration.from_pretrained(
                     self.model_id
                 )
-            
-            self.processor = PaliGemmaProcessor.from_pretrained(self.model_id)
+
+            if self.use_lora:
+                try:
+                    self.model = PeftModel.from_pretrained(self.model, 
+                                                       self.model_id,
+                                                       is_trainable=True)
+                except Exception as e:
+                    raise RuntimeError(f"LoRA Model Loading Failed: {str(e)}")
+                
             
             if self.model is None:
                 raise ValueError("Model failed to load")
 
-            self.logger.info("Model initialization successful")
-                
+            self.logger.info("Model Initialization Successful!")
+
+            self.processor = PaliGemmaProcessor.from_pretrained(self.model_id)
+
         except Exception as e:
             self.logger.error(f"Failed to initialize model: {str(e)}")
             raise RuntimeError(f"Model initialization failed: {str(e)}")
@@ -122,6 +132,11 @@ class PaliGemma2:
             generated_text (str): The result of the inference.
             image_path (str): The path to the annotated image if task is <TEXT_TO_OD>, else None.
         """
+
+        if hasattr(self.model, 'merge_and_unload'):
+            self.logger.info("Merging LoRA weights for Inference")
+            self.model = self.model.merge_and_unload()
+
         image = Image.open(image_path)
         prompt = text_input
         self.model.eval()
@@ -485,6 +500,11 @@ class PaliGemma2:
             The mean average precision result.
         """
         self.logger.info("Starting evaluation...")
+
+        if hasattr(self.model, 'merge_and_unload'):
+            self.logger.info("Merging LoRA weights for evaluation")
+            self.model = self.model.merge_and_unload()
+
         images = []
         targets = []
         predictions = []
