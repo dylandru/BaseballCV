@@ -31,7 +31,8 @@ class PaliGemma2:
                  device: str = None, 
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
-                 batch_size: int = 8, torch_dtype: torch.dtype = torch.float32):
+                 batch_size: int = 8, torch_dtype: torch.dtype = torch.float32,
+                 use_lora: bool = True):
         """
         Initialize the PaliGemma2 model.
 
@@ -52,6 +53,7 @@ class PaliGemma2:
         self.image_directory_path = "" 
         self.torch_dtype = torch_dtype
         self.augment = True
+        self.use_lora = use_lora
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
@@ -238,7 +240,8 @@ class PaliGemma2:
             logging_steps: int = 1000,
             weight_decay: float = 0.01,
             save_limit: int = 3,
-            metric_for_best_model: str = "loss") -> Dict:
+            metric_for_best_model: str = "loss", 
+            dataset_type: str = "yolo") -> Dict:
 
         """
         FineTune PaliGemma2 on a custom dataset (currently configured for YOLO format)
@@ -257,13 +260,25 @@ class PaliGemma2:
         writer = SummaryWriter(tensorboard_dir)
         
         try:
-            train_image_path, valid_image_path, train_jsonl_path, test_jsonl_path, valid_jsonl_path = (
-                self.DataProcessor.prepare_dataset(
-                    base_path=dataset,
-                    dict_classes=classes,
-                    train_test_split=train_test_split
+            if dataset_type == "yolo":
+                train_image_path, valid_image_path, train_jsonl_path, _, valid_jsonl_path = (
+                    self.DataProcessor.prepare_dataset(
+                        base_path=dataset,
+                        dict_classes=classes,
+                        train_test_split=train_test_split,
+                        dataset_type=dataset_type
+                    )
                 )
-            )
+
+            else:
+                train_image_path, valid_image_path, train_jsonl_path, _, valid_jsonl_path = (
+                    self.DataProcessor.prepare_dataset(
+                        base_path=dataset,
+                        dict_classes=classes,
+                        dataset_type=dataset_type
+                    )
+                )
+
             self.logger.info(f"Dataset Preparation Complete - Train Path: {train_image_path}, Valid Path: {valid_image_path}")
 
             if self.device == "cuda":
@@ -487,14 +502,15 @@ class PaliGemma2:
             writer.close()
             raise e
 
-    def evaluate(self, test_dataset: Dataset, classes: Dict[int, str]):
+    def evaluate(self, base_path: str, classes: Dict[int, str], dataset: Dataset = None, dataset_type: str = "yolo"):
         """
-        Evaluate the model on a test dataset.
+        Evaluate the model on a dataset. Defaults to valid split if creating new dataset.
 
         Args:
-            test_dataset: The test dataset.
+            base_path: The path where the entire dataset is stored (or will be stored if non-existent).
             classes: Dictionary mapping class IDs to class names.
-            device: The device to use for evaluation.
+            dataset: The dataset to evaluate on, if one is provided. If None, the valid split of the full dataset is used.
+            dataset_type: The type of dataset (yolo or paligemma). Default is yolo.
 
         Returns:
             The mean average precision result.
@@ -505,13 +521,36 @@ class PaliGemma2:
             self.logger.info("Merging LoRA weights for evaluation")
             self.model = self.model.merge_and_unload()
 
+        if dataset:
+            split_dataset = dataset
+        else:
+            if dataset_type == "yolo":
+                _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
+                    base_path=base_path,
+                    dict_classes=classes,
+                    train_test_split=(80, 10, 10),
+                    dataset_type=dataset_type
+                )
+            else:
+                _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
+                    base_path=base_path,
+                    dict_classes=classes,
+                    dataset_type=dataset_type
+                )
+            
+            split_dataset = self.ModelFunctionUtils.create_detection_dataset(
+                jsonl_file_path=valid_jsonl_path,
+                image_directory_path=valid_image_path,
+                augment=False
+            )
+
         images = []
         targets = []
         predictions = []
 
         with torch.inference_mode():
-            for i in tqdm(range(len(test_dataset))):
-                image, label = test_dataset[i]
+            for i in tqdm(range(len(split_dataset))):
+                image, label = split_dataset[i]
                 prefix = "<image>" + label["prefix"]
                 suffix = label["suffix"]
 

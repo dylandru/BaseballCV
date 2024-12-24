@@ -258,6 +258,10 @@ class ModelFunctionUtils:
         self.model.save_pretrained(checkpoint_dir)
         self.processor.save_pretrained(checkpoint_dir)
 
+        if self.peft_model is not None:
+            self.peft_model.save_pretrained(checkpoint_dir)
+
+
         for file in os.listdir(checkpoint_dir):
             if file.endswith('.safetensors') and '-of-' in file:
                 parts = file.split('-of-')
@@ -273,6 +277,7 @@ class ModelFunctionUtils:
             'loss': loss,
             'scaler': scaler.state_dict() if scaler else None
         }
+
         torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
 
         return self.logger.info(f"Checkpoint saved to {path}")
