@@ -563,45 +563,56 @@ class PaliGemma2:
         predictions = []
 
         with torch.inference_mode():
-            for batch in tqdm(eval_loader):
+          for batch_idx, batch in enumerate(tqdm(
+                    eval_loader,
+                    desc=f"Evaluating Model",
+                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                    dynamic_ncols=True,
+                    initial=0
+                )):
 
-                batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                        for k, v in batch.items()} #ensure batch moved to device
+            batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                    for k, v in batch.items()}
+            
+            outputs = self.model.generate(
+                **batch,
+                max_new_tokens=256, 
+                do_sample=False
+            )
+
+            prefix_length = batch["input_ids"].shape[-1]
+            
+            start_idx = batch_idx * self.batch_size
+            end_idx = start_idx + len(outputs)
+            
+            orig_samples = [eval_loader.dataset[i] for i in range(start_idx, end_idx)]
+            orig_images = [sample[0] for sample in orig_samples]
+            batch_suffixes = [sample[1]["suffix"] for sample in orig_samples]
+
+            for idx, (image, generation, suffix) in enumerate(zip(orig_images, outputs, batch_suffixes)):
+                generated_text = self.processor.decode(generation[prefix_length:], skip_special_tokens=True)
+        
+                w, h = image.size
+                prediction = sv.Detections.from_lmm(
+                    lmm='paligemma',
+                    result=generated_text,
+                    resolution_wh=(w, h),
+                    classes=classes)
                 
-                outputs = self.model.generate(
-                    **batch,
-                    max_new_tokens=256, 
-                    do_sample=False
-                )
-
-                prefix_length = batch["input_ids"].shape[-1]
-                batch_images = batch["pixel_values"]
-                batch_suffixes = [suffix.split('_')[0] for suffix in batch["suffix"]]  # Remove augmentation
-
-                for idx, (image, generation, suffix) in enumerate(zip(batch_images, outputs, batch_suffixes)):
-                    generated_text = self.processor.decode(generation[prefix_length:], skip_special_tokens=True)
-                    
-                    w, h = image.size
-                    prediction = sv.Detections.from_lmm(
-                        lmm='paligemma',
-                        result=generated_text,
-                        resolution_wh=(w, h),
-                        classes=classes)
-                    
-                    prediction.class_id = np.array([classes.index(class_name) for class_name in prediction['class_name']])
-                    prediction.confidence = np.ones(len(prediction))
-                    
-                    target = sv.Detections.from_lmm(
-                        lmm='paligemma',
-                        result=suffix,
-                        resolution_wh=(w, h),
-                        classes=classes)
-                    
-                    target.class_id = np.array([classes.index(class_name) for class_name in target['class_name']])
-                    
-                    images.append(image)
-                    targets.append(target)
-                    predictions.append(prediction)
+                prediction.class_id = np.array([classes.index(class_name) for class_name in prediction['class_name']])
+                prediction.confidence = np.ones(len(prediction))
+                
+                target = sv.Detections.from_lmm(
+                    lmm='paligemma',
+                    result=suffix,
+                    resolution_wh=(w, h),
+                    classes=classes)
+                
+                target.class_id = np.array([classes.index(class_name) for class_name in target['class_name']])
+                
+                images.append(image)
+                targets.append(target)
+                predictions.append(prediction)
 
         map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
         map_result = map_metric.update(predictions, targets).compute()
