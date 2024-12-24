@@ -550,17 +550,24 @@ class PaliGemma2:
         
         eval_loader = DataLoader(
             split_dataset,
-            batch_size=self.batch_size * 2,
             shuffle=False,
-            collate_fn=self.ModelFunctionUtils.collate_fn,
-            num_workers=num_workers
+            batch_size=self.batch_size,
+            collate_fn=self.collate_fn,
+            pin_memory=True if self.device == "cuda" else False,
+            num_workers=num_workers,
+            persistent_workers=False
         )
+
         images = []
         targets = []
         predictions = []
 
         with torch.inference_mode():
             for batch in tqdm(eval_loader):
+
+                batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                        for k, v in batch.items()} #ensure batch moved to device
+                
                 outputs = self.model.generate(
                     **batch,
                     max_new_tokens=256, 
