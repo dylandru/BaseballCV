@@ -128,3 +128,9 @@ Contents: OKD, NOKD folders.
 
 - OKD: 1408 images.
 - NOKD: 1408 images.
+
+## test_dataset.txt dataset.
+
+This is a test dataset for testing the model classes functionality.
+
+Contents: Sample of images from baseball dataset.
