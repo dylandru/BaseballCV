@@ -4,7 +4,7 @@ import os
 import string
 from typing import Dict, Tuple, Any
 import torch
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, PeftModel
 from torch.utils.data import Dataset, DataLoader
 from transformers import BitsAndBytesConfig
 from .yolo_to_jsonl import JSONLDetection
@@ -258,8 +258,9 @@ class ModelFunctionUtils:
         self.model.save_pretrained(checkpoint_dir)
         self.processor.save_pretrained(checkpoint_dir)
 
-        if self.peft_model is not None:
-            self.peft_model.save_pretrained(checkpoint_dir)
+        if hasattr(self.model, 'peft_config') and not os.path.exists(os.path.join(checkpoint_dir, "adapter_config.json")):
+            peft_model = PeftModel.from_pretrained(self.model, checkpoint_dir)
+            peft_model.save_pretrained(checkpoint_dir)
 
 
         for file in os.listdir(checkpoint_dir):

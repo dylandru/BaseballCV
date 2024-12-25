@@ -305,9 +305,9 @@ class PaliGemma2:
             if freeze_vision_encoders:
                 self.model = self.ModelFunctionUtils.freeze_vision_encoders(self.model)
 
-            self.peft_model = self.ModelFunctionUtils.setup_peft(
+            self.model = self.ModelFunctionUtils.setup_peft(
                 lora_r, lora_scaling, lora_dropout, create_peft_config)
-            self.model = self.peft_model.to(self.device)
+            self.model.to(self.device)
 
             optimizer_group_params = [
                 {
