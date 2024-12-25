@@ -33,7 +33,7 @@ class PaliGemma2:
                  model_id: str = 'google/paligemma2-3b-pt-224', 
                  model_run_path: str = f'paligemma2_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8, torch_dtype: torch.dtype = torch.float32,
-                 use_lora: bool = False):
+                 use_pretrained_lora: bool = False):
         """
         Initialize the PaliGemma2 model.
 
@@ -54,7 +54,7 @@ class PaliGemma2:
         self.image_directory_path = "" 
         self.torch_dtype = torch_dtype
         self.augment = True
-        self.use_lora = use_lora
+        self.use_pretrained_lora = use_pretrained_lora
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
@@ -101,7 +101,7 @@ class PaliGemma2:
                     self.model_id
                 )
 
-            if self.use_lora:
+            if self.use_pretrained_lora:
                 try:
                     self.model = PeftModel.from_pretrained(self.model, 
                                                        self.model_id,
