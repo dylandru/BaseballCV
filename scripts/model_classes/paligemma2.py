@@ -552,7 +552,7 @@ class PaliGemma2:
             split_dataset,
             shuffle=False,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self.ModelFunctionUtils.collate_fn,
             pin_memory=True if self.device == "cuda" else False,
             num_workers=num_workers,
             persistent_workers=False
