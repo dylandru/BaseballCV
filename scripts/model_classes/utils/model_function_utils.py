@@ -255,7 +255,10 @@ class ModelFunctionUtils:
         checkpoint_dir = os.path.dirname(path)
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-        self.model.save_pretrained(checkpoint_dir)
+        if hasattr(self.model, 'peft_config'):
+            self.model.save_pretrained(checkpoint_dir)
+        else:
+            raise ValueError("Model is not a PEFT model. Cannot save checkpoint.")
         self.processor.save_pretrained(checkpoint_dir)
 
         if hasattr(self.model, 'peft_config') and not os.path.exists(os.path.join(checkpoint_dir, "adapter_config.json")):
