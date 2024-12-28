@@ -287,6 +287,44 @@ class ModelFunctionUtils:
 
         return self.logger.info(f"Checkpoint saved to {path}")
 
+    def load_checkpoint(self, path: str):
+        """
+        Load checkpoint with all HF required files.
+
+        Args:
+            path (str): Path to the checkpoint.
+        """
+        checkpoint_dir = os.path.dirname(path)
+        training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
+
+        if not os.path.exists(training_state_path):
+            raise ValueError(f"Checkpoint state file not found at {training_state_path}")
+
+        checkpoint = torch.load(training_state_path)
+
+        # Load model state
+        if hasattr(self.model, 'peft_config'):
+            self.model = PeftModel.from_pretrained(self.model, checkpoint_dir)
+        else:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+
+        # Load optimizer state
+        if 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict']:
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        # Load scheduler state
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict']:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+        # Load scaler state
+        if 'scaler' in checkpoint and checkpoint['scaler']:
+            self.scaler.load_state_dict(checkpoint['scaler'])
+
+        # Load other states
+        self.epoch = checkpoint['epoch']
+        self.loss = checkpoint['loss']
+
+        self.logger.info(f"Checkpoint loaded from {path}")
     
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4") -> BitsAndBytesConfig:

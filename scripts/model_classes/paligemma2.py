@@ -222,28 +222,28 @@ class PaliGemma2:
 
     
     def finetune(self, dataset: str, classes: Dict[int, str],
-            train_test_split: Tuple[int, int, int] = (80, 10, 10),
-            freeze_vision_encoders: bool = False,
-            epochs: int = 20,
-            lr: float = 4e-6,
-            save_dir: str = "model_checkpoints",
-            num_workers: int = None,
-            lora_r: int = 8,
-            lora_scaling: int = 8,
-            patience: int = 10,
-            patience_threshold: float = 0.0,
-            gradient_accumulation_steps: int = 2,
-            lora_dropout: float = 0.05,
-            warmup_ratio: float = 0.03,
-            lr_schedule_type: str = "cosine",
-            create_peft_config: bool = True,
-            random_seed: int = 22,
-            logging_steps: int = 1000,
-            weight_decay: float = 0.01,
-            save_limit: int = 3,
-            metric_for_best_model: str = "loss", 
-            dataset_type: str = "yolo") -> Dict:
-
+                 train_test_split: Tuple[int, int, int] = (80, 10, 10),
+                 freeze_vision_encoders: bool = False,
+                 epochs: int = 20,
+                 lr: float = 4e-6,
+                 save_dir: str = "model_checkpoints",
+                 num_workers: int = None,
+                 lora_r: int = 8,
+                 lora_scaling: int = 8,
+                 patience: int = 10,
+                 patience_threshold: float = 0.0,
+                 gradient_accumulation_steps: int = 2,
+                 lora_dropout: float = 0.05,
+                 warmup_ratio: float = 0.03,
+                 lr_schedule_type: str = "cosine",
+                 create_peft_config: bool = True,
+                 random_seed: int = 22,
+                 logging_steps: int = 1000,
+                 weight_decay: float = 0.01,
+                 save_limit: int = 3,
+                 metric_for_best_model: str = "loss",
+                 dataset_type: str = "yolo",
+                 resume_from_checkpoint: str = None) -> Dict:
         """
         FineTune PaliGemma2 on a custom dataset (currently configured for YOLO format)
         Utilizes PyTorch Training Loop and LoRA with Hugging Face Model for training.
@@ -252,14 +252,14 @@ class PaliGemma2:
 
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
-        
+
         save_dir = os.path.join(self.model_run_path, save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        
+
         run_name = f"run_{time.strftime('%Y%m%d-%H%M%S')}"
         tensorboard_dir = os.path.join(self.model_run_path, "tensorboard_logs", run_name)
         writer = SummaryWriter(tensorboard_dir)
-        
+
         try:
             if dataset_type == "yolo":
                 train_image_path, valid_image_path, train_jsonl_path, _, valid_jsonl_path = (
@@ -293,7 +293,7 @@ class PaliGemma2:
             elif num_workers and num_workers > 0 and self.device == "mps":
                 num_workers = 0
                 self.logger.info("Using 0 workers for Data Loading on MPS")
-            
+
             self.train_loader, self.val_loader = self.ModelFunctionUtils.setup_data_loaders(
                 train_image_path=train_image_path,
                 valid_image_path=valid_image_path,
@@ -312,18 +312,18 @@ class PaliGemma2:
 
             optimizer_group_params = [
                 {
-                    'params': [p for n, p in self.model.named_parameters() 
+                    'params': [p for n, p in self.model.named_parameters()
                             if p.requires_grad and not any(nd in n for nd in ['bias', 'LayerNorm.weight'])],
                     'weight_decay': weight_decay
                 },
                 {
-                    'params': [p for n, p in self.model.named_parameters() 
+                    'params': [p for n, p in self.model.named_parameters()
                             if p.requires_grad and any(nd in n for nd in ['bias', 'LayerNorm.weight'])],
                     'weight_decay': 0.0
                 }
             ]
             optimizer = AdamW(optimizer_group_params, lr=lr) #hardcoded AdamW for now...
-            
+
             num_training_steps = epochs * len(self.train_loader)
             num_warmup_steps = int(warmup_ratio * num_training_steps)
             scheduler = get_scheduler(
@@ -332,6 +332,10 @@ class PaliGemma2:
                 num_warmup_steps=num_warmup_steps,
                 num_training_steps=num_training_steps
             )
+
+            # Load checkpoint if resuming
+            if resume_from_checkpoint:
+                self.ModelFunctionUtils.load_checkpoint(resume_from_checkpoint)
 
             best_metric = float('inf') if metric_for_best_model == "loss" else float('-inf')
             patience_counter = 0
@@ -353,20 +357,20 @@ class PaliGemma2:
                 self.model.train()
                 train_loss = 0
                 epoch_losses = []
-                
+
                 train_progress = tqdm(
                     self.train_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Train]",
                     bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
-                    postfix=dict(loss="0.0000", lr="0.0"),  
+                    postfix=dict(loss="0.0000", lr="0.0"),
                     dynamic_ncols=True,
                     initial=0
                 )
 
                 for step, batch in enumerate(train_progress):
-                    batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                    batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
                             for k, v in batch.items()}
-                            
+
                     if scaler is not None:
                         with torch.cuda.amp.autocast():
                             outputs = self.model(**batch)
@@ -376,16 +380,16 @@ class PaliGemma2:
                         outputs = self.model(**batch)
                         loss = outputs.loss / gradient_accumulation_steps
                         loss.backward()
-                    
+
                     current_loss = loss.item()
                     epoch_losses.append(current_loss)
                     train_loss += current_loss
-                    
+
                     train_progress.set_postfix({
                         'loss': f'{statistics.mean(epoch_losses[-100:]):.4f}',
                         'lr': f'{scheduler.get_last_lr()[0]:.2e}'
-                    })  
-                    
+                    })
+
                     if (step + 1) % gradient_accumulation_steps == 0:
                         if scaler is not None:
                             scaler.unscale_(optimizer)
@@ -395,18 +399,18 @@ class PaliGemma2:
                         else:
                             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                             optimizer.step()
-                        
+
                         scheduler.step()
                         optimizer.zero_grad()
-                        
+
                         if global_step % logging_steps == 0:
                             writer.add_scalar('Training/Loss', current_loss, global_step)
                             writer.add_scalar('Training/LearningRate', scheduler.get_last_lr()[0], global_step)
-                        
+
                         global_step += 1
-                
+
                 avg_train_loss = train_loss / len(self.train_loader)
-                
+
                 self.model.eval()
                 val_loss = 0
                 val_losses = []
@@ -419,20 +423,20 @@ class PaliGemma2:
                     dynamic_ncols=True,
                     initial=0
                 )
-                
+
                 with torch.no_grad():
                     for batch in val_progress:
-                        batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                        batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v
                                 for k, v in batch.items()}
                         outputs = self.model(**batch)
                         current_val_loss = outputs.loss.item()
                         val_losses.append(current_val_loss)
                         val_loss += current_val_loss
-                        
+
                         val_progress.set_postfix({
                             'loss': f'{statistics.mean(val_losses[-100:]):.4f}'
-                        })  
-                
+                        })
+
                 val_loss = val_loss / len(self.val_loader)
                 current_metric = val_loss if metric_for_best_model == "loss" else -val_loss
                 is_better = current_metric < best_metric
@@ -443,12 +447,11 @@ class PaliGemma2:
                     'train': avg_train_loss,
                     'validation': val_loss
                 }, epoch)
-                
+
                 print(f"\nEpoch {epoch}/{epochs} Summary:")
                 print(f"Training Loss: {avg_train_loss:.4f}")
                 print(f"Validation Loss: {val_loss:.4f}")
                 print(f"Learning Rate: {scheduler.get_last_lr()[0]:.2e}")
-                
 
                 if is_better:
                     print(f"New Best Model! Previous: {best_metric:.4f} | New: {current_metric:.4f}")
@@ -467,9 +470,9 @@ class PaliGemma2:
                 else:
                     patience_counter += 1
                     print(f"No improvement for {patience_counter} epochs. Best: {best_metric:.4f}")
-                
+
                 print("-" * 50)
-                
+
                 if (epoch) % 3 == 0:
                     print("Saving checkpoint for Model...")
                     checkpoint_path = os.path.join(epoch_dir, f"checkpoint_epoch_{epoch}.pt")
@@ -482,14 +485,14 @@ class PaliGemma2:
                         scaler=scaler
                     )
                     saved_checkpoints.append(checkpoint_path)
-                    
+
                     if len(saved_checkpoints) > save_limit:
                         os.remove(saved_checkpoints.pop(0))
-                
+
                 if patience_counter >= patience and abs(current_metric - best_metric) > patience_threshold:
                     self.logger.info(f"Early stopping triggered at epoch {epoch + 1}")
                     break
-            
+
             return {
                 'best_metric': best_metric,
                 'final_train_loss': avg_train_loss,
@@ -498,7 +501,7 @@ class PaliGemma2:
                 'early_stopped': patience_counter >= patience,
                 'model_path': os.path.join(epoch_dir, "best_model.pt")
             }
-            
+
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
             writer.close()
