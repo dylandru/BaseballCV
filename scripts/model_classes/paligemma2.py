@@ -87,14 +87,14 @@ class PaliGemma2:
         try:
             if self.device == "cuda":
                 self.model = PaliGemmaForConditionalGeneration.from_pretrained(
-                    self.model_id#, 
-                    #device_map="auto", 
-                    #use_flash_attention_2=True, 
-                    #torch_dtype=self.torch_dtype, 
-                    #torch_dtype_details={
-                    #    "compute_dtype": self.torch_dtype, 
-                    #    "storage_dtype": self.torch_dtype
-                    #}
+                    self.model_id, 
+                    device_map="auto", 
+                    use_flash_attention_2=True, 
+                    torch_dtype=self.torch_dtype, 
+                    torch_dtype_details={
+                        "compute_dtype": self.torch_dtype, 
+                        "storage_dtype": self.torch_dtype
+                    }
                 )
             else:
                 self.model = PaliGemmaForConditionalGeneration.from_pretrained(

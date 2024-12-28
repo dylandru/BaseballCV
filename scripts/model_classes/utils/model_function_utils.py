@@ -237,8 +237,8 @@ class ModelFunctionUtils:
         """
         return next(iter(results.values())).strip()
 
-    def save_checkpoint(self, path: str, epoch: int, optimizer: torch.optim.Optimizer, 
-                        scheduler: torch.optim.lr_scheduler._LRScheduler, loss: float, 
+    def save_checkpoint(self, path: str, epoch: int, optimizer: torch.optim.Optimizer,
+                        scheduler: torch.optim.lr_scheduler._LRScheduler, loss: float,
                         scaler: torch.cuda.amp.GradScaler = None) -> logging.Logger:
         """
         Save checkpoint with all HF required files.
@@ -261,19 +261,20 @@ class ModelFunctionUtils:
             raise ValueError("Model is not a PEFT model. Cannot save checkpoint.")
         self.processor.save_pretrained(checkpoint_dir)
 
-        if hasattr(self.model, 'peft_config') and not os.path.exists(os.path.join(checkpoint_dir, "adapter_config.json")):
+        # Ensure the adapter configuration is saved
+        adapter_config_path = os.path.join(checkpoint_dir, "adapter_config.json")
+        if hasattr(self.model, 'peft_config') and not os.path.exists(adapter_config_path):
             peft_model = PeftModel.from_pretrained(self.model, checkpoint_dir)
             peft_model.save_pretrained(checkpoint_dir)
-
 
         for file in os.listdir(checkpoint_dir):
             if file.endswith('.safetensors') and '-of-' in file:
                 parts = file.split('-of-')
                 if len(parts) == 2:
                     correct = f"{parts[0]}-of-{parts[1][:5]}.safetensors" #error on saving safetensors file names, adjusted here
-                    os.rename(os.path.join(checkpoint_dir, file), 
+                    os.rename(os.path.join(checkpoint_dir, file),
                             os.path.join(checkpoint_dir, correct))
-        
+
         training_state = {
             'epoch': epoch,
             'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
@@ -285,6 +286,7 @@ class ModelFunctionUtils:
         torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
 
         return self.logger.info(f"Checkpoint saved to {path}")
+
     
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4") -> BitsAndBytesConfig:
