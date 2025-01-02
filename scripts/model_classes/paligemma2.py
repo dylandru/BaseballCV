@@ -506,21 +506,8 @@ class PaliGemma2:
             self.logger.error(f"Training failed: {str(e)}")
             writer.close()
             raise e
-
+    
     def evaluate(self, base_path: str, classes: Dict[int, str], num_workers: int = 5, dataset: Dataset = None, dataset_type: str = "yolo"):
-        """
-        Evaluate the model on a dataset. Defaults to valid split if creating new dataset.
-
-        Args:
-            base_path: The path where the entire dataset is stored (or will be stored if non-existent).
-            classes: Dictionary mapping class IDs to class names.
-            num_workers: The number of workers to use for data loading.
-            dataset: The dataset to evaluate on, if one is provided. If None, the valid split of the full dataset is used.
-            dataset_type: The type of dataset (yolo or paligemma). Default is yolo.
-
-        Returns:
-            The mean average precision result.
-        """
         self.logger.info("Starting evaluation...")
         self.model.eval().to(self.device)
 
@@ -528,29 +515,35 @@ class PaliGemma2:
             self.logger.info("Merging LoRA weights for evaluation")
             self.model = self.model.merge_and_unload()
 
-
+        if dataset and base_path:
+            raise ValueError("Two datasets provided. Please provide only one.")
+        
+        else: 
+            self.logger.info("One dataset provided. Proceeding with evaluation.")
+        
         if dataset:
             split_dataset = dataset
-        else:
-            if dataset_type == "yolo":
-                _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
-                    base_path=base_path,
-                    dict_classes=classes,
-                    train_test_split=(80, 10, 10),
-                    dataset_type=dataset_type
-                )
-            else:
-                _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
-                    base_path=base_path,
-                    dict_classes=classes,
-                    dataset_type=dataset_type
-                )
-            
-            split_dataset = self.ModelFunctionUtils.create_detection_dataset(
-                jsonl_file_path=valid_jsonl_path,
-                image_directory_path=valid_image_path,
-                augment=False
+      
+       
+        if dataset_type == "yolo":
+            _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
+                base_path=base_path,
+                dict_classes=classes,
+                train_test_split=(80, 10, 10),
+                dataset_type=dataset_type
             )
+        else:
+            _, valid_image_path, _, _, valid_jsonl_path = self.DataProcessor.prepare_dataset(
+                base_path=base_path,
+                dict_classes=classes,
+                dataset_type=dataset_type
+            )
+        
+        split_dataset = self.ModelFunctionUtils.create_detection_dataset(
+            jsonl_file_path=valid_jsonl_path,
+            image_directory_path=valid_image_path,
+            augment=False
+        )
         
         eval_loader = DataLoader(
             split_dataset,
@@ -567,85 +560,98 @@ class PaliGemma2:
         predictions = []
 
         with torch.inference_mode():
-          for batch_idx, batch in enumerate(tqdm(
-                    eval_loader,
-                    desc=f"Evaluating Model",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
-                    dynamic_ncols=True,
-                    initial=0
-                )):
+            for batch_idx, batch in enumerate(tqdm(
+                        eval_loader,
+                        desc=f"Evaluating Model",
+                        bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                        dynamic_ncols=True,
+                        initial=0
+                    )):
 
-            batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                    for k, v in batch.items()}
-            
-            outputs = self.model.generate(
-                **batch,
-                max_new_tokens=256, 
-                do_sample=False
+                batch = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                        for k, v in batch.items()}
+                
+                outputs = self.model.generate(
+                    **batch,
+                    max_new_tokens=256, 
+                    do_sample=False
+                )
+
+                prefix_length = batch["input_ids"].shape[-1]
+                
+                start_idx = batch_idx * self.batch_size
+                end_idx = start_idx + len(outputs)
+                
+                orig_samples = [eval_loader.dataset[i] for i in range(start_idx, end_idx)]
+                orig_images = [sample[0] for sample in orig_samples]
+                batch_suffixes = [sample[1]["suffix"] for sample in orig_samples]
+
+                for idx, (image, generation, suffix) in enumerate(zip(orig_images, outputs, batch_suffixes)):
+                    generated_text = self.processor.decode(generation[prefix_length:], skip_special_tokens=True)
+                    w, h = image.size
+                    
+                    import re
+                    boxes = []
+                    class_names = []
+                    matches = re.finditer(r'(\w+)<loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>', generated_text)
+                    for match in matches:
+                        class_name = match.group(1)
+                        x1, y1, x2, y2 = map(int, match.group(2, 3, 4, 5))
+                        boxes.append([x1, y1, x2, y2])
+                        class_names.append(class_name)
+                    
+                    prediction = sv.Detections(
+                        xyxy=np.array(boxes) if boxes else np.zeros((0, 4)),
+                        class_id=np.array([classes.index(c) for c in class_names]) if class_names else np.array([]),
+                        confidence=np.ones(len(boxes)) if boxes else np.array([])
+                    )
+                    
+                    target_boxes = []
+                    target_class_names = []
+                    target_matches = re.finditer(r'(\w+)<loc_(\d+)><loc_(\d+)><loc_(\d+)><loc_(\d+)>', suffix)
+                    for match in target_matches:
+                        class_name = match.group(1)
+                        x1, y1, x2, y2 = map(int, match.group(2, 3, 4, 5))
+                        target_boxes.append([x1, y1, x2, y2])
+                        target_class_names.append(class_name)
+                    
+                    target = sv.Detections(
+                        xyxy=np.array(target_boxes) if target_boxes else np.zeros((0, 4)),
+                        class_id=np.array([classes.index(c) for c in target_class_names]) if target_class_names else np.array([])
+                    )
+                    
+                    images.append(image)
+                    targets.append(target)
+                    predictions.append(prediction)
+
+            map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
+            map_result = map_metric.update(predictions, targets).compute()
+
+            print(map_result)
+
+            map_result.plot()
+
+            confusion_matrix = sv.ConfusionMatrix.from_detections(
+                predictions=predictions,
+                targets=targets,
+                classes=classes
             )
 
-            prefix_length = batch["input_ids"].shape[-1]
-            
-            start_idx = batch_idx * self.batch_size
-            end_idx = start_idx + len(outputs)
-            
-            orig_samples = [eval_loader.dataset[i] for i in range(start_idx, end_idx)]
-            orig_images = [sample[0] for sample in orig_samples]
-            batch_suffixes = [sample[1]["suffix"] for sample in orig_samples]
+            _ = confusion_matrix.plot()
 
-            for idx, (image, generation, suffix) in enumerate(zip(orig_images, outputs, batch_suffixes)):
-                generated_text = self.processor.decode(generation[prefix_length:], skip_special_tokens=True)
-        
-                w, h = image.size
-                prediction = sv.Detections.from_lmm(
-                    lmm='paligemma',
-                    result=generated_text,
-                    resolution_wh=(w, h),
-                    classes=classes)
-                
-                prediction.class_id = np.array([classes.index(class_name) for class_name in prediction['class_name']])
-                prediction.confidence = np.ones(len(prediction))
-                
-                target = sv.Detections.from_lmm(
-                    lmm='paligemma',
-                    result=suffix,
-                    resolution_wh=(w, h),
-                    classes=classes)
-                
-                target.class_id = np.array([classes.index(class_name) for class_name in target['class_name']])
-                
-                images.append(image)
-                targets.append(target)
-                predictions.append(prediction)
+            annotated_images = []
+            for i in range(25):
+                image = images[i]
+                detections = predictions[i]
 
-        map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
-        map_result = map_metric.update(predictions, targets).compute()
+                annotated_image = image.copy()
+                annotated_image = sv.BoxAnnotator(thickness=4).annotate(annotated_image, detections)
+                annotated_image = sv.LabelAnnotator(text_scale=2, text_thickness=4, smart_position=True).annotate(annotated_image, detections)
+                annotated_images.append(annotated_image)
 
-        print(map_result)
+            sv.plot_images_grid(annotated_images, (5, 5))
 
-        map_result.plot()
+            self.logger.info("Evaluation complete.")
 
-        confusion_matrix = sv.ConfusionMatrix.from_detections(
-            predictions=predictions,
-            targets=targets,
-            classes=classes
-        )
-
-        _ = confusion_matrix.plot()
-
-        annotated_images = []
-        for i in range(25):
-            image = images[i]
-            detections = predictions[i]
-
-            annotated_image = image.copy()
-            annotated_image = sv.BoxAnnotator(thickness=4).annotate(annotated_image, detections)
-            annotated_image = sv.LabelAnnotator(text_scale=2, text_thickness=4, smart_position=True).annotate(annotated_image, detections)
-            annotated_images.append(annotated_image)
-
-        sv.plot_images_grid(annotated_images, (5, 5))
-
-        self.logger.info("Evaluation complete.")
-
-        return map_result
+            return map_result
 
