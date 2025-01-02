@@ -237,8 +237,8 @@ class ModelFunctionUtils:
         """
         return next(iter(results.values())).strip()
 
-    def save_checkpoint(self, path: str, epoch: int, optimizer: torch.optim.Optimizer,
-                        scheduler: torch.optim.lr_scheduler._LRScheduler, loss: float,
+    def save_checkpoint(self, path: str, epoch: int, optimizer: torch.optim.Optimizer, 
+                        scheduler: torch.optim.lr_scheduler._LRScheduler, loss: float, 
                         scaler: torch.cuda.amp.GradScaler = None) -> logging.Logger:
         """
         Save checkpoint with all HF required files.
@@ -255,76 +255,28 @@ class ModelFunctionUtils:
         checkpoint_dir = os.path.dirname(path)
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-        if hasattr(self.model, 'peft_config'):
-            self.model.save_pretrained(checkpoint_dir)
+        if hasattr(self, 'peft_model'):
+            self.peft_model.save_pretrained(checkpoint_dir)
+            
+            torch.save({
+                'epoch': epoch,
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                'loss': loss,
+                'scaler': scaler.state_dict() if scaler else None
+            }, os.path.join(checkpoint_dir, 'training_state.pt'))
+            
+            self.processor.save_pretrained(checkpoint_dir)
+            
+            for file in os.listdir(checkpoint_dir):
+                if file.endswith('.safetensors') and '-of-' in file:
+                    parts = file.split('-of-')
+                    if len(parts) == 2:
+                        correct = f"{parts[0]}-of-{parts[1][:5]}.safetensors"
+                        os.rename(os.path.join(checkpoint_dir, file), 
+                                os.path.join(checkpoint_dir, correct))
         else:
-            raise ValueError("Model is not a PEFT model. Cannot save checkpoint.")
-        self.processor.save_pretrained(checkpoint_dir)
-
-        # Ensure the adapter configuration is saved
-        adapter_config_path = os.path.join(checkpoint_dir, "adapter_config.json")
-        if hasattr(self.model, 'peft_config') and not os.path.exists(adapter_config_path):
-            peft_model = PeftModel.from_pretrained(self.model, checkpoint_dir)
-            peft_model.save_pretrained(checkpoint_dir)
-
-        for file in os.listdir(checkpoint_dir):
-            if file.endswith('.safetensors') and '-of-' in file:
-                parts = file.split('-of-')
-                if len(parts) == 2:
-                    correct = f"{parts[0]}-of-{parts[1][:5]}.safetensors" #error on saving safetensors file names, adjusted here
-                    os.rename(os.path.join(checkpoint_dir, file),
-                            os.path.join(checkpoint_dir, correct))
-
-        training_state = {
-            'epoch': epoch,
-            'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
-            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
-            'loss': loss,
-            'scaler': scaler.state_dict() if scaler else None
-        }
-
-        torch.save(training_state, os.path.join(checkpoint_dir, "training_state.pt"))
-
-        return self.logger.info(f"Checkpoint saved to {path}")
-
-    def load_checkpoint(self, path: str):
-        """
-        Load checkpoint with all HF required files.
-
-        Args:
-            path (str): Path to the checkpoint.
-        """
-        checkpoint_dir = os.path.dirname(path)
-        training_state_path = os.path.join(checkpoint_dir, "training_state.pt")
-
-        if not os.path.exists(training_state_path):
-            raise ValueError(f"Checkpoint state file not found at {training_state_path}")
-
-        checkpoint = torch.load(training_state_path)
-
-        # Load model state
-        if hasattr(self.model, 'peft_config'):
-            self.model = PeftModel.from_pretrained(self.model, checkpoint_dir)
-        else:
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-
-        # Load optimizer state
-        if 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict']:
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-        # Load scheduler state
-        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict']:
-            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-
-        # Load scaler state
-        if 'scaler' in checkpoint and checkpoint['scaler']:
-            self.scaler.load_state_dict(checkpoint['scaler'])
-
-        # Load other states
-        self.epoch = checkpoint['epoch']
-        self.loss = checkpoint['loss']
-
-        self.logger.info(f"Checkpoint loaded from {path}")
+            raise ValueError("PEFT model not found. Cannot save checkpoint.")
     
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4") -> BitsAndBytesConfig:
