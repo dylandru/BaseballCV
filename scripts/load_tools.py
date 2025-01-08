@@ -51,7 +51,8 @@ class LoadTools:
             'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
             'baseball_rubber_home_COCO': 'datasets/COCO/baseball_rubber_home_COCO.txt',
             'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
-            'baseball': 'datasets/yolo/baseball.txt'
+            'baseball': 'datasets/yolo/baseball.txt',
+            'phc': 'datasets/yolo/phc.txt'
         }
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
