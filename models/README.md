@@ -14,6 +14,10 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 
 - `florence_ball_tracking`: Utilizes a fine-tuned version of Florence2 to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
+## Available PaliGemma2 Models
+
+- `paligemma2_ball_tracking`: Utilizes a fine-tuned version of PaliGemma2 to track the baseball from pitcher's hand to home plate among other VLM tasks.
+
 
 ## Model Weights
 
@@ -30,6 +34,11 @@ The model weights can be downloaded directly from the links below:
 ### Florence2 Models
 
 - Ball Tracking: [florence_ball_tracking](https://data.balldatalab.com/index.php/s/eFmKZXp3A3ko3jF/download/)
+
+### PaliGemma2 Models
+
+- Ball Tracking: [paligemma2_ball_tracking](https://data.balldatalab.com/index.php/s/CqDQFRoGR7wp6Ls/download/paligemma2_ball_tracking.zip)
+
 
 ## Usage
 

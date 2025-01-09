@@ -41,7 +41,10 @@ class LoadTools:
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
-            'florence_ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
+            'florence_ball_tracking': 'models/vlm/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
+        }
+        self.paligemma2_model_aliases = {
+            'paligemma2_ball_tracking': 'models/vlm/paligemma2/ball_tracking/model_weights/paligemma2_ball_tracking.txt'
         }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
@@ -127,6 +130,8 @@ class LoadTools:
             model_txt_path = self.yolo_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         elif model_type == 'FLORENCE2':
             model_txt_path = self.florence_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        elif model_type == 'PALIGEMMA2':
+            model_txt_path = self.paligemma2_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         else:
             raise ValueError(f"Invalid model type: {model_type}")
         

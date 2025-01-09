@@ -31,25 +31,5 @@ def extract_frames_from_video(video_path, game_id, output_frames_folder, frames_
 
     return extracted_frames
     
-model_aliases = {
-    'phc_detector': 'models/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
-    'bat_tracking': 'models/bat_tracking/model_weights/bat_tracking.txt',
-    'ball_tracking': 'models/ball_tracking/model_weights/ball_tracking.txt',
-    'glove_tracking': 'models/glove_tracking/model_weights/glove_tracking.txt',
-    'ball_trackingv4': 'models/ball_tracking/model_weights/ball_trackingv4.txt',
-    'florence_ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
-    'florence_ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
-}
 
-dataset_aliases = {
-        'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
-        'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
-        'baseball_rubber_home': 'datasets/yolo/baseball_rubber_home.txt',
-        'broadcast_10k_frames': 'datasets/raw_photos/broadcast_10k_frames.txt',
-        'broadcast_15k_frames': 'datasets/raw_photos/broadcast_15k_frames.txt',
-        'baseball_rubber_home_COCO': 'datasets/COCO/baseball_rubber_home_COCO.txt',
-        'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
-        'baseball': 'datasets/yolo/baseball.txt',
-        'phc': 'datasets/yolo/phc.txt'
-}
 
