@@ -119,6 +119,10 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 
 - `florence_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
+**Available PaliGemma2 Models**:
+
+- `paligemma2_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
+
 ## Downloading and Loading Models
 
 ### Overview
@@ -157,7 +161,25 @@ load_tools = LoadTools()
 model_path = load_tools.load_model("florence_ball_tracking", model_type='FLORENCE2')
 
 # Load Florence2 model using .txt file path
-model_path = load_tools.load_model("models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt", model_type='FLORENCE2')
+model_path = load_tools.load_model("models/vlm/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt", model_type='FLORENCE2')
+```
+
+#### PaliGemma 2 Models
+
+To load a PaliGemma 2 model, you can also use the load_model method of the LoadTools class. Below is an example of how to load a PaliGemma 2 model:
+
+
+```python
+from scripts import LoadTools
+
+# Initialize LoadTools class
+load_tools = LoadTools()
+
+# Load Florence2 model using alias
+model_path = load_tools.load_model("paligemma2_ball_tracking", model_type='PALIGEMMA2')
+
+# Load Florence2 model using .txt file path
+model_path = load_tools.load_model("models/vlm/paligemma2/ball_tracking/model_weights/paligemma2_ball_tracking.txt", model_type='PALIGEMMA2')
 ```
 
 ## Examples
