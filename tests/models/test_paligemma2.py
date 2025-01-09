@@ -3,9 +3,13 @@ import glob
 import shutil
 from scripts import LoadTools
 from scripts import PaliGemma2
+from huggingface_hub import login
 
 
 def test_paligemma2_training():
+
+    login(token=os.getenv("HF_TOKEN"))
+    
     load_tools = LoadTools()
     test_dataset = load_tools.load_dataset("baseball")
 
