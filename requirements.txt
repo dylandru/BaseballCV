@@ -15,6 +15,6 @@ pytest-cov==6.0.0
 pytest==8.3.2
 supervision==0.25.0
 pillow==10.3.0
-tensorboardx==2.6.2.2
+tensorboard>=2.15.0
 wandb==0.19.1
 git+https://github.com/Jensen-holm/statcast-era-pitches.git
