@@ -13,4 +13,11 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/dylandru/BaseballCV",
     python_requires=">=3.10",
+    license="MIT",
+    include_package_data=True,
+    classifiers=[
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+    ]
 )
