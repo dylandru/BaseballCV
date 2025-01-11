@@ -14,6 +14,33 @@ Maintained By: Carlos Marcano**
 
 Our goal is to provide access to high-quality datasets and computer vision models for baseball. By sharing our annotated data and model weights, we hope to foster innovation in sports analytics and make it easier for developers to create tools that analyze baseball games.
 
+## Installation and Setup
+
+To get started with our datasets and models, follow these steps:
+
+### Install Package
+
+The package can be installed from Github with the required dependencies using the following command:
+
+```bash
+pip install git+https://github.com/dylandru/BaseballCV.git
+```
+
+### Clone the Repository Locally
+
+The repository can be cloned from Github with the required dependencies installed using the following commands:
+
+```bash
+git clone https://github.com/dylandru/BaseballCV.git
+cd BaseballCV
+pip install -r requirements.txt
+```
+### Important Reminders
+
+- Imports vary from using package to using local files; every import from the package is prefixed with `baseballcv.`
+- The package is currently in development and may not be fully functional. 
+- The package is not yet available on PyPI, so it must be installed from Github.
+
 ## Available Assets
 
 ### 1. Datasets
@@ -313,9 +340,6 @@ BaseballCV provides Streamlit-based web apps for interacting with our computer v
 
 ### Annotation App
 
-Want to try out our annotation app in your browser? 
-[Try it here!](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
-
 Located in: `/streamlit/annotation_app/`
 
 A web interface for managing and annotating baseball images/videos:
@@ -336,23 +360,6 @@ Visit the folder's README for setup and usage instructions.
 ### Future Streamlit Apps Available Soon
 
 We are currently looking to expand our Streamlit app library, and are open to suggestions and contributions (please consult our contributing guidelines beforehand below).
-
-## Installation and Setup
-
-To get started with our datasets and models, follow these steps:
-
-### 1. Clone the Repository
-
-```python
-!git clone https://github.com/dylandru/BaseballCV.git
-%cd BaseballCV
-```
-
-### 2. Install Dependencies
-
-```python
-pip install -r requirements.txt
-```
 
 ## Contributing
 
@@ -379,8 +386,6 @@ Our main need is for data annotation. With our new annotation app, you can help 
  - Open the Annotation Interface and begin annotating!
 
 ## Component Status
-
-Testing status of each component script:
 
 [![Dataset Tools](https://img.shields.io/badge/Dataset%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
 [![Load Tools](https://img.shields.io/badge/Load%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
