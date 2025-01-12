@@ -14,4 +14,14 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.PR_DISCORD_WEBHOOK }}
         uses: Ilshidur/action-discord@master
         with:
-          args: '**New PR Merged**\n\nPR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}\n\nCreated by: ${{ github.event.pull_request.user.login }}\nMerged by: ${{ github.event.pull_request.merged_by.login }}\n\nDescription:\n${{ github.event.pull_request.body }}\n\n[View Pull Request](${{ github.event.pull_request.html_url }})'
+            args: |
+              **New PR Merged - #${{ github.event.pull_request.number }}**
+              ${{ github.event.pull_request.title }}
+
+              Created by: ${{ github.event.pull_request.user.login }}
+              Merged by: ${{ github.event.pull_request.merged_by.login }}
+
+              **Description:**
+              ${{ github.event.pull_request.body }}
+
+              ${{ github.event.pull_request.html_url }}
