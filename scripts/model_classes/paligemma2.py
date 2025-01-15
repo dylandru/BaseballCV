@@ -341,7 +341,7 @@ class PaliGemma2:
             patience_counter = 0
             saved_checkpoints = []
             global_step = 0
-            scaler = torch.cuda.amp.GradScaler() if self.device == "cuda" else None
+            scaler = torch.amp.GradScaler() if self.device == "cuda" else None
 
             print(f"\n=== Starting Training ===\n"
                 f"Model: {self.model_id}\n"

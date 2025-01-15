@@ -3,11 +3,11 @@ from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, Tr
 import os
 from PIL import Image
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from .utils import CocoDetectionDataset
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing as mp
-from .utils import ModelLogger
+from .utils import ModelLogger, ModelFunctionUtils
 
 class DETR:
     def __init__(self, 
@@ -15,7 +15,8 @@ class DETR:
                  device: str = None, 
                  model_id: str = "facebook/detr-resnet-50",
                  model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
-                 batch_size: int = 8):
+                 batch_size: int = 8,
+                 image_size: Tuple[int, int] = (800, 800)):
         
         self.device = torch.device("cuda" if torch.cuda.is_available()
                                 else "mps" if torch.backends.mps.is_available()
@@ -28,12 +29,21 @@ class DETR:
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
-        self.processor = DetrImageProcessor.from_pretrained(self.model_id)
+        self.processor = DetrImageProcessor.from_pretrained(self.model_id,
+                            size={"height": image_size[0], "width": image_size[1]}, 
+                            do_resize=True,
+                            do_pad=True)
         self.model = DetrForObjectDetection.from_pretrained(
             self.model_id,
             num_labels=num_labels,
             ignore_mismatched_sizes=True
         ).to(self.device)
+
+        self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, 
+                            self.model_run_path, self.batch_size, 
+                            self.device, self.processor, self.model, 
+                            None, self.logger, torch.float16)
+
     
     def finetune(self, dataset_dir: str,
         save_dir: str = "finetuned_detr",
@@ -50,7 +60,10 @@ class DETR:
         patience_threshold: float = 0.01,
         metric_for_best_model: str = "loss",
         resume_from_checkpoint: str = None,
-        num_workers: int = None) -> Dict:
+        num_workers: int = None,
+        freeze_layers: List[str] = None,
+        custom_freezing: bool = False,
+        show_model_params: bool = True) -> Dict:
 
         try:
 
@@ -58,6 +71,33 @@ class DETR:
             tensorboard_dir = os.path.join(self.model_run_path, save_dir, "tensorboard")
             os.makedirs(tensorboard_dir, exist_ok=True)
             writer = SummaryWriter(tensorboard_dir)
+
+
+
+            if not freeze_layers and not custom_freezing:
+                self.logger.info("Defaulting to Quick Training - Head Layer remains trainable...")
+                self.ModelFunctionUtils.freeze_layers([
+                'model.backbone',
+                'model.encoder',
+                'model.decoder',
+                'model.input_projection',
+                'model.query_position_embeddings',
+                'model.layernorm'], show_params=show_model_params)
+            elif custom_freezing and not freeze_layers:
+                raise ValueError("Custom freezing can only be used if freeze_layers is provided")
+            elif freeze_layers and not custom_freezing:
+                self.logger.info("Freezing Layers specified but custom freezing is not True.")
+                self.logger.info("Defaulting to Quick Training - Head Layer remains trainable...")
+                self.ModelFunctionUtils.freeze_layers([
+                'model.backbone',
+                'model.encoder',
+                'model.decoder',
+                'model.input_projection',
+                'model.query_position_embeddings',
+                'model.layernorm'], show_params=show_model_params)
+            else:
+                self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
+
 
             self.logger.info("Setting Up Data Loaders")
             if not num_workers and self.device != "mps":

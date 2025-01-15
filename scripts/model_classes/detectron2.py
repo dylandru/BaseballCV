@@ -1,4 +1,3 @@
-import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.backends
 import torch.multiprocessing as mp
@@ -12,7 +11,6 @@ from typing import Dict, List, Tuple, Any
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
 
-from detectron2 import model_zoo
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultTrainer, DefaultPredictor
 from detectron2.data import DatasetMapper, build_detection_test_loader
