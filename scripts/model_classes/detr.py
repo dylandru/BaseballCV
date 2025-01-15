@@ -232,9 +232,38 @@ class DETR:
         return detections
     
     def _collate_fn(self, batch):
-        pixel_values = torch.stack([item['pixel_values'] for item in batch])
-        pixel_mask = torch.stack([item['pixel_mask'] for item in batch])
+        max_h = max([item['pixel_values'].shape[1] for item in batch])
+        max_w = max([item['pixel_values'].shape[2] for item in batch])
+        
+        pixel_values = []
+        pixel_mask = []
+        
+        for item in batch:
+            _, h, w = item['pixel_values'].shape
+            
+            pad_h = max_h - h
+            pad_w = max_w - w
+
+            padded_values = torch.nn.functional.pad(
+                item['pixel_values'],
+                (0, pad_w, 0, pad_h),
+                mode='constant',
+                value=0
+            )
+            pixel_values.append(padded_values)
+            
+            padded_mask = torch.nn.functional.pad(
+                item['pixel_mask'],
+                (0, pad_w, 0, pad_h),
+                mode='constant',
+                value=0
+            )
+            pixel_mask.append(padded_mask)
+        
+        pixel_values = torch.stack(pixel_values)
+        pixel_mask = torch.stack(pixel_mask)
         labels = [item['labels'] for item in batch]
+        
         return {
             'pixel_values': pixel_values,
             'pixel_mask': pixel_mask,
