@@ -17,7 +17,7 @@ class DETR:
                  model_id: str = "facebook/detr-resnet-50",
                  model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8,
-                 image_size: Tuple[int, int] = (800, 800)):
+                 image_size: Tuple[int, int] = (800, 1333)):
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
@@ -33,7 +33,7 @@ class DETR:
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
         self.processor = DetrImageProcessor.from_pretrained(self.model_id,
-                            size={"height": image_size[0], "width": image_size[1]},
+                            size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
                             do_resize=True,
                             do_pad=True,
                             do_normalize=True)
