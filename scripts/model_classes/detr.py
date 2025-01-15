@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 from .utils import CocoDetectionDataset
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing as mp
-from .utils import ModelLogger, ModelFunctionUtils
+from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
 
 class DETR:
     def __init__(self, 
@@ -30,7 +30,7 @@ class DETR:
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
         self.processor = DetrImageProcessor.from_pretrained(self.model_id,
-                            size={"height": image_size[0], "width": image_size[1]}, 
+                            size={'longest_edge': max(image_size)},
                             do_resize=True,
                             do_pad=True)
         self.model = DetrForObjectDetection.from_pretrained(
@@ -129,7 +129,7 @@ class DETR:
                 save_strategy="steps",
                 save_steps=steps_per_save,
                 save_total_limit=save_limit,
-                evaluation_strategy="steps",
+                eval_strategy="steps",
                 eval_steps=steps_per_save,
                 metric_for_best_model=metric_for_best_model,
                 load_best_model_at_end=True,
