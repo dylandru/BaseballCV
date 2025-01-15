@@ -4,9 +4,9 @@ from transformers import DetrImageProcessor
 from torchvision.datasets import CocoDetection
 
 class CocoDetectionDataset(Dataset):
-    def __init__(self, dataset_dir: str, processor: DetrImageProcessor):
-        img_dir = os.path.join(dataset_dir, "train")
-        ann_file = os.path.join(dataset_dir, "train", "_coco.json")
+    def __init__(self, dataset_dir: str, split: str, processor: DetrImageProcessor):
+        img_dir = os.path.join(dataset_dir, split)
+        ann_file = os.path.join(dataset_dir, split, "_coco.json")
         self.dataset = CocoDetection(img_dir, ann_file)
         self.processor = processor
 

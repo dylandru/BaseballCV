@@ -1,72 +1,156 @@
 import torch
-from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments
+from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments, EarlyStoppingCallback
 import os
 from PIL import Image
+from datetime import datetime
 from typing import Dict, List
 from .utils import CocoDetectionDataset
+from torch.utils.tensorboard import SummaryWriter
+import multiprocessing as mp
+from .utils import ModelLogger
 
 class DETR:
-    def __init__(self, num_labels: int, model_name: str = "facebook/detr-resnet-50"):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor = DetrImageProcessor.from_pretrained(model_name)
+    def __init__(self, 
+                 num_labels: int,
+                 device: str = None, 
+                 model_id: str = "facebook/detr-resnet-50",
+                 model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
+                 batch_size: int = 8):
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available()
+                                else "mps" if torch.backends.mps.is_available()
+                                else "cpu") if device is None else torch.device(device)
+        
+        self.model_id = model_id
+        self.model_run_path = model_run_path
+        self.model_name = "DETR"
+        self.batch_size = batch_size
+
+        self.logger = ModelLogger(self.model_name, self.model_run_path, 
+                                self.model_id, self.batch_size, self.device).orig_logging()
+        self.processor = DetrImageProcessor.from_pretrained(self.model_id)
         self.model = DetrForObjectDetection.from_pretrained(
-            model_name,
+            self.model_id,
             num_labels=num_labels,
             ignore_mismatched_sizes=True
         ).to(self.device)
     
-    def _collate_fn(self, batch):
-        pixel_values = torch.stack([item['pixel_values'] for item in batch])
-        pixel_mask = torch.stack([item['pixel_mask'] for item in batch])
-        labels = [item['labels'] for item in batch]
-        return {
-            'pixel_values': pixel_values,
-            'pixel_mask': pixel_mask,
-            'labels': labels
-        }
-
-    def finetune(
-        self,
-        dataset_dir: str,
-        output_dir: str = "baseballcv-detr",
+    def finetune(self, dataset_dir: str,
+        save_dir: str = "finetuned_detr",
         batch_size: int = 4,
-        num_epochs: int = 10,
-        learning_rate: float = 1e-4
-    ):
+        epochs: int = 10,
+        lr: float = 4e-6,
+        weight_decay: float = 0.01,
+        warmup_ratio: float = 0.1,
+        lr_schedule_type: str = "cosine",
+        gradient_accumulation_steps: int = 2,
+        logging_steps: int = 10,
+        save_limit: int = 2,
+        patience: int = 3,
+        patience_threshold: float = 0.01,
+        metric_for_best_model: str = "loss",
+        resume_from_checkpoint: str = None,
+        num_workers: int = None) -> Dict:
 
-        train_dataset = CocoDetectionDataset(dataset_dir, self.processor)
-        val_dataset = CocoDetectionDataset(dataset_dir, self.processor)
+        try:
 
-        training_args = TrainingArguments(
-            output_dir=output_dir,
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            num_train_epochs=num_epochs,
-            fp16=True,
-            save_steps=100,
-            eval_steps=100,
-            logging_steps=10,
-            learning_rate=learning_rate,
-            save_total_limit=2,
-            remove_unused_columns=False,
-            push_to_hub=False,
-            gradient_checkpointing=True,
-            gradient_accumulation_steps=2,
-        )
+            self.logger.info("Setting Up Tensorboard")
+            tensorboard_dir = os.path.join(self.model_run_path, save_dir, "tensorboard")
+            os.makedirs(tensorboard_dir, exist_ok=True)
+            writer = SummaryWriter(tensorboard_dir)
 
-        trainer = Trainer(
-            model=self.model,
-            args=training_args,
-            train_dataset=train_dataset,
-            eval_dataset=val_dataset,
-            data_collator=self._collate_fn,
-        )
+            self.logger.info("Setting Up Data Loaders")
+            if not num_workers and self.device != "mps":
+                num_workers = min(12, mp.cpu_count() - 1)
+                self.logger.info(f"Using Default of {num_workers} workers for Data Loading")
+            elif num_workers and num_workers > 0 and self.device == "mps":
+                num_workers = 0
+                self.logger.info("Using 0 workers for Data Loading on MPS")
 
-        # Train and save
-        trainer.train()
-        self.model.save_pretrained(output_dir)
-        self.processor.save_pretrained(output_dir)
+            self.logger.info("Loading Training and Validation Datasets")
 
+            train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
+            val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
+
+            num_training_steps = epochs * (len(train_dataset) // batch_size)
+
+            training_args = TrainingArguments(
+                output_dir=save_dir,
+                per_device_train_batch_size=batch_size,
+                per_device_eval_batch_size=batch_size,
+                num_train_epochs=epochs,
+                learning_rate=lr,
+                weight_decay=weight_decay,
+                warmup_ratio=warmup_ratio,
+                lr_scheduler_type=lr_schedule_type,
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                logging_steps=logging_steps,
+                save_strategy="steps",
+                save_steps=num_training_steps // (epochs * save_limit),
+                save_total_limit=save_limit,
+                evaluation_strategy="steps",
+                eval_steps=num_training_steps // (epochs * 4),
+                metric_for_best_model=metric_for_best_model,
+                load_best_model_at_end=True,
+                greater_is_better=False if metric_for_best_model == "loss" else True,
+                remove_unused_columns=False,
+                dataloader_num_workers=num_workers,
+                dataloader_pin_memory=True,
+                fp16=True,
+                report_to=["tensorboard"],
+            )
+
+            if patience and patience_threshold > 0:
+                callbacks = [
+                    EarlyStoppingCallback(
+                        early_stopping_patience=patience,
+                        early_stopping_threshold=patience_threshold
+                    )
+                ]
+            else:
+                callbacks = []
+
+            self.logger.info("Setting Up Trainer")
+
+            trainer = Trainer(
+                model=self.model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=val_dataset,
+                data_collator=self._collate_fn,
+                callbacks=callbacks,
+            )
+
+
+            print(f"\n=== Starting Training ===\n"
+                  f"Model: {self.model_id}\n"
+                  f"Total Epochs: {epochs}\n"
+                  f"Batch Size: {batch_size}\n"
+                  f"Learning Rate: {lr}\n"
+                  f"Device: {self.device}\n")
+
+            train_result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+            metrics = train_result.metrics
+
+
+            trainer.save_model(save_dir)
+            self.processor.save_pretrained(save_dir)
+
+            return {
+                'best_metric': trainer.state.best_metric,
+                'final_train_loss': metrics.get("train_loss"),
+                'final_eval_loss': metrics.get("eval_loss"),
+                'tensorboard_dir': tensorboard_dir,
+                'early_stopped': trainer.state.global_step < num_training_steps,
+                'model_path': os.path.join(self.model_run_path, save_dir)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Training failed: {str(e)}")
+            if 'writer' in locals():
+                writer.close()
+            raise e
+    
     def inference(self, image_path: str, confidence_threshold: float = 0.9) -> List[Dict]:
         self.model.eval()
         image = Image.open(image_path).convert("RGB")
@@ -97,3 +181,13 @@ class DETR:
             detections.append(detection)
         
         return detections
+    
+    def _collate_fn(self, batch):
+        pixel_values = torch.stack([item['pixel_values'] for item in batch])
+        pixel_mask = torch.stack([item['pixel_mask'] for item in batch])
+        labels = [item['labels'] for item in batch]
+        return {
+            'pixel_values': pixel_values,
+            'pixel_mask': pixel_mask,
+            'labels': labels
+        }
