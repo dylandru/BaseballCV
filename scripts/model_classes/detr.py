@@ -1,6 +1,7 @@
 import torch
 from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments, EarlyStoppingCallback
 import os
+import warnings
 from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
@@ -18,6 +19,8 @@ class DETR:
                  batch_size: int = 8,
                  image_size: Tuple[int, int] = (800, 800)):
         
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        
         self.device = torch.device("cuda" if torch.cuda.is_available()
                                 else "mps" if torch.backends.mps.is_available()
                                 else "cpu") if device is None else torch.device(device)
@@ -30,9 +33,10 @@ class DETR:
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
         self.processor = DetrImageProcessor.from_pretrained(self.model_id,
-                            size={'longest_edge': max(image_size)},
+                            size={"height": image_size[0], "width": image_size[1]},
                             do_resize=True,
-                            do_pad=True)
+                            do_pad=True,
+                            resample=Image.Resampling.BILINEAR)
         self.model = DetrForObjectDetection.from_pretrained(
             self.model_id,
             num_labels=num_labels,
