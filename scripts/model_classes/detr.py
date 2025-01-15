@@ -156,11 +156,11 @@ class DETR:
                     EarlyStoppingCallback(
                         early_stopping_patience=patience,
                         early_stopping_threshold=patience_threshold
-                    )
+                    ),
+                    CustomProgressBarCallback(num_epochs=epochs)
                 ]
             else:
-                callbacks = [
-                ]
+                callbacks = [CustomProgressBarCallback(num_epochs=epochs)]
 
             self.logger.info("Setting Up Trainer")
 
