@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 from .utils import CocoDetectionDataset
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing as mp
-from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
+from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, CustomProgressBarCallback
 
 class DETR:
     def __init__(self, 
@@ -46,24 +46,24 @@ class DETR:
 
     
     def finetune(self, dataset_dir: str,
-        save_dir: str = "finetuned_detr",
-        batch_size: int = 4,
-        epochs: int = 10,
-        lr: float = 4e-6,
-        weight_decay: float = 0.01,
-        warmup_ratio: float = 0.1,
-        lr_schedule_type: str = "cosine",
-        gradient_accumulation_steps: int = 2,
-        logging_steps: int = 10,
-        save_limit: int = 2,
-        patience: int = 3,
-        patience_threshold: float = 0.01,
-        metric_for_best_model: str = "loss",
-        resume_from_checkpoint: str = None,
-        num_workers: int = None,
-        freeze_layers: List[str] = None,
-        custom_freezing: bool = False,
-        show_model_params: bool = True) -> Dict:
+            save_dir: str = "finetuned_detr",
+            batch_size: int = 4,
+            epochs: int = 10,
+            lr: float = 4e-6,
+            weight_decay: float = 0.01,
+            warmup_ratio: float = 0.1,
+            lr_schedule_type: str = "cosine",
+            gradient_accumulation_steps: int = 2,
+            logging_steps: int = 10,
+            save_limit: int = 2,
+            patience: int = 3,
+            patience_threshold: float = 0.01,
+            metric_for_best_model: str = "loss",
+            resume_from_checkpoint: str = None,
+            num_workers: int = None,
+            freeze_layers: List[str] = None,
+            custom_freezing: bool = False,
+            show_model_params: bool = True) -> Dict:
 
         try:
 
@@ -71,6 +71,9 @@ class DETR:
             tensorboard_dir = os.path.join(self.model_run_path, save_dir, "tensorboard")
             os.makedirs(tensorboard_dir, exist_ok=True)
             writer = SummaryWriter(tensorboard_dir)
+
+            model_path = os.path.join(self.model_run_path, save_dir, "model")
+            os.makedirs(model_path, exist_ok=True)
 
 
 
@@ -83,8 +86,10 @@ class DETR:
                 'model.input_projection',
                 'model.query_position_embeddings',
                 'model.layernorm'], show_params=show_model_params)
+
             elif custom_freezing and not freeze_layers:
                 raise ValueError("Custom freezing can only be used if freeze_layers is provided")
+            
             elif freeze_layers and not custom_freezing:
                 self.logger.info("Freezing Layers specified but custom freezing is not True.")
                 self.logger.info("Defaulting to Quick Training - Head Layer remains trainable...")
@@ -95,6 +100,7 @@ class DETR:
                 'model.input_projection',
                 'model.query_position_embeddings',
                 'model.layernorm'], show_params=show_model_params)
+
             else:
                 self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
 
@@ -146,10 +152,13 @@ class DETR:
                     EarlyStoppingCallback(
                         early_stopping_patience=patience,
                         early_stopping_threshold=patience_threshold
-                    )
+                    ),
+                    CustomProgressBarCallback(num_epochs=epochs)
                 ]
             else:
-                callbacks = []
+                callbacks = [
+                    CustomProgressBarCallback(num_epochs=epochs)
+                ]
 
             self.logger.info("Setting Up Trainer")
 
@@ -173,16 +182,15 @@ class DETR:
             train_result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
             metrics = train_result.metrics
 
-
-            trainer.save_model(save_dir)
-            self.processor.save_pretrained(save_dir)
+            trainer.save_model(model_path)
+            self.processor.save_pretrained(model_path)
 
             return {
                 'best_metric': trainer.state.best_metric,
                 'final_train_loss': metrics.get("train_loss"),
                 'final_eval_loss': metrics.get("eval_loss"),
                 'tensorboard_dir': tensorboard_dir,
-                'early_stopped': trainer.state.global_step < num_training_steps,
+                'early_stopped': trainer.state.global_step < total_steps,
                 'model_path': os.path.join(self.model_run_path, save_dir)
             }
 
@@ -192,7 +200,7 @@ class DETR:
                 writer.close()
             raise e
     
-    def inference(self, image_path: str, confidence_threshold: float = 0.9) -> List[Dict]:
+    def inference(self, image_path: str, conf: float = 0.9) -> List[Dict]:
         self.model.eval()
         image = Image.open(image_path).convert("RGB")
         inputs = self.processor(images=image, return_tensors="pt")
@@ -205,7 +213,7 @@ class DETR:
         results = self.processor.post_process_object_detection(
             outputs,
             target_sizes=[(height, width)],
-            threshold=confidence_threshold
+            threshold=conf  
         )[0]
         
         detections = []

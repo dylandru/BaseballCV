@@ -16,6 +16,18 @@ class CocoDetectionDataset(Dataset):
     def __getitem__(self, idx: int):
         image, annots = self.dataset[idx]
         image_id = self.dataset.ids[idx]
+
+        for ann in annots:
+            bbox = ann['bbox']
+            x0, y0 = bbox[0], bbox[1]
+            x1, y1 = bbox[0] + bbox[2], bbox[1] + bbox[3]
+            
+            ann['bbox'] = [
+                min(x0, x1),
+                min(y0, y1),
+                max(x0, x1),
+                max(y0, y1)
+            ]
         
         target = {'image_id': image_id, 'annotations': annots}
         encoding = self.processor(images=image, annotations=target, return_tensors="pt")
