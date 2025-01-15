@@ -5,7 +5,7 @@ pip==24.0
 pybaseball==2.2.7
 pytest==8.3.2
 ultralytics>=8.2.90,!=8.3.41,!=8.3.42
-transformers==4.46.3
+transformers==4.48.0
 peft==0.13.2
 streamlit==1.37.0
 streamlit-image-coordinates==0.1.6

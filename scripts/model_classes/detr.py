@@ -19,7 +19,7 @@ class DETR:
                  batch_size: int = 8,
                  image_size: Tuple[int, int] = (800, 800)):
         
-        warnings.filterwarnings("ignore", category=FutureWarning)
+        warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
         self.device = torch.device("cuda" if torch.cuda.is_available()
                                 else "mps" if torch.backends.mps.is_available()
@@ -36,7 +36,7 @@ class DETR:
                             size={"height": image_size[0], "width": image_size[1]},
                             do_resize=True,
                             do_pad=True,
-                            resample=Image.Resampling.BILINEAR)
+                            do_normalize=True)
         self.model = DetrForObjectDetection.from_pretrained(
             self.model_id,
             num_labels=num_labels,
@@ -123,7 +123,6 @@ class DETR:
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
             total_steps = epochs * (len(train_dataset) // batch_size)
-            steps_per_save = max(100, total_steps // 10)
 
             training_args = TrainingArguments(
                 output_dir=save_dir,
@@ -137,10 +136,10 @@ class DETR:
                 gradient_accumulation_steps=gradient_accumulation_steps,
                 logging_steps=logging_steps,
                 save_strategy="steps",
-                save_steps=steps_per_save,
+                save_steps=len(train_dataset),
                 save_total_limit=save_limit,
                 eval_strategy="steps",
-                eval_steps=steps_per_save,
+                eval_steps=len(train_dataset),
                 metric_for_best_model=metric_for_best_model,
                 load_best_model_at_end=True,
                 greater_is_better=False if metric_for_best_model == "loss" else True,
@@ -156,11 +155,10 @@ class DETR:
                     EarlyStoppingCallback(
                         early_stopping_patience=patience,
                         early_stopping_threshold=patience_threshold
-                    ),
-                    CustomProgressBarCallback(num_epochs=epochs)
+                    )
                 ]
             else:
-                callbacks = [CustomProgressBarCallback(num_epochs=epochs)]
+                callbacks = []
 
             self.logger.info("Setting Up Trainer")
 
