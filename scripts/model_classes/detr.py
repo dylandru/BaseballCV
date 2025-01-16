@@ -123,6 +123,7 @@ class DETR:
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
             total_steps = epochs * (len(train_dataset) // batch_size)
+            steps_save = (len(train_dataset) // batch_size) // 2
 
             training_args = TrainingArguments(
                 output_dir=model_path,
@@ -136,10 +137,10 @@ class DETR:
                 gradient_accumulation_steps=gradient_accumulation_steps,
                 logging_steps=logging_steps,
                 save_strategy="steps",
-                save_steps=len(train_dataset),
+                save_steps=steps_save,
                 save_total_limit=save_limit,
                 eval_strategy="steps",
-                eval_steps=len(train_dataset),
+                eval_steps=steps_save,
                 metric_for_best_model=metric_for_best_model,
                 load_best_model_at_end=True,
                 greater_is_better=False if metric_for_best_model == "loss" else True,
