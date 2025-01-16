@@ -5,10 +5,9 @@ import warnings
 from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
-from .utils import CocoDetectionDataset
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing as mp
-from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, CustomProgressBarCallback
+from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
 
 class DETR:
     def __init__(self, 
@@ -123,7 +122,7 @@ class DETR:
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
             total_steps = epochs * (len(train_dataset) // batch_size)
-            steps_save = (len(train_dataset) // batch_size) // 2
+            steps_save = (len(train_dataset) // batch_size)
 
             training_args = TrainingArguments(
                 output_dir=model_path,
