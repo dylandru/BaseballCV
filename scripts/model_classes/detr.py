@@ -125,7 +125,7 @@ class DETR:
             total_steps = epochs * (len(train_dataset) // batch_size)
 
             training_args = TrainingArguments(
-                output_dir=save_dir,
+                output_dir=model_path,
                 per_device_train_batch_size=batch_size,
                 per_device_eval_batch_size=batch_size,
                 num_train_epochs=epochs,
