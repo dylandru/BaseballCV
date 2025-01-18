@@ -113,11 +113,8 @@ class DETR:
 
             self.logger.info("Loading Training and Validation Datasets")
 
-            #train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
-            #val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
-
-            train_dataset = os.path.join(dataset_dir, "instances_train.json")
-            train_dataset = os.path.join(dataset_dir, "instances_val.json")
+            train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
+            val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
             total_steps = epochs * (len(train_dataset) // batch_size)
 
