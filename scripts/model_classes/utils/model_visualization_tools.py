@@ -1,6 +1,9 @@
 import os
+import cv2
+import torch
 import matplotlib.pyplot as plt
-from typing import Dict
+from typing import Dict, List
+from tqdm import tqdm
 from PIL import Image
 import logging
 
@@ -22,7 +25,7 @@ class ModelVisualizationTools:
         self.model_run_path = model_run_path
         self.logger = logger
 
-    def visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations') -> logging.Logger:
+    def visualize_detection_results(self, image: Image.Image, results: Dict, save: bool = True, save_viz_dir: str = 'visualizations') -> logging.Logger:
         """
         Visualize the results.
 
@@ -38,7 +41,7 @@ class ModelVisualizationTools:
         plt.imshow(image)
         ax = plt.gca()
 
-        for bbox, label in zip(results['bboxes'], results['labels']):
+        for bbox, label, score in zip(results['bbox'], results['label'], results['score']):
             xmin, ymin, xmax, ymax = bbox
             rect = plt.Rectangle(
                 (xmin, ymin),
@@ -52,17 +55,26 @@ class ModelVisualizationTools:
             ax.text(
                 xmin,
                 ymin - 2,
-                label,
+                f"{label} ({score:.2f})",
                 bbox=dict(facecolor='red', alpha=0.5),
                 fontsize=12,
-                color='white'
+                color='white',
+                fontweight='bold'
             )
 
         plt.axis('off')
         plt.show()
-        os.makedirs(save_viz_dir, exist_ok=True)
-        plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
-        plt.close()
-        return self.logger.info(f"Visualization saved to {os.path.join(self.model_run_path, save_viz_dir, 'result.png')}")
+
+        if save:
+            os.makedirs(save_viz_dir, exist_ok=True)
+            image_save_path = os.path.join(self.model_run_path, save_viz_dir, f'{image.filename}.png')
+            plt.savefig(image_save_path)
+            self.logger.info(f"Visualization saved to {image_save_path}")
+            plt.close()
+            return image_save_path
+        else:
+            plt.close()
+            return None
+        
 
     

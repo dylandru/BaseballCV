@@ -1,4 +1,7 @@
+import cv2
+import numpy as np
 import torch
+from tqdm import tqdm
 from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments, EarlyStoppingCallback
 import os
 import warnings
@@ -6,10 +9,8 @@ from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
 from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import Dataset, DataLoader
 import multiprocessing as mp
-import tqdm
-from utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
+from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
 
 class DETR:
     def __init__(self, 
@@ -191,36 +192,111 @@ class DETR:
             self.logger.error(f"Training failed: {str(e)}")
             raise e
     
-    def inference(self, image_path: str, conf: float = 0.9) -> List[Dict]:
+    def inference(self, file_path: str,
+                  conf: float = 0.9, 
+                  save: bool = False, 
+                  save_viz_dir: str = 'visualizations',
+                  show_video: bool = False) -> List[Dict]:
+        
         self.model.eval()
-        image = Image.open(image_path).convert("RGB")
-        inputs = self.processor(images=image, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-        
-        width, height = image.size
-        results = self.processor.post_process_object_detection(
-            outputs,
-            target_sizes=[(height, width)],
-            threshold=conf  
-        )[0]
-        
-        detections = []
-        for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-            xmin, ymin, xmax, ymax = box.tolist()
-            detection = {
-                'image_id': os.path.basename(image_path),
-                'category_id': label.item(),
-                'bbox': [xmin, ymin, xmax - xmin, ymax - ymin],  
-                'score': score.item(),
-                'area': (xmax - xmin) * (ymax - ymin),
-                'iscrowd': 0
-            }
-            detections.append(detection)
-        
-        return detections
+
+        if file_path.endswith('.png', '.jpg', '.jpeg'):
+            image = Image.open(file_path).convert("RGB")
+            inputs = self.processor(images=image, return_tensors="pt")
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            
+            width, height = image.size
+            results = self.processor.post_process_object_detection(
+                outputs,
+                target_sizes=[(height, width)],
+                threshold=conf  
+            )[0]
+            
+            detections = []
+            for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                xmin, ymin, xmax, ymax = box.tolist()
+                detection = {
+                    'image_id': image.filename,
+                    'category_id': label.item(),
+                    'bbox': [xmin, ymin, xmax, ymax],  
+                    'score': score.item(),
+                }
+                detections.append(detection)
+            
+            ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(image, detections, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
+
+        elif file_path.endswith('.mp4'):
+            cap = cv2.VideoCapture(file_path)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+
+            if save:
+                save_path = os.path.join(self.model_run_path, save_viz_dir, f'{file_path.split("/")[-1]}.mp4')
+                writer = cv2.VideoWriter(save_path, 
+                               cv2.VideoWriter_fourcc(*'mp4v'),
+                               fps, (width, height))
+                
+            all_detections = []
+            frame_count = 0
+
+            progress_bar = tqdm(total=total_frames, desc=f'Predicting Video: Frame {frame_count} / {total_frames}',
+                                bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
+                                dynamic_ncols=True,
+                                initial=0)
+
+            with progress_bar as pbar:
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    
+                    image = Image.fromarray(frame_rgb)
+                    inputs = self.processor(images=image, return_tensors="pt")
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    
+                    with torch.no_grad():
+                        outputs = self.model(**inputs)
+
+                    results = self.processor.post_process_object_detection(
+                            outputs,
+                            target_sizes=[(height, width)],
+                            threshold=conf  
+                        )[0]
+                    
+                    frame_detections = []
+                    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                        xmin, ymin, xmax, ymax = box.tolist()
+                        detection = {
+                            'frame': frame_count,
+                            'category_id': label.item(),
+                            'bbox': [xmin, ymin, xmax - xmin, ymax - ymin],
+                            'score': score.item(),
+                        }
+                        frame_detections.append(detection)
+                        ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(image, frame_detections, save=False)
+                    
+                    all_detections.extend(frame_detections)
+
+                    if save:
+                        writer.write(cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
+
+                    if show_video:
+                        cv2.imshow('frame', frame_rgb)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            break
+                    
+                    frame_count += 1
+                    pbar.update(1)
+            
+   
+        return detections if file_path.endswith('.png', '.jpg', '.jpeg') else all_detections
     
     def _collate_fn(self, batch):
         max_h = max([item['pixel_values'].shape[1] for item in batch])
