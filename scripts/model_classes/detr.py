@@ -339,87 +339,87 @@ class DETR:
         }
 
 
-    def evaluate(self, dataset_dir: str, num_workers: int = 4, confidence_threshold: float = 0.5) -> Dict:
-        """
-        Evaluate the DETR model on a dataset.
+def evaluate(self, dataset_dir: str, num_workers: int = 4, confidence_threshold: float = 0.5) -> Dict:
+    """
+    Evaluate the DETR model on a dataset.
+    
+    Args:
+        dataset_dir (str): Directory containing the dataset with COCO format annotations
+        num_workers (int): Number of workers for data loading
+        confidence_threshold (float): Confidence threshold for detections
         
-        Args:
-            dataset_dir (str): Directory containing the dataset with COCO format annotations
-            num_workers (int): Number of workers for data loading
-            confidence_threshold (float): Confidence threshold for detections
-            
-        Returns:
-            Dict: Dictionary containing evaluation metrics
-        """
-        self.logger.info("Starting evaluation...")
-        self.model.eval()
+    Returns:
+        Dict: Dictionary containing evaluation metrics
+    """
+    self.logger.info("Starting evaluation...")
+    self.model.eval()
 
-        # Create validation dataset and dataloader
-        val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            collate_fn=self._collate_fn
-        )
+    # Create validation dataset and dataloader
+    val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=self.batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=self._collate_fn
+    )
 
-        all_predictions = []
-        all_targets = []
-        images = []
+    all_predictions = []
+    all_targets = []
+    images = []
 
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(tqdm(val_loader, desc="Evaluating")):
-                # Move inputs to device
-                pixel_values = batch['pixel_values'].to(self.device)
-                pixel_mask = batch['pixel_mask'].to(self.device)
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(tqdm(val_loader, desc="Evaluating")):
+            # Move inputs to device
+            pixel_values = batch['pixel_values'].to(self.device)
+            pixel_mask = batch['pixel_mask'].to(self.device)
 
-                # Forward pass
-                outputs = self.model(
-                    pixel_values=pixel_values,
-                    pixel_mask=pixel_mask
-                )
+            # Forward pass
+            outputs = self.model(
+                pixel_values=pixel_values,
+                pixel_mask=pixel_mask
+            )
 
-                # Process predictions
-                probas = outputs.logits.softmax(-1)[0, :, :-1]
-                keep = probas.max(-1).values > confidence_threshold
+            # Process predictions
+            probas = outputs.logits.softmax(-1)[0, :, :-1]
+            keep = probas.max(-1).values > confidence_threshold
 
-                # Convert predictions to COCO format
-                for idx, (pred_logits, pred_boxes) in enumerate(zip(
-                    outputs.logits[keep], outputs.pred_boxes[keep])):
-                    
-                    scores = pred_logits.softmax(-1)[:, :-1].max(-1).values
-                    labels = pred_logits.softmax(-1)[:, :-1].argmax(-1)
-                    boxes = self.processor.post_process_box_predictions(pred_boxes)
+            # Convert predictions to COCO format
+            for idx, (pred_logits, pred_boxes) in enumerate(zip(
+                outputs.logits[keep], outputs.pred_boxes[keep])):
+                
+                scores = pred_logits.softmax(-1)[:, :-1].max(-1).values
+                labels = pred_logits.softmax(-1)[:, :-1].argmax(-1)
+                boxes = self.processor.post_process_box_predictions(pred_boxes)
 
-                    predictions = {
-                        'boxes': boxes,
-                        'scores': scores,
-                        'labels': labels,
-                    }
-                    all_predictions.append(predictions)
+                predictions = {
+                    'boxes': boxes,
+                    'scores': scores,
+                    'labels': labels,
+                }
+                all_predictions.append(predictions)
 
-                    # Get corresponding ground truth
-                    target = batch['labels'][idx]
-                    all_targets.append({
-                        'boxes': target['boxes'],
-                        'labels': target['labels']
-                    })
+                # Get corresponding ground truth
+                target = batch['labels'][idx]
+                all_targets.append({
+                    'boxes': target['boxes'],
+                    'labels': target['labels']
+                })
 
-                    # Store image for visualization
-                    if len(images) < 25:  # Store first 25 images for visualization
-                        images.append(batch['pixel_values'][idx])
+                # Store image for visualization
+                if len(images) < 25:  # Store first 25 images for visualization
+                    images.append(batch['pixel_values'][idx])
 
-        # Calculate mAP and other metrics
-        metrics = self._calculate_metrics(all_predictions, all_targets)
-        
-        # Visualize results
-        self._visualize_results(images[:25], all_predictions[:25], all_targets[:25], metrics)
+    # Calculate mAP and other metrics
+    metrics = self._calculate_metrics(all_predictions, all_targets)
+    
+    # Visualize results
+    self._visualize_results(images[:25], all_predictions[:25], all_targets[:25], metrics)
 
-        self.logger.info("Evaluation complete.")
-        self.logger.info(f"mAP: {metrics['mAP']:.4f}")
-        
-        return metrics
+    self.logger.info("Evaluation complete.")
+    self.logger.info(f"mAP: {metrics['mAP']:.4f}")
+    
+    return metrics
 
     def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
         """
