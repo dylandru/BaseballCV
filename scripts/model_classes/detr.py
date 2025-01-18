@@ -258,3 +258,194 @@ class DETR:
             'pixel_mask': pixel_mask,
             'labels': labels
         }
+
+    def evaluate(self, dataset_dir: str, num_workers: int = 4, confidence_threshold: float = 0.5) -> Dict:
+        """
+        Evaluate the DETR model on a dataset.
+        
+        Args:
+            dataset_dir (str): Directory containing the dataset with COCO format annotations
+            num_workers (int): Number of workers for data loading
+            confidence_threshold (float): Confidence threshold for detections
+            
+        Returns:
+            Dict: Dictionary containing evaluation metrics
+        """
+        self.logger.info("Starting evaluation...")
+        self.model.eval()
+
+        # Create validation dataset and dataloader
+        val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            collate_fn=self._collate_fn
+        )
+
+        all_predictions = []
+        all_targets = []
+        images = []
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(tqdm(val_loader, desc="Evaluating")):
+                # Move inputs to device
+                pixel_values = batch['pixel_values'].to(self.device)
+                pixel_mask = batch['pixel_mask'].to(self.device)
+
+                # Forward pass
+                outputs = self.model(
+                    pixel_values=pixel_values,
+                    pixel_mask=pixel_mask
+                )
+
+                # Process predictions
+                probas = outputs.logits.softmax(-1)[0, :, :-1]
+                keep = probas.max(-1).values > confidence_threshold
+
+                # Convert predictions to COCO format
+                for idx, (pred_logits, pred_boxes) in enumerate(zip(
+                    outputs.logits[keep], outputs.pred_boxes[keep])):
+                    
+                    scores = pred_logits.softmax(-1)[:, :-1].max(-1).values
+                    labels = pred_logits.softmax(-1)[:, :-1].argmax(-1)
+                    boxes = self.processor.post_process_box_predictions(pred_boxes)
+
+                    predictions = {
+                        'boxes': boxes,
+                        'scores': scores,
+                        'labels': labels,
+                    }
+                    all_predictions.append(predictions)
+
+                    # Get corresponding ground truth
+                    target = batch['labels'][idx]
+                    all_targets.append({
+                        'boxes': target['boxes'],
+                        'labels': target['labels']
+                    })
+
+                    # Store image for visualization
+                    if len(images) < 25:  # Store first 25 images for visualization
+                        images.append(batch['pixel_values'][idx])
+
+        # Calculate mAP and other metrics
+        metrics = self._calculate_metrics(all_predictions, all_targets)
+        
+        # Visualize results
+        self._visualize_results(images[:25], all_predictions[:25], all_targets[:25], metrics)
+
+        self.logger.info("Evaluation complete.")
+        self.logger.info(f"mAP: {metrics['mAP']:.4f}")
+        
+        return metrics
+
+    def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
+        """
+        Calculate evaluation metrics including mAP.
+        
+        Args:
+            predictions (List[Dict]): List of prediction dictionaries
+            targets (List[Dict]): List of target dictionaries
+            
+        Returns:
+            Dict: Dictionary containing calculated metrics
+        """
+        import supervision as sv
+        from supervision.metrics import MeanAveragePrecision, MetricTarget
+        
+        # Convert to supervision Detections format
+        sv_predictions = []
+        sv_targets = []
+        
+        for pred, target in zip(predictions, targets):
+            sv_pred = sv.Detections(
+                xyxy=pred['boxes'],
+                confidence=pred['scores'],
+                class_id=pred['labels']
+            )
+            sv_predictions.append(sv_pred)
+            
+            sv_target = sv.Detections(
+                xyxy=target['boxes'],
+                class_id=target['labels']
+            )
+            sv_targets.append(sv_target)
+
+        # Calculate metrics
+        map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
+        metrics = map_metric.update(sv_predictions, sv_targets).compute()
+
+        return {
+            'mAP': metrics.map,
+            'mAP_50': metrics.map_50,
+            'mAP_75': metrics.map_75,
+            'mAR': metrics.mar,
+        }
+
+    def _visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
+                        targets: List[Dict], metrics: Dict) -> None:
+        """
+        Visualize evaluation results including example detections and metrics.
+        
+        Args:
+            images (List[torch.Tensor]): List of images
+            predictions (List[Dict]): List of predictions
+            targets (List[Dict]): List of targets
+            metrics (Dict): Dictionary of calculated metrics
+        """
+        import supervision as sv
+        import matplotlib.pyplot as plt
+        import os
+        
+        # Create visualization directory
+        vis_dir = os.path.join(self.model_run_path, "evaluation_visualizations")
+        os.makedirs(vis_dir, exist_ok=True)
+
+        # Plot metrics summary
+        plt.figure(figsize=(10, 6))
+        plt.bar(metrics.keys(), metrics.values())
+        plt.title("Evaluation Metrics")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(os.path.join(vis_dir, "metrics_summary.png"))
+        plt.close()
+
+        # Visualize example detections
+        annotated_images = []
+        for img, pred, target in zip(images[:25], predictions[:25], targets[:25]):
+            # Convert image tensor to PIL Image
+            img_array = (img.cpu().numpy() * 255).astype('uint8').transpose(1, 2, 0)
+            img_pil = Image.fromarray(img_array)
+            
+            # Create annotated image with predictions and ground truth
+            annotated_img = img_pil.copy()
+            
+            # Draw predictions in red
+            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
+            pred_detections = sv.Detections(
+                xyxy=pred['boxes'],
+                confidence=pred['scores'],
+                class_id=pred['labels']
+            )
+            annotated_img = box_annotator.annotate(scene=annotated_img, detections=pred_detections)
+            
+            # Draw ground truth in green
+            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
+            target_detections = sv.Detections(
+                xyxy=target['boxes'],
+                class_id=target['labels']
+            )
+            annotated_img = box_annotator.annotate(scene=annotated_img, detections=target_detections)
+            
+            annotated_images.append(annotated_img)
+
+        # Create grid visualization
+        sv.plot_images_grid(
+            images=annotated_images,
+            grid_size=(5, 5),
+            output_path=os.path.join(vis_dir, "detection_examples.png")
+        )
+
+        self.logger.info(f"Visualizations saved to {vis_dir}")
