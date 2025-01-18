@@ -338,6 +338,7 @@ class DETR:
             'labels': labels
         }
 
+
     def evaluate(self, dataset_dir: str, num_workers: int = 4, confidence_threshold: float = 0.5) -> Dict:
         """
         Evaluate the DETR model on a dataset.
