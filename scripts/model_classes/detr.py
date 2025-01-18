@@ -57,7 +57,7 @@ class DETR:
             warmup_ratio: float = 0.1,
             lr_schedule_type: str = "cosine",
             gradient_accumulation_steps: int = 2,
-            logging_steps: int = 10,
+            logging_steps: int = None,
             save_limit: int = 2,
             patience: int = 3,
             patience_threshold: float = 0.01,
@@ -69,11 +69,6 @@ class DETR:
             show_model_params: bool = True) -> Dict:
 
         try:
-
-            self.logger.info("Setting Up Tensorboard")
-            tensorboard_dir = os.path.join(self.model_run_path, save_dir, "tensorboard")
-            os.makedirs(tensorboard_dir, exist_ok=True)
-            writer = SummaryWriter(tensorboard_dir)
 
             model_path = os.path.join(self.model_run_path, save_dir, "model")
             os.makedirs(model_path, exist_ok=True)
@@ -122,10 +117,9 @@ class DETR:
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
             total_steps = epochs * (len(train_dataset) // batch_size)
-            steps_save = (len(train_dataset) // batch_size)
 
             training_args = TrainingArguments(
-                output_dir=model_path,
+                output_dir=os.path.join(model_path, 'checkpoints'),
                 per_device_train_batch_size=batch_size,
                 per_device_eval_batch_size=batch_size,
                 num_train_epochs=epochs,
@@ -135,11 +129,9 @@ class DETR:
                 lr_scheduler_type=lr_schedule_type,
                 gradient_accumulation_steps=gradient_accumulation_steps,
                 logging_steps=logging_steps,
-                save_strategy="steps",
-                save_steps=steps_save,
+                save_strategy="epoch",
                 save_total_limit=save_limit,
-                eval_strategy="steps",
-                eval_steps=steps_save,
+                eval_strategy="epoch",
                 metric_for_best_model=metric_for_best_model,
                 load_best_model_at_end=True,
                 greater_is_better=False if metric_for_best_model == "loss" else True,
@@ -189,15 +181,12 @@ class DETR:
                 'best_metric': trainer.state.best_metric,
                 'final_train_loss': metrics.get("train_loss"),
                 'final_eval_loss': metrics.get("eval_loss"),
-                'tensorboard_dir': tensorboard_dir,
                 'early_stopped': trainer.state.global_step < total_steps,
                 'model_path': os.path.join(self.model_run_path, save_dir)
             }
 
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
-            if 'writer' in locals():
-                writer.close()
             raise e
     
     def inference(self, image_path: str, conf: float = 0.9) -> List[Dict]:
