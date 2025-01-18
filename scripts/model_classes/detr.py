@@ -9,6 +9,7 @@ from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import Dataset, DataLoader
 import multiprocessing as mp
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
 
