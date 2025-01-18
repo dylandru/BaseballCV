@@ -370,98 +370,131 @@ class DETR:
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(tqdm(val_loader, desc="Evaluating")):
-                # Move inputs to device
-                pixel_values = batch['pixel_values'].to(self.device)
-                pixel_mask = batch['pixel_mask'].to(self.device)
+                try:
+                    # Move inputs to device
+                    pixel_values = batch['pixel_values'].to(self.device)
+                    pixel_mask = batch['pixel_mask'].to(self.device)
 
-                # Forward pass
-                outputs = self.model(
-                    pixel_values=pixel_values,
-                    pixel_mask=pixel_mask
-                )
+                    # Forward pass
+                    outputs = self.model(
+                        pixel_values=pixel_values,
+                        pixel_mask=pixel_mask
+                    )
 
-                # Process predictions
-                probas = outputs.logits.softmax(-1)[0, :, :-1]
-                keep = probas.max(-1).values > confidence_threshold
+                    # Process each item in the batch
+                    for b in range(len(pixel_values)):
+                        # Get logits and boxes for this item
+                        logits = outputs.logits[b]  # Shape: [num_queries, num_classes + 1]
+                        boxes = outputs.pred_boxes[b]  # Shape: [num_queries, 4]
 
-                # Convert predictions to COCO format
-                for idx, (pred_logits, pred_boxes) in enumerate(zip(
-                    outputs.logits[keep], outputs.pred_boxes[keep])):
-                    
-                    scores = pred_logits.softmax(-1)[:, :-1].max(-1).values
-                    labels = pred_logits.softmax(-1)[:, :-1].argmax(-1)
-                    boxes = self.processor.post_process_box_predictions(pred_boxes)
+                        # Get probabilities and apply threshold
+                        probs = logits.softmax(-1)  # Shape: [num_queries, num_classes + 1]
+                        scores, labels = probs[:, :-1].max(-1)  # Exclude no-object class
+                        keep_mask = scores > confidence_threshold
+                        
+                        # Filter predictions
+                        filtered_boxes = boxes[keep_mask]
+                        filtered_scores = scores[keep_mask]
+                        filtered_labels = labels[keep_mask]
 
-                    predictions = {
-                        'boxes': boxes,
-                        'scores': scores,
-                        'labels': labels,
-                    }
-                    all_predictions.append(predictions)
+                        # Convert boxes to image coordinates
+                        img_h, img_w = pixel_values[b].shape[1:]
+                        scaled_boxes = self.processor.post_process_box_predictions(
+                            filtered_boxes,
+                            target_sizes=[(img_h, img_w)]
+                        )[0]
 
-                    # Get corresponding ground truth
-                    target = batch['labels'][idx]
-                    all_targets.append({
-                        'boxes': target['boxes'],
-                        'labels': target['labels']
-                    })
+                        predictions = {
+                            'boxes': scaled_boxes.cpu().numpy(),
+                            'scores': filtered_scores.cpu().numpy(),
+                            'labels': filtered_labels.cpu().numpy(),
+                        }
+                        all_predictions.append(predictions)
 
-                    # Store image for visualization
-                    if len(images) < 25:  # Store first 25 images for visualization
-                        images.append(batch['pixel_values'][idx])
+                        # Get corresponding ground truth
+                        target = batch['labels'][b]
+                        if isinstance(target, dict):
+                            target_boxes = target['boxes'].cpu().numpy()
+                            target_labels = target['labels'].cpu().numpy()
+                        else:
+                            target_boxes = target.get('boxes', []).cpu().numpy()
+                            target_labels = target.get('labels', []).cpu().numpy()
+                        
+                        all_targets.append({
+                            'boxes': target_boxes,
+                            'labels': target_labels
+                        })
 
-        # Calculate mAP and other metrics
-        metrics = self._calculate_metrics(all_predictions, all_targets)
-        
-        # Visualize results
-        self._visualize_results(images[:25], all_predictions[:25], all_targets[:25], metrics)
+                        # Store image for visualization (first 25 only)
+                        if len(images) < 25:
+                            images.append(pixel_values[b])
 
-        self.logger.info("Evaluation complete.")
-        self.logger.info(f"mAP: {metrics['mAP']:.4f}")
-        
-        return metrics
-
-        def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
-            """
-            Calculate evaluation metrics including mAP.
-            
-            Args:
-                predictions (List[Dict]): List of prediction dictionaries
-                targets (List[Dict]): List of target dictionaries
-                
-            Returns:
-                Dict: Dictionary containing calculated metrics
-            """
-            import supervision as sv
-            from supervision.metrics import MeanAveragePrecision, MetricTarget
-            
-            # Convert to supervision Detections format
-            sv_predictions = []
-            sv_targets = []
-            
-            for pred, target in zip(predictions, targets):
-                sv_pred = sv.Detections(
-                    xyxy=pred['boxes'],
-                    confidence=pred['scores'],
-                    class_id=pred['labels']
-                )
-                sv_predictions.append(sv_pred)
-                
-                sv_target = sv.Detections(
-                    xyxy=target['boxes'],
-                    class_id=target['labels']
-                )
-                sv_targets.append(sv_target)
+                except Exception as e:
+                    self.logger.warning(f"Error processing batch {batch_idx}: {str(e)}")
+                    continue
 
             # Calculate metrics
-            map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
-            metrics = map_metric.update(sv_predictions, sv_targets).compute()
+            metrics = self._calculate_metrics(all_predictions, all_targets)
 
-            return {
-                'mAP': metrics.map,
-                'mAP_50': metrics.map_50,
-                'mAP_75': metrics.map_75,
-                'mAR': metrics.mar,
+            # Visualize results if we have images
+            if images:
+                self._visualize_results(
+                    images[:25], 
+                    all_predictions[:25], 
+                    all_targets[:25], 
+                    metrics
+                )
+
+            self.logger.info("Evaluation complete.")
+            self.logger.info(f"mAP: {metrics['mAP']:.4f}")
+            
+            return metrics
+
+    def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
+        """
+        Calculate evaluation metrics including mAP.
+        
+        Args:
+            predictions (List[Dict]): List of prediction dictionaries
+            targets (List[Dict]): List of target dictionaries
+            
+        Returns:
+            Dict: Dictionary containing calculated metrics
+        """
+        import supervision as sv
+        from supervision.metrics import MeanAveragePrecision, MetricTarget
+        
+        # Convert to supervision Detections format
+        sv_predictions = []
+        sv_targets = []
+        
+        for pred, target in zip(predictions, targets):
+            # Handle empty predictions/targets
+            if len(pred['boxes']) == 0 or len(target['boxes']) == 0:
+                continue
+
+            sv_pred = sv.Detections(
+                xyxy=pred['boxes'],
+                confidence=pred['scores'],
+                class_id=pred['labels']
+            )
+            sv_predictions.append(sv_pred)
+            
+            sv_target = sv.Detections(
+                xyxy=target['boxes'],
+                class_id=target['labels']
+            )
+            sv_targets.append(sv_target)
+
+        # Calculate metrics
+        map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
+        metrics = map_metric.update(sv_predictions, sv_targets).compute()
+
+        return {
+            'mAP': metrics.map,
+            'mAP_50': metrics.map_50,
+            'mAP_75': metrics.map_75,
+            'mAR': metrics.mar,
         }
 
     def _visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
@@ -504,20 +537,22 @@ class DETR:
             
             # Draw predictions in red
             box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
-            pred_detections = sv.Detections(
-                xyxy=pred['boxes'],
-                confidence=pred['scores'],
-                class_id=pred['labels']
-            )
-            annotated_img = box_annotator.annotate(scene=annotated_img, detections=pred_detections)
+            if len(pred['boxes']) > 0:  # Only draw if we have predictions
+                pred_detections = sv.Detections(
+                    xyxy=pred['boxes'],
+                    confidence=pred['scores'],
+                    class_id=pred['labels']
+                )
+                annotated_img = box_annotator.annotate(scene=annotated_img, detections=pred_detections)
             
             # Draw ground truth in green
             box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
-            target_detections = sv.Detections(
-                xyxy=target['boxes'],
-                class_id=target['labels']
-            )
-            annotated_img = box_annotator.annotate(scene=annotated_img, detections=target_detections)
+            if len(target['boxes']) > 0:  # Only draw if we have ground truth
+                target_detections = sv.Detections(
+                    xyxy=target['boxes'],
+                    class_id=target['labels']
+                )
+                annotated_img = box_annotator.annotate(scene=annotated_img, detections=target_detections)
             
             annotated_images.append(annotated_img)
 
