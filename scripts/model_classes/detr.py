@@ -11,6 +11,9 @@ from typing import Dict, List, Tuple
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
 import multiprocessing as mp
+import supervision as sv
+from supervision.metrics import MeanAveragePrecision, MetricTarget
+import matplotlib.pyplot as plt
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
 
 class DETR:
@@ -399,10 +402,11 @@ class DETR:
 
                         # Convert boxes to image coordinates
                         img_h, img_w = pixel_values[b].shape[1:]
-                        scaled_boxes = self.processor.post_process_box_predictions(
-                            filtered_boxes,
+                        # Convert normalized boxes to pixel coordinates
+                        scaled_boxes = self.processor.post_process_detection(
+                            outputs={"pred_boxes": filtered_boxes[None, :]},
                             target_sizes=[(img_h, img_w)]
-                        )[0]
+                        )[0]["pred_boxes"]
 
                         predictions = {
                             'boxes': scaled_boxes.cpu().numpy(),
@@ -461,9 +465,6 @@ class DETR:
         Returns:
             Dict: Dictionary containing calculated metrics
         """
-        import supervision as sv
-        from supervision.metrics import MeanAveragePrecision, MetricTarget
-        
         # Convert to supervision Detections format
         sv_predictions = []
         sv_targets = []
@@ -491,10 +492,9 @@ class DETR:
         metrics = map_metric.update(sv_predictions, sv_targets).compute()
 
         return {
-            'mAP': metrics.map,
-            'mAP_50': metrics.map_50,
-            'mAP_75': metrics.map_75,
-            'mAR': metrics.mar,
+            'mAP': metrics.map50_95,
+            'mAP_50': metrics.map50,
+            'mAP_75': metrics.map75
         }
 
     def _visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
@@ -508,10 +508,6 @@ class DETR:
             targets (List[Dict]): List of targets
             metrics (Dict): Dictionary of calculated metrics
         """
-        import supervision as sv
-        import matplotlib.pyplot as plt
-        import os
-        
         # Create visualization directory
         vis_dir = os.path.join(self.model_run_path, "evaluation_visualizations")
         os.makedirs(vis_dir, exist_ok=True)
@@ -536,7 +532,7 @@ class DETR:
             annotated_img = img_pil.copy()
             
             # Draw predictions in red
-            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
+            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.red())
             if len(pred['boxes']) > 0:  # Only draw if we have predictions
                 pred_detections = sv.Detections(
                     xyxy=pred['boxes'],
@@ -546,7 +542,7 @@ class DETR:
                 annotated_img = box_annotator.annotate(scene=annotated_img, detections=pred_detections)
             
             # Draw ground truth in green
-            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.default())
+            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.green())
             if len(target['boxes']) > 0:  # Only draw if we have ground truth
                 target_detections = sv.Detections(
                     xyxy=target['boxes'],
@@ -557,10 +553,16 @@ class DETR:
             annotated_images.append(annotated_img)
 
         # Create grid visualization
-        sv.plot_images_grid(
-            images=annotated_images,
-            grid_size=(5, 5),
-            output_path=os.path.join(vis_dir, "detection_examples.png")
-        )
+        figure, axs = plt.subplots(5, 5, figsize=(20, 20))
+        for idx, img in enumerate(annotated_images):
+            if idx < 25:  # Only show up to 25 images
+                row = idx // 5
+                col = idx % 5
+                axs[row, col].imshow(img)
+                axs[row, col].axis('off')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(vis_dir, "detection_examples.png"))
+        plt.close()
 
         self.logger.info(f"Visualizations saved to {vis_dir}")
