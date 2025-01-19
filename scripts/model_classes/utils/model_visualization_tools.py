@@ -25,12 +25,12 @@ class ModelVisualizationTools:
         self.model_run_path = model_run_path
         self.logger = logger
 
-    def visualize_detection_results(self, image: Image.Image, results: Dict, save: bool = True, save_viz_dir: str = 'visualizations') -> logging.Logger:
+    def visualize_detection_results(self, file_path: str, results: Dict, save: bool = True, save_viz_dir: str = 'visualizations') -> logging.Logger:
         """
         Visualize the results.
 
         Args:
-            image (PIL.Image.Image): The input image.
+            file_path (str): The path to the image file.
             results (Dict): Dictionary containing the results.
             save_viz_dir (str): Directory to save the visualizations.
 
@@ -38,11 +38,16 @@ class ModelVisualizationTools:
             logger_message (logging.Logger): The logger message for logging the completed visualization saving.
         """
         plt.figure(figsize=(10, 8))
-        plt.imshow(image)
+        plt.imshow(plt.imread(file_path))
         ax = plt.gca()
 
-        for bbox, label, score in zip(results['bbox'], results['label'], results['score']):
+        for detection in results:
+            bbox = detection['boxes']
+            label = detection['labels']
+            score = detection['scores']
+            print(bbox, label, score)
             xmin, ymin, xmax, ymax = bbox
+            
             rect = plt.Rectangle(
                 (xmin, ymin),
                 xmax - xmin,
@@ -67,7 +72,7 @@ class ModelVisualizationTools:
 
         if save:
             os.makedirs(save_viz_dir, exist_ok=True)
-            image_save_path = os.path.join(self.model_run_path, save_viz_dir, f'{image.filename}.png')
+            image_save_path = os.path.join(self.model_run_path, save_viz_dir, f'predicted_{file_path.split("/")[-1]}.png')
             plt.savefig(image_save_path)
             self.logger.info(f"Visualization saved to {image_save_path}")
             plt.close()

@@ -14,7 +14,7 @@ import multiprocessing as mp
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
 import matplotlib.pyplot as plt
-from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset
+from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelVisualizationTools
 
 class DETR:
     def __init__(self, 
@@ -23,7 +23,8 @@ class DETR:
                  model_id: str = "facebook/detr-resnet-50",
                  model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8,
-                 image_size: Tuple[int, int] = (800, 1333)):
+                 image_size: Tuple[int, int] = (800, 1333),
+                 inference_mode: bool = False):
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
@@ -38,16 +39,32 @@ class DETR:
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
-        self.processor = DetrImageProcessor.from_pretrained(self.model_id,
-                            size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
-                            do_resize=True,
-                            do_pad=True,
-                            do_normalize=True)
-        self.model = DetrForObjectDetection.from_pretrained(
-            self.model_id,
-            num_labels=num_labels,
-            ignore_mismatched_sizes=True
-        ).to(self.device)
+        if inference_mode:
+            self.processor = DetrImageProcessor.from_pretrained(self.model_id, revision="no_timm",
+                                size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
+                                do_resize=True,
+                                do_pad=True,
+                                do_normalize=True)
+            
+            self.model = DetrForObjectDetection.from_pretrained(
+                self.model_id,
+                num_labels=num_labels,
+                ignore_mismatched_sizes=True, 
+                revision="no_timm"
+            ).to(self.device)
+
+        else:
+            self.processor = DetrImageProcessor.from_pretrained(self.model_id,
+                                size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
+                                do_resize=True,
+                                do_pad=True,
+                                do_normalize=True)
+            
+            self.model = DetrForObjectDetection.from_pretrained(
+                self.model_id,
+                num_labels=num_labels,
+                ignore_mismatched_sizes=True
+            ).to(self.device)
 
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, 
                             self.model_run_path, self.batch_size, 
@@ -204,7 +221,7 @@ class DETR:
         
         self.model.eval()
 
-        if file_path.endswith('.png', '.jpg', '.jpeg'):
+        if file_path.endswith(('.png', '.jpg', '.jpeg')):
             image = Image.open(file_path).convert("RGB")
             inputs = self.processor(images=image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
@@ -223,14 +240,14 @@ class DETR:
             for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
                 xmin, ymin, xmax, ymax = box.tolist()
                 detection = {
-                    'image_id': image.filename,
-                    'category_id': label.item(),
-                    'bbox': [xmin, ymin, xmax, ymax],  
-                    'score': score.item(),
+                    'image_id': file_path,
+                    'labels': self.model.config.id2label[label.item()],
+                    'boxes': [xmin, ymin, xmax, ymax],  
+                    'scores': score.item(),
                 }
                 detections.append(detection)
             
-            ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(image, detections, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
+            ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, results=detections, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
 
         elif file_path.endswith('.mp4'):
             cap = cv2.VideoCapture(file_path)
@@ -278,13 +295,14 @@ class DETR:
                     for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
                         xmin, ymin, xmax, ymax = box.tolist()
                         detection = {
+                            'video_id': file_path,
                             'frame': frame_count,
-                            'category_id': label.item(),
-                            'bbox': [xmin, ymin, xmax - xmin, ymax - ymin],
-                            'score': score.item(),
+                            'labels': self.model.config.id2label[label.item()],
+                            'boxes': [xmin, ymin, xmax, ymax],  
+                            'scores': score.item(),
                         }
                         frame_detections.append(detection)
-                        ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(image, frame_detections, save=False)
+                        ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, results=frame_detections, save=False)
                     
                     all_detections.extend(frame_detections)
 
