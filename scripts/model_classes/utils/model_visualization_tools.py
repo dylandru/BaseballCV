@@ -37,15 +37,14 @@ class ModelVisualizationTools:
         Returns:
             logger_message (logging.Logger): The logger message for logging the completed visualization saving.
         """
-        plt.figure(figsize=(10, 8))
-        plt.imshow(plt.imread(file_path))
-        ax = plt.gca()
+        image = plt.imread(file_path)
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.imshow(image)
 
         for detection in results:
             bbox = detection['boxes']
             label = detection['labels']
             score = detection['scores']
-            print(bbox, label, score)
             xmin, ymin, xmax, ymax = bbox
             
             rect = plt.Rectangle(
@@ -67,19 +66,28 @@ class ModelVisualizationTools:
                 fontweight='bold'
             )
 
-        plt.axis('off')
-        plt.show()
+        ax.axis('off')
 
         if save:
             os.makedirs(save_viz_dir, exist_ok=True)
-            image_save_path = os.path.join(self.model_run_path, save_viz_dir, f'predicted_{file_path.split("/")[-1]}.png')
-            plt.savefig(image_save_path)
-            self.logger.info(f"Visualization saved to {image_save_path}")
-            plt.close()
-            return image_save_path
-        else:
-            plt.close()
-            return None
+            
+            if isinstance(file_path, str):
+                base_name = os.path.basename(file_path)
+                save_name = os.path.splitext(base_name)[0]
+            else:
+                save_name = 'frame'
+                
+            save_path = os.path.join(save_viz_dir, f'detection_{save_name}.jpg')
+            
+            plt.savefig(save_path, bbox_inches='tight', pad_inches=0, dpi=300, facecolor='auto', edgecolor='auto')
+            self.logger.info(f"Visualization saved to {save_path}")
+        
+        plt.show()
+        plt.close()
+
+        return save_path if save else None
+
+
         
 
     

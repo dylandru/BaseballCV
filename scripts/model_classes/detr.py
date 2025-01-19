@@ -241,7 +241,7 @@ class DETR:
                 xmin, ymin, xmax, ymax = box.tolist()
                 detection = {
                     'image_id': file_path,
-                    'labels': self.model.config.id2label[label.item()],
+                    'labels': label.item(),
                     'boxes': [xmin, ymin, xmax, ymax],  
                     'scores': score.item(),
                 }
@@ -318,7 +318,7 @@ class DETR:
                     pbar.update(1)
             
    
-        return detections if file_path.endswith('.png', '.jpg', '.jpeg') else all_detections
+        return detections if file_path.endswith(('.png', '.jpg', '.jpeg')) else all_detections
     
     def _collate_fn(self, batch):
         max_h = max([item['pixel_values'].shape[1] for item in batch])
