@@ -1,6 +1,8 @@
 import os
+import torch
 from transformers import DetrImageProcessor
 import torchvision
+from pycocotools.coco import COCO
 
 class CocoDetectionDataset(torchvision.datasets.CocoDetection):
     """
