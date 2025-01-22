@@ -11,7 +11,6 @@ from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 import multiprocessing as mp
 import supervision as sv
-from supervision.metrics import MeanAveragePrecision, MetricTarget
 import matplotlib.pyplot as plt
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelVisualizationTools
 
@@ -215,24 +214,22 @@ class DETR:
                   save_viz_dir: str = 'visualizations',
                   show_video: bool = False) -> List[Dict]:
         
-        self.model.eval()
         box_annotator = sv.BoxAnnotator()
 
         if file_path.endswith(('.png', '.jpg', '.jpeg')):
             image = cv2.imread(file_path)
-            inputs = self.processor(images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            
+
             with torch.no_grad():
+                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
                 outputs = self.model(**inputs)
-            
-            target_sizes = [(image.shape[:2])]
-            results = self.processor.post_process_object_detection(
-                outputs,
-                target_sizes=target_sizes,
-                threshold=conf  
-            )[0]
-            
+                
+                target_sizes = [(image.shape[:2])]
+                results = self.processor.post_process_object_detection(
+                    outputs,
+                    target_sizes=target_sizes,
+                    threshold=conf  
+                )[0]
+        
             detections = sv.Detections.from_transformers(transformers_results=results).with_nms(threshold=conf)
             labels = [
                 f"{self.model.config.id2label[class_id]} {confidence:0.2f}" 
@@ -240,7 +237,7 @@ class DETR:
                 in detections
             ]
 
-            frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
+            annotated_frame = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, detections=detections, labels=labels, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
 
         elif file_path.endswith('.mp4'):
             cap = cv2.VideoCapture(file_path)
@@ -320,65 +317,79 @@ class DETR:
 
 
     def evaluate(self, dataset_dir: str) -> Dict:
-        """
-        Evaluate the DETR model on a dataset.
-        
-        Args:
-            dataset_dir (str): Directory containing the dataset with COCO format annotations
-            
-        Returns:
-            Dict: Dictionary containing evaluation metrics
-        """
         try:
             self.logger.info("Starting evaluation...")
             self.model.eval()
 
             test_dataset = CocoDetectionDataset(dataset_dir, "test", self.processor)
-            evaluator = CocoEvaluator(coco_gt=test_dataset, iou_types=["bbox"])
+            evaluator = CocoEvaluator(coco_gt=test_dataset.coco, iou_types=["bbox"])
+            
+            test_loader = DataLoader(
+                test_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                collate_fn=self._collate_fn
+            )
 
-            for idx, batch in enumerate(tqdm(test_dataset, desc="Evaluating Dataset", total=len(test_dataset))):
+            def convert_to_xywh(boxes):
+                xmin, ymin, xmax, ymax = boxes.unbind(1)
+                return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+
+            def prepare_for_coco_detection(predictions):
+                coco_results = []
+                for original_id, prediction in predictions.items():
+                    if len(prediction) == 0:
+                        continue
+
+                    boxes = prediction["boxes"]
+                    boxes = convert_to_xywh(boxes).tolist()
+                    scores = prediction["scores"].tolist()
+                    labels = prediction["labels"].tolist()
+
+                    coco_results.extend(
+                        [
+                            {
+                                "image_id": original_id,
+                                "category_id": labels[k],
+                                "bbox": box,
+                                "score": scores[k],
+                            }
+                            for k, box in enumerate(boxes)
+                        ]
+                    )
+                return coco_results
+
+            all_coco_results = []
+            for batch in tqdm(test_loader, desc="Evaluating"):
                 pixel_values = batch['pixel_values'].to(self.device)
-                pixel_masks = batch['pixel_mask'].to(self.device)
-                labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch["labels"]]
+                pixel_mask = batch['pixel_mask'].to(self.device)
+                labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch['labels']]
 
                 with torch.no_grad():
-                    outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_masks)
+                    outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_mask)
 
                     orig_target_sizes = torch.stack([target["orig_size"] for target in labels], dim=0)
                     results = self.processor.post_process_object_detection(outputs, target_sizes=orig_target_sizes)
 
                     predictions = {target['image_id'].item(): output for target, output in zip(labels, results)}
-                    coco_output = []
-                    for id, prediction in predictions.items():
-                        if len(prediction['boxes']) == 0:
-                            continue
+                    coco_results = prepare_for_coco_detection(predictions)
+                    all_coco_results.extend(coco_results)
 
-                        xmin, ymin, xmax, ymax = prediction['boxes'].tolist().unbind(1)
-                        boxes = torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
-                        scores = prediction['scores'].tolist()
-                        labels = prediction['labels'].tolist()
-                        coco_output.extend(
-                            [
-                                {
-                                    'image_id': id,
-                                    'category_id': labels[k],
-                                    'bbox': box,
-                                    'score': scores[k]
-                                }
-                                for k, box in enumerate(boxes)
-                            ])
-                        
-                    evaluator.update(coco_output)
+            if not all_coco_results:
+                self.logger.warning("No predictions to evaluate.")
+                return {}
 
-                evaluator.synchronize_between_processes()
-                evaluator.accumulate()
-                metrics = evaluator.summarize()
+            evaluator.update(all_coco_results)
+            evaluator.synchronize_between_processes()
+            evaluator.accumulate()
+            metrics = evaluator.summarize()
 
-                return metrics
-            
+            return metrics
+
         except Exception as e:
             self.logger.error(f"Evaluation failed: {str(e)}")
             raise e
+
         
     def _collate_fn(self, batch):
         pixel_values = [item[0] for item in batch]
