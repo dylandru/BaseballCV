@@ -16,7 +16,8 @@ from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelV
 
 class DETR:
     """
-    DETR (DEtection TRansformer) model class for object detection tasks.
+    DETR (DEtection TRansformer) model class for object detection tasks using HuggingFace Transformers.
+    Current class only supports detection and COCO format datasets.
     
     This class provides functionality for:
     - Model initialization and configuration
@@ -113,7 +114,7 @@ class DETR:
             warmup_ratio: float = 0.1,
             lr_schedule_type: str = "cosine",
             gradient_accumulation_steps: int = 2,
-            logging_steps: int = None,
+            logging_steps: int = 100,
             save_limit: int = 2,
             patience: int = 3,
             patience_threshold: float = 0.01,
@@ -261,9 +262,7 @@ class DETR:
             self.logger.info(f"Model and processor saved to {model_path}")
 
             self.logger.info("Conducting Evaluation...")
-            self.evaluate(dataset_dir)
-
-
+            # self.evaluate(dataset_dir) # TODO: Uncomment this line to enable evaluation
 
             return {
                 'best_metric': trainer.state.best_metric,
