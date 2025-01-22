@@ -15,6 +15,27 @@ import matplotlib.pyplot as plt
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelVisualizationTools
 
 class DETR:
+    """
+    DETR (DEtection TRansformer) model class for object detection tasks.
+    
+    This class provides functionality for:
+    - Model initialization and configuration
+    - Fine-tuning on custom datasets
+    - Inference on images and videos
+    - Model evaluation
+    - Visualization of results
+    
+    Attributes:
+        device (torch.device): Device to run model on (cuda/mps/cpu)
+        model_id (str): HuggingFace model identifier
+        model_run_path (str): Directory path for model outputs
+        model_name (str): Name of the model
+        batch_size (int): Batch size for training/inference
+        processor (DetrImageProcessor): Image processor for DETR
+        model (DetrForObjectDetection): DETR model instance
+        logger (ModelLogger): Logger instance
+        ModelFunctionUtils (ModelFunctionUtils): Utility functions for model operations
+    """
     def __init__(self, 
                  num_labels: int,
                  device: str = None, 
@@ -23,6 +44,18 @@ class DETR:
                  batch_size: int = 8,
                  image_size: Tuple[int, int] = (800, 1333),
                  inference_mode: bool = False):
+        """
+        Initialize DETR model.
+
+        Args:
+            num_labels (int): Number of object classes to detect
+            device (str, optional): Device to run model on. Defaults to None (auto-detect).
+            model_id (str, optional): HuggingFace model ID. Defaults to "facebook/detr-resnet-101".
+            model_run_path (str, optional): Output directory path. Defaults to timestamped directory.
+            batch_size (int, optional): Batch size. Defaults to 8.
+            image_size (Tuple[int, int], optional): Input image dimensions. Defaults to (800, 1333).
+            inference_mode (bool, optional): Whether to initialize in inference mode. Defaults to False.
+        """
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
@@ -71,6 +104,7 @@ class DETR:
 
     
     def finetune(self, dataset_dir: str,
+            classes: dict,
             save_dir: str = "finetuned_detr",
             batch_size: int = 4,
             epochs: int = 10,
@@ -87,14 +121,49 @@ class DETR:
             resume_from_checkpoint: str = None,
             num_workers: int = None,
             freeze_layers: List[str] = None,
-            head_freeze: bool = False,
+            freeze_head: bool = False,
             show_model_params: bool = True) -> Dict:
+        """
+        Fine-tune DETR model on custom dataset.
+
+        Args:
+            dataset_dir (str): Directory containing COCO-format dataset
+            classes (dict): Dictionary mapping class IDs to class names
+            save_dir (str, optional): Directory to save model. Defaults to "finetuned_detr".
+            batch_size (int, optional): Training batch size. Defaults to 4.
+            epochs (int, optional): Number of training epochs. Defaults to 10.
+            lr (float, optional): Learning rate. Defaults to 4e-6.
+            weight_decay (float, optional): Weight decay. Defaults to 0.01.
+            warmup_ratio (float, optional): Warmup ratio. Defaults to 0.1.
+            lr_schedule_type (str, optional): Learning rate schedule. Defaults to "cosine".
+            gradient_accumulation_steps (int, optional): Gradient accumulation steps. Defaults to 2.
+            logging_steps (int, optional): Steps between logging. Defaults to None.
+            save_limit (int, optional): Maximum checkpoints to save. Defaults to 2.
+            patience (int, optional): Early stopping patience. Defaults to 3.
+            patience_threshold (float, optional): Early stopping threshold. Defaults to 0.01.
+            metric_for_best_model (str, optional): Metric to track for best model. Defaults to "loss".
+            resume_from_checkpoint (str, optional): Path to resume training from. Defaults to None.
+            num_workers (int, optional): DataLoader workers. Defaults to None.
+            freeze_layers (List[str], optional): Layers to freeze. Defaults to None.
+            freeze_head (bool, optional): Whether to freeze model head. Defaults to False.
+            show_model_params (bool, optional): Whether to show model parameters. Defaults to True.
+
+        Returns:
+            Dict: Training metrics including:
+                - best_metric: Best value of tracked metric
+                - final_train_loss: Final training loss
+                - final_eval_loss: Final evaluation loss
+                - early_stopped: Whether training was early stopped
+                - model_path: Path to saved model
+        """
 
         try:
+            self.model.config.id2label = classes
+
             model_path = os.path.join(self.model_run_path, save_dir, "model")
             os.makedirs(model_path, exist_ok=True)
 
-            if head_freeze: 
+            if freeze_head: 
                 self.logger.info("Freezing Head Layer...")
                 self.ModelFunctionUtils.freeze_layers([
                     'model.backbone',
@@ -105,7 +174,7 @@ class DETR:
                     'model.layernorm'
                 ], show_params=show_model_params)
 
-            elif freeze_layers is None and not head_freeze: 
+            elif freeze_layers is None and not freeze_head: 
                 self.logger.info("No Freezing Layers Specified - Training Entire Model")
 
             elif freeze_layers is not None:
@@ -150,7 +219,7 @@ class DETR:
                 greater_is_better=False if metric_for_best_model == "loss" else True,
                 remove_unused_columns=False,
                 dataloader_num_workers=num_workers,
-                dataloader_pin_memory=True,
+                dataloader_pin_memory=False if self.device == "mps" else True,
                 fp16=True,
                 report_to=["tensorboard"],
             )
@@ -209,12 +278,38 @@ class DETR:
             raise e
     
     def inference(self, file_path: str,
+                  classes: dict = None,
                   conf: float = 0.9, 
                   save: bool = False, 
                   save_viz_dir: str = 'visualizations',
                   show_video: bool = False) -> List[Dict]:
-        
-        box_annotator = sv.BoxAnnotator()
+        """
+        Run inference on image or video file.
+
+        Args:
+            file_path (str): Path to image or video file
+            classes (dict, optional): Class ID to name mapping. Defaults to None.
+            conf (float, optional): Confidence threshold. Defaults to 0.9.
+            save (bool, optional): Whether to save visualizations. Defaults to False.
+            save_viz_dir (str, optional): Directory to save visualizations. Defaults to 'visualizations'.
+            show_video (bool, optional): Whether to display video during inference. Defaults to False.
+
+        Returns:
+            List[Dict]: List of detections, each containing:
+                For images:
+                    - boxes: Bounding box coordinates
+                    - scores: Confidence scores
+                    - labels: Predicted class labels
+                For videos:
+                    - video_id: Video file path
+                    - frame: Frame number
+                    - labels: Predicted class labels
+                    - boxes: Bounding box coordinates
+                    - scores: Confidence scores
+        """
+
+        if classes:
+            self.model.config.id2label = classes
 
         if file_path.endswith(('.png', '.jpg', '.jpeg')):
             image = cv2.imread(file_path)
@@ -317,6 +412,17 @@ class DETR:
 
 
     def evaluate(self, dataset_dir: str) -> Dict:
+        """
+        Evaluate model performance on test dataset.
+
+        Args:
+            dataset_dir (str): Directory containing COCO-format dataset
+
+        Returns:
+            Dict: Evaluation metrics including:
+                - mAP scores at different IoU thresholds
+                - Precision and recall metrics
+        """
         try:
             self.logger.info("Starting evaluation...")
             self.model.eval()
@@ -392,6 +498,9 @@ class DETR:
 
         
     def _collate_fn(self, batch):
+        """
+        Internal collate function for DETR class.
+        """
         pixel_values = [item[0] for item in batch]
         encoding = self.processor.pad(pixel_values, return_tensors="pt")
         labels = [item[1] for item in batch]
@@ -401,60 +510,41 @@ class DETR:
             'labels': labels
         }
 
-    def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
-        """
-        Calculate evaluation metrics including mAP.
+    # def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
+    #     # Convert to supervision Detections format
+    #     sv_predictions = []
+    #     sv_targets = []
         
-        Args:
-            predictions (List[Dict]): List of prediction dictionaries
-            targets (List[Dict]): List of target dictionaries
+    #     for pred, target in zip(predictions, targets):
+    #         # Handle empty predictions/targets
+    #         if len(pred['boxes']) == 0 or len(target['boxes']) == 0:
+    #             continue
+
+    #         sv_pred = sv.Detections(
+    #             xyxy=pred['boxes'],
+    #             confidence=pred['scores'],
+    #             class_id=pred['labels']
+    #         )
+    #         sv_predictions.append(sv_pred)
             
-        Returns:
-            Dict: Dictionary containing calculated metrics
-        """
-        # Convert to supervision Detections format
-        sv_predictions = []
-        sv_targets = []
-        
-        for pred, target in zip(predictions, targets):
-            # Handle empty predictions/targets
-            if len(pred['boxes']) == 0 or len(target['boxes']) == 0:
-                continue
+    #         sv_target = sv.Detections(
+    #             xyxy=target['boxes'],
+    #             class_id=target['labels']
+    #         )
+    #         sv_targets.append(sv_target)
 
-            sv_pred = sv.Detections(
-                xyxy=pred['boxes'],
-                confidence=pred['scores'],
-                class_id=pred['labels']
-            )
-            sv_predictions.append(sv_pred)
-            
-            sv_target = sv.Detections(
-                xyxy=target['boxes'],
-                class_id=target['labels']
-            )
-            sv_targets.append(sv_target)
+    #     # Calculate metrics
+    #     map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
+    #     metrics = map_metric.update(sv_predictions, sv_targets).compute()
 
-        # Calculate metrics
-        map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
-        metrics = map_metric.update(sv_predictions, sv_targets).compute()
-
-        return {
-            'mAP': metrics.map50_95,
-            'mAP_50': metrics.map50,
-            'mAP_75': metrics.map75
-        }
+    #     return {
+    #         'mAP': metrics.map50_95,
+    #         'mAP_50': metrics.map50,
+    #         'mAP_75': metrics.map75
+    #     }
 
     def _visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
                         targets: List[Dict], metrics: Dict) -> None:
-        """
-        Visualize evaluation results including example detections and metrics.
-        
-        Args:
-            images (List[torch.Tensor]): List of images
-            predictions (List[Dict]): List of predictions
-            targets (List[Dict]): List of targets
-            metrics (Dict): Dictionary of calculated metrics
-        """
         # Create visualization directory
         vis_dir = os.path.join(self.model_run_path, "evaluation_visualizations")
         os.makedirs(vis_dir, exist_ok=True)
