@@ -1,9 +1,8 @@
 import os
-from torch.utils.data import Dataset
 from transformers import DetrImageProcessor
-from torchvision.datasets import CocoDetection
+import torchvision
 
-class CocoDetectionDataset(Dataset):
+class CocoDetectionDataset(torchvision.datasets.CocoDetection):
     """
     Dataset class for COCO-format detection datasets that supports both:
     1. Hierarchical structure with split/images and split/labels
@@ -18,7 +17,6 @@ class CocoDetectionDataset(Dataset):
             split (str): Dataset split ('train', 'test', or 'val')
             processor (DetrImageProcessor): DETR image processor for preprocessing
         """
-        self.processor = processor
         
         # Check for hierarchical structure first
         hierarchical_img_dir = os.path.join(dataset_dir, split)
@@ -43,36 +41,15 @@ class CocoDetectionDataset(Dataset):
                 f"2. Flat: {flat_img_dir} and {flat_ann_file}"
             )
             
-        self.dataset = CocoDetection(self.img_dir, self.ann_file)
+        super(CocoDetectionDataset, self).__init__(self.img_dir, self.ann_file)
+        self.processor = processor
 
-    def __len__(self):
-        """Return the number of samples in the dataset."""
-        return len(self.dataset)
+    def __getitem__(self, idx):
+        images, annotations = super(CocoDetectionDataset, self).__getitem__(idx)        
+        image_id = self.ids[idx]
+        annotations = {'image_id': image_id, 'annotations': annotations}
+        encoding = self.processor(images=images, annotations=annotations, return_tensors="pt")
+        pixel_values = encoding["pixel_values"].squeeze()
+        target = encoding["labels"][0]
 
-    def __getitem__(self, idx: int):
-        """
-        Get a sample from the dataset.
-        
-        Args:
-            idx (int): Index of the sample
-            
-        Returns:
-            dict: Dictionary containing:
-                - pixel_values: Preprocessed image tensor
-                - pixel_mask: Attention mask tensor
-                - labels: Target labels
-        """
-        image, annots = self.dataset[idx]
-        image_id = self.dataset.ids[idx]
-        
-        target = {'image_id': image_id, 'annotations': annots}
-        encoding = self.processor(images=image, 
-                                annotations=target, 
-                                return_tensors="pt",
-                                size=self.processor.size)
-        
-        return {
-            'pixel_values': encoding['pixel_values'].squeeze(),
-            'pixel_mask': encoding['pixel_mask'].squeeze(),
-            'labels': encoding['labels'][0]
-        }
+        return pixel_values, target

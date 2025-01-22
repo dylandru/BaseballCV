@@ -1,6 +1,6 @@
 import cv2
-import numpy as np
 import torch
+from coco_eval import CocoEvaluator
 from tqdm import tqdm
 from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments, EarlyStoppingCallback
 import os
@@ -8,8 +8,7 @@ import warnings
 from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import multiprocessing as mp
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision, MetricTarget
@@ -20,7 +19,7 @@ class DETR:
     def __init__(self, 
                  num_labels: int,
                  device: str = None, 
-                 model_id: str = "facebook/detr-resnet-50",
+                 model_id: str = "facebook/detr-resnet-101",
                  model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
                  batch_size: int = 8,
                  image_size: Tuple[int, int] = (800, 1333),
@@ -89,42 +88,32 @@ class DETR:
             resume_from_checkpoint: str = None,
             num_workers: int = None,
             freeze_layers: List[str] = None,
-            custom_freezing: bool = False,
+            head_freeze: bool = False,
             show_model_params: bool = True) -> Dict:
 
         try:
-
             model_path = os.path.join(self.model_run_path, save_dir, "model")
             os.makedirs(model_path, exist_ok=True)
 
-
-
-            if not freeze_layers and not custom_freezing:
-                self.logger.info("Defaulting to Quick Training - Head Layer remains trainable...")
+            if head_freeze: 
+                self.logger.info("Freezing Head Layer...")
                 self.ModelFunctionUtils.freeze_layers([
-                'model.backbone',
-                'model.encoder',
-                'model.decoder',
-                'model.input_projection',
-                'model.query_position_embeddings',
-                'model.layernorm'], show_params=show_model_params)
+                    'model.backbone',
+                    'model.encoder',
+                    'model.decoder', 
+                    'model.input_projection',
+                    'model.query_position_embeddings',
+                    'model.layernorm'
+                ], show_params=show_model_params)
 
-            elif custom_freezing and not freeze_layers:
-                raise ValueError("Custom freezing can only be used if freeze_layers is provided")
-            
-            elif freeze_layers and not custom_freezing:
-                self.logger.info("Freezing Layers specified but custom freezing is not True.")
-                self.logger.info("Defaulting to Quick Training - Head Layer remains trainable...")
-                self.ModelFunctionUtils.freeze_layers([
-                'model.backbone',
-                'model.encoder',
-                'model.decoder',
-                'model.input_projection',
-                'model.query_position_embeddings',
-                'model.layernorm'], show_params=show_model_params)
+            elif freeze_layers is None and not head_freeze: 
+                self.logger.info("No Freezing Layers Specified - Training Entire Model")
+
+            elif freeze_layers is not None:
+                self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
 
             else:
-                self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
+                raise ValueError("Invalid Freezing Layers Specified")
 
 
             self.logger.info("Setting Up Data Loaders")
@@ -139,6 +128,7 @@ class DETR:
 
             train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
+
 
             total_steps = epochs * (len(train_dataset) // batch_size)
 
@@ -200,6 +190,12 @@ class DETR:
 
             trainer.save_model(model_path)
             self.processor.save_pretrained(model_path)
+            self.logger.info(f"Model and processor saved to {model_path}")
+
+            self.logger.info("Conducting Evaluation...")
+            self.evaluate(dataset_dir)
+
+
 
             return {
                 'best_metric': trainer.state.best_metric,
@@ -220,34 +216,31 @@ class DETR:
                   show_video: bool = False) -> List[Dict]:
         
         self.model.eval()
+        box_annotator = sv.BoxAnnotator()
 
         if file_path.endswith(('.png', '.jpg', '.jpeg')):
-            image = Image.open(file_path).convert("RGB")
+            image = cv2.imread(file_path)
             inputs = self.processor(images=image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
-            width, height = image.size
+            target_sizes = [(image.shape[:2])]
             results = self.processor.post_process_object_detection(
                 outputs,
-                target_sizes=[(height, width)],
+                target_sizes=target_sizes,
                 threshold=conf  
             )[0]
             
-            detections = []
-            for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-                xmin, ymin, xmax, ymax = box.tolist()
-                detection = {
-                    'image_id': file_path,
-                    'labels': label.item(),
-                    'boxes': [xmin, ymin, xmax, ymax],  
-                    'scores': score.item(),
-                }
-                detections.append(detection)
-            
-            ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, results=detections, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
+            detections = sv.Detections.from_transformers(transformers_results=results).with_nms(threshold=conf)
+            labels = [
+                f"{self.model.config.id2label[class_id]} {confidence:0.2f}" 
+                for _, confidence, class_id, _ 
+                in detections
+            ]
+
+            frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
 
         elif file_path.endswith('.mp4'):
             cap = cv2.VideoCapture(file_path)
@@ -276,41 +269,46 @@ class DETR:
                     if not ret:
                         break
 
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    
-                    image = Image.fromarray(frame_rgb)
                     inputs = self.processor(images=image, return_tensors="pt")
                     inputs = {k: v.to(self.device) for k, v in inputs.items()}
                     
                     with torch.no_grad():
                         outputs = self.model(**inputs)
-
+                    
+                    target_sizes = [(image.shape[:2])]
                     results = self.processor.post_process_object_detection(
-                            outputs,
-                            target_sizes=[(height, width)],
-                            threshold=conf  
-                        )[0]
+                        outputs,
+                        target_sizes=target_sizes,
+                        threshold=conf  
+                    )[0]
+                    
+                    detections = sv.Detections.from_transformers(transformers_results=results).with_nms(threshold=conf)
+                    labels = [
+                        f"{self.model.config.id2label[class_id]} {confidence:0.2f}" 
+                        for _, confidence, class_id, _ 
+                        in detections
+                    ]
                     
                     frame_detections = []
-                    for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                    for score, class_id, box in zip(detections.confidence, detections.class_id, detections.xyxy):
                         xmin, ymin, xmax, ymax = box.tolist()
                         detection = {
                             'video_id': file_path,
                             'frame': frame_count,
-                            'labels': self.model.config.id2label[label.item()],
+                            'labels': self.model.config.id2label[class_id],
                             'boxes': [xmin, ymin, xmax, ymax],  
                             'scores': score.item(),
                         }
                         frame_detections.append(detection)
-                        ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, results=frame_detections, save=False)
+                        annotated_frame = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, detections=detections, labels=labels, save=False)
                     
                     all_detections.extend(frame_detections)
 
                     if save:
-                        writer.write(cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
+                        writer.write(annotated_frame)
 
                     if show_video:
-                        cv2.imshow('frame', frame_rgb)
+                        cv2.imshow('frame', annotated_frame)
                         if cv2.waitKey(1) & 0xFF == ord('q'):
                             break
                     
@@ -319,158 +317,78 @@ class DETR:
             
    
         return detections if file_path.endswith(('.png', '.jpg', '.jpeg')) else all_detections
-    
-    def _collate_fn(self, batch):
-        max_h = max([item['pixel_values'].shape[1] for item in batch])
-        max_w = max([item['pixel_values'].shape[2] for item in batch])
-        
-        pixel_values = []
-        pixel_mask = []
-        
-        for item in batch:
-            _, h, w = item['pixel_values'].shape
-            
-            pad_h = max_h - h
-            pad_w = max_w - w
-
-            padded_values = torch.nn.functional.pad(
-                item['pixel_values'],
-                (0, pad_w, 0, pad_h),
-                mode='constant',
-                value=0
-            )
-            pixel_values.append(padded_values)
-            
-            padded_mask = torch.nn.functional.pad(
-                item['pixel_mask'],
-                (0, pad_w, 0, pad_h),
-                mode='constant',
-                value=0
-            )
-            pixel_mask.append(padded_mask)
-        
-        pixel_values = torch.stack(pixel_values)
-        pixel_mask = torch.stack(pixel_mask)
-        labels = [item['labels'] for item in batch]
-        
-        return {
-            'pixel_values': pixel_values,
-            'pixel_mask': pixel_mask,
-            'labels': labels
-        }
 
 
-    def evaluate(self, dataset_dir: str, num_workers: int = 4, confidence_threshold: float = 0.5) -> Dict:
+    def evaluate(self, dataset_dir: str) -> Dict:
         """
         Evaluate the DETR model on a dataset.
         
         Args:
             dataset_dir (str): Directory containing the dataset with COCO format annotations
-            num_workers (int): Number of workers for data loading
-            confidence_threshold (float): Confidence threshold for detections
             
         Returns:
             Dict: Dictionary containing evaluation metrics
         """
-        self.logger.info("Starting evaluation...")
-        self.model.eval()
+        try:
+            self.logger.info("Starting evaluation...")
+            self.model.eval()
 
-        # Create validation dataset and dataloader
-        val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            collate_fn=self._collate_fn
-        )
+            test_dataset = CocoDetectionDataset(dataset_dir, "test", self.processor)
+            evaluator = CocoEvaluator(coco_gt=test_dataset, iou_types=["bbox"])
 
-        all_predictions = []
-        all_targets = []
-        images = []
+            for idx, batch in enumerate(tqdm(test_dataset, desc="Evaluating Dataset", total=len(test_dataset))):
+                pixel_values = batch['pixel_values'].to(self.device)
+                pixel_masks = batch['pixel_mask'].to(self.device)
+                labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch["labels"]]
 
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(tqdm(val_loader, desc="Evaluating")):
-                try:
-                    # Move inputs to device
-                    pixel_values = batch['pixel_values'].to(self.device)
-                    pixel_mask = batch['pixel_mask'].to(self.device)
+                with torch.no_grad():
+                    outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_masks)
 
-                    # Forward pass
-                    outputs = self.model(
-                        pixel_values=pixel_values,
-                        pixel_mask=pixel_mask
-                    )
+                    orig_target_sizes = torch.stack([target["orig_size"] for target in labels], dim=0)
+                    results = self.processor.post_process_object_detection(outputs, target_sizes=orig_target_sizes)
 
-                    # Process each item in the batch
-                    for b in range(len(pixel_values)):
-                        # Get logits and boxes for this item
-                        logits = outputs.logits[b]  # Shape: [num_queries, num_classes + 1]
-                        boxes = outputs.pred_boxes[b]  # Shape: [num_queries, 4]
+                    predictions = {target['image_id'].item(): output for target, output in zip(labels, results)}
+                    coco_output = []
+                    for id, prediction in predictions.items():
+                        if len(prediction['boxes']) == 0:
+                            continue
 
-                        # Get probabilities and apply threshold
-                        probs = logits.softmax(-1)  # Shape: [num_queries, num_classes + 1]
-                        scores, labels = probs[:, :-1].max(-1)  # Exclude no-object class
-                        keep_mask = scores > confidence_threshold
+                        xmin, ymin, xmax, ymax = prediction['boxes'].tolist().unbind(1)
+                        boxes = torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+                        scores = prediction['scores'].tolist()
+                        labels = prediction['labels'].tolist()
+                        coco_output.extend(
+                            [
+                                {
+                                    'image_id': id,
+                                    'category_id': labels[k],
+                                    'bbox': box,
+                                    'score': scores[k]
+                                }
+                                for k, box in enumerate(boxes)
+                            ])
                         
-                        # Filter predictions
-                        filtered_boxes = boxes[keep_mask]
-                        filtered_scores = scores[keep_mask]
-                        filtered_labels = labels[keep_mask]
+                    evaluator.update(coco_output)
 
-                        # Convert boxes to image coordinates
-                        img_h, img_w = pixel_values[b].shape[1:]
-                        # Convert normalized boxes to pixel coordinates
-                        scaled_boxes = self.processor.post_process_detection(
-                            outputs={"pred_boxes": filtered_boxes[None, :]},
-                            target_sizes=[(img_h, img_w)]
-                        )[0]["pred_boxes"]
+                evaluator.synchronize_between_processes()
+                evaluator.accumulate()
+                metrics = evaluator.summarize()
 
-                        predictions = {
-                            'boxes': scaled_boxes.cpu().numpy(),
-                            'scores': filtered_scores.cpu().numpy(),
-                            'labels': filtered_labels.cpu().numpy(),
-                        }
-                        all_predictions.append(predictions)
-
-                        # Get corresponding ground truth
-                        target = batch['labels'][b]
-                        if isinstance(target, dict):
-                            target_boxes = target['boxes'].cpu().numpy()
-                            target_labels = target['labels'].cpu().numpy()
-                        else:
-                            target_boxes = target.get('boxes', []).cpu().numpy()
-                            target_labels = target.get('labels', []).cpu().numpy()
-                        
-                        all_targets.append({
-                            'boxes': target_boxes,
-                            'labels': target_labels
-                        })
-
-                        # Store image for visualization (first 25 only)
-                        if len(images) < 25:
-                            images.append(pixel_values[b])
-
-                except Exception as e:
-                    self.logger.warning(f"Error processing batch {batch_idx}: {str(e)}")
-                    continue
-
-            # Calculate metrics
-            metrics = self._calculate_metrics(all_predictions, all_targets)
-
-            # Visualize results if we have images
-            if images:
-                self._visualize_results(
-                    images[:25], 
-                    all_predictions[:25], 
-                    all_targets[:25], 
-                    metrics
-                )
-
-            self.logger.info("Evaluation complete.")
-            self.logger.info(f"mAP: {metrics['mAP']:.4f}")
+                return metrics
             
-            return metrics
+        except Exception as e:
+            self.logger.error(f"Evaluation failed: {str(e)}")
+            raise e
+        
+    def _collate_fn(self, batch):
+        pixel_values = [item[0] for item in batch]
+        encoding = self.processor.pad(pixel_values, return_tensors="pt")
+        labels = [item[1] for item in batch]
+        return {
+            'pixel_values': encoding['pixel_values'],
+            'pixel_mask': encoding['pixel_mask'],
+            'labels': labels
+        }
 
     def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
         """
