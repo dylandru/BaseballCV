@@ -13,10 +13,11 @@ import multiprocessing as mp
 import supervision as sv
 import matplotlib.pyplot as plt
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelVisualizationTools
+import pytorch_lightning as pl
 
-class DETR:
+class DETR(pl.LightningModule):
     """
-    DETR (DEtection TRansformer) model class for object detection tasks using HuggingFace Transformers.
+    DETR (DEtection TRansformer) model class for object detection tasks using PyTorch Lightning.
     Current class only supports detection and COCO format datasets.
     
     This class provides functionality for:
@@ -40,127 +41,82 @@ class DETR:
     def __init__(self, 
                  num_labels: int,
                  device: str = None, 
-                 model_id: str = "facebook/detr-resnet-101",
-                 model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}', 
+                 model_id: str = "facebook/detr-resnet-50",
+                 model_run_path: str = f'detr_run_{datetime.now().strftime("%Y%m%d")}',
                  batch_size: int = 8,
-                 image_size: Tuple[int, int] = (800, 1333),
-                 inference_mode: bool = False):
+                 image_size: Tuple[int, int] = (800, 800)):
         """
         Initialize DETR model.
 
         Args:
             num_labels (int): Number of object classes to detect
             device (str, optional): Device to run model on. Defaults to None (auto-detect).
-            model_id (str, optional): HuggingFace model ID. Defaults to "facebook/detr-resnet-101".
+            model_id (str, optional): HuggingFace model ID. Defaults to "facebook/detr-resnet-50".
             model_run_path (str, optional): Output directory path. Defaults to timestamped directory.
             batch_size (int, optional): Batch size. Defaults to 8.
-            image_size (Tuple[int, int], optional): Input image dimensions. Defaults to (800, 1333).
-            inference_mode (bool, optional): Whether to initialize in inference mode. Defaults to False.
+            image_size (Tuple[int, int], optional): Input image dimensions. Defaults to (800, 800).
         """
+        super().__init__()
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
-        self.device = torch.device("cuda" if torch.cuda.is_available()
-                                else "mps" if torch.backends.mps.is_available()
-                                else "cpu") if device is None else torch.device(device)
-        
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_id = model_id
         self.model_run_path = model_run_path
-        self.model_name = "DETR"
+        self.model_name = model_id.split('/')[-1]
         self.batch_size = batch_size
 
         self.logger = ModelLogger(self.model_name, self.model_run_path, 
                                 self.model_id, self.batch_size, self.device).orig_logging()
-        if inference_mode:
-            self.processor = DetrImageProcessor.from_pretrained(self.model_id, revision="no_timm",
-                                size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
-                                do_resize=True,
-                                do_pad=True,
-                                do_normalize=True)
-            
-            self.model = DetrForObjectDetection.from_pretrained(
-                self.model_id,
-                num_labels=num_labels,
-                ignore_mismatched_sizes=True, 
-                revision="no_timm"
-            ).to(self.device)
 
-        else:
-            self.processor = DetrImageProcessor.from_pretrained(self.model_id,
-                                size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
-                                do_resize=True,
-                                do_pad=True,
-                                do_normalize=True)
-            
-            self.model = DetrForObjectDetection.from_pretrained(
-                self.model_id,
-                num_labels=num_labels,
-                ignore_mismatched_sizes=True
-            ).to(self.device)
+        self.processor = DetrImageProcessor.from_pretrained(
+            self.model_id,
+            size={"shortest_edge": image_size[0], "longest_edge": image_size[1]},
+            do_resize=True,
+            do_pad=True,
+            do_normalize=True
+        )
+        
+        self.model = DetrForObjectDetection.from_pretrained(
+            self.model_id,
+            num_labels=num_labels,
+            ignore_mismatched_sizes=True
+        ).to(self.device)
 
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, 
                             self.model_run_path, self.batch_size, 
                             self.device, self.processor, self.model, 
                             None, self.logger, torch.float16)
-
-    
+        
     def finetune(self, dataset_dir: str,
             classes: dict,
             save_dir: str = "finetuned_detr",
             batch_size: int = 4,
             epochs: int = 10,
-            lr: float = 4e-6,
+            lr: float = 1e-4,
+            lr_backbone: float = 1e-5,
             weight_decay: float = 0.01,
-            warmup_ratio: float = 0.1,
-            lr_schedule_type: str = "cosine",
             gradient_accumulation_steps: int = 2,
             logging_steps: int = 100,
             save_limit: int = 2,
             patience: int = 3,
             patience_threshold: float = 0.01,
-            metric_for_best_model: str = "loss",
-            resume_from_checkpoint: str = None,
             num_workers: int = None,
             freeze_layers: List[str] = None,
             freeze_head: bool = False,
-            show_model_params: bool = True) -> Dict:
-        """
-        Fine-tune DETR model on custom dataset.
-
-        Args:
-            dataset_dir (str): Directory containing COCO-format dataset
-            classes (dict): Dictionary mapping class IDs to class names
-            save_dir (str, optional): Directory to save model. Defaults to "finetuned_detr".
-            batch_size (int, optional): Training batch size. Defaults to 4.
-            epochs (int, optional): Number of training epochs. Defaults to 10.
-            lr (float, optional): Learning rate. Defaults to 4e-6.
-            weight_decay (float, optional): Weight decay. Defaults to 0.01.
-            warmup_ratio (float, optional): Warmup ratio. Defaults to 0.1.
-            lr_schedule_type (str, optional): Learning rate schedule. Defaults to "cosine".
-            gradient_accumulation_steps (int, optional): Gradient accumulation steps. Defaults to 2.
-            logging_steps (int, optional): Steps between logging. Defaults to None.
-            save_limit (int, optional): Maximum checkpoints to save. Defaults to 2.
-            patience (int, optional): Early stopping patience. Defaults to 3.
-            patience_threshold (float, optional): Early stopping threshold. Defaults to 0.01.
-            metric_for_best_model (str, optional): Metric to track for best model. Defaults to "loss".
-            resume_from_checkpoint (str, optional): Path to resume training from. Defaults to None.
-            num_workers (int, optional): DataLoader workers. Defaults to None.
-            freeze_layers (List[str], optional): Layers to freeze. Defaults to None.
-            freeze_head (bool, optional): Whether to freeze model head. Defaults to False.
-            show_model_params (bool, optional): Whether to show model parameters. Defaults to True.
-
-        Returns:
-            Dict: Training metrics including:
-                - best_metric: Best value of tracked metric
-                - final_train_loss: Final training loss
-                - final_eval_loss: Final evaluation loss
-                - early_stopped: Whether training was early stopped
-                - model_path: Path to saved model
-        """
+            show_model_params: bool = True,
+            push_to_hub_with_path: str = None) -> Dict:
 
         try:
             self.model.config.id2label = classes
+            self.lr = lr
+            self.lr_backbone = lr_backbone
+            self.weight_decay = weight_decay
+            self.push_to_hub_with_path = push_to_hub_with_path
 
+            self.save_hyperparameters(ignore=['self', 'dataset_dir', 'classes'])
+            
+            
             model_path = os.path.join(self.model_run_path, save_dir, "model")
             os.makedirs(model_path, exist_ok=True)
 
@@ -175,107 +131,102 @@ class DETR:
                     'model.layernorm'
                 ], show_params=show_model_params)
 
-            elif freeze_layers is None and not freeze_head: 
-                self.logger.info("No Freezing Layers Specified - Training Entire Model")
-
             elif freeze_layers is not None:
                 self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
-
             else:
-                raise ValueError("Invalid Freezing Layers Specified")
+                self.logger.info("No Freezing Layers Specified - Training Entire Model")
 
-
-            self.logger.info("Setting Up Data Loaders")
             if not num_workers and self.device != "mps":
                 num_workers = min(12, mp.cpu_count() - 1)
-                self.logger.info(f"Using Default of {num_workers} workers for Data Loading")
+                self.logger.info(f"Using Default of {num_workers} workers")
             elif num_workers and num_workers > 0 and self.device == "mps":
                 num_workers = 0
-                self.logger.info("Using 0 workers for Data Loading on MPS")
+                self.logger.info("Using 0 workers for MPS")
 
-            self.logger.info("Loading Training and Validation Datasets")
-
+            self.logger.info("Loading Datasets...")
             train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
-
-            total_steps = epochs * (len(train_dataset) // batch_size)
-
-            training_args = TrainingArguments(
-                output_dir=os.path.join(model_path, 'checkpoints'),
-                per_device_train_batch_size=batch_size,
-                per_device_eval_batch_size=batch_size,
-                num_train_epochs=epochs,
-                learning_rate=lr,
-                weight_decay=weight_decay,
-                warmup_ratio=warmup_ratio,
-                lr_scheduler_type=lr_schedule_type,
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                logging_steps=logging_steps,
-                save_strategy="epoch",
-                save_total_limit=save_limit,
-                eval_strategy="epoch",
-                metric_for_best_model=metric_for_best_model,
-                load_best_model_at_end=True,
-                greater_is_better=False if metric_for_best_model == "loss" else True,
-                remove_unused_columns=False,
-                dataloader_num_workers=num_workers,
-                dataloader_pin_memory=False if self.device == "mps" else True,
-                fp16=True,
-                report_to=["tensorboard"],
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=num_workers,
+                collate_fn=self.collate_fn
+            )
+            
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                collate_fn=self.collate_fn
             )
 
-            if patience and patience_threshold > 0:
-                callbacks = [
-                    EarlyStoppingCallback(
-                        early_stopping_patience=patience,
-                        early_stopping_threshold=patience_threshold
+            callbacks = [
+                pl.callbacks.ModelCheckpoint(
+                    dirpath=os.path.join(model_path, 'checkpoints'),
+                    filename='detr-{epoch:02d}-{validation_loss:.2f}',
+                    monitor='validation_loss',
+                    mode='min',
+                    save_top_k=save_limit
+                )
+            ]
+
+            if patience:
+                callbacks.append(
+                    pl.callbacks.EarlyStopping(
+                        monitor='validation_loss',
+                        patience=patience,
+                        min_delta=patience_threshold,
+                        mode='min'
                     )
-                ]
-            else:
-                callbacks = []
+                )
 
-            self.logger.info("Setting Up Trainer")
-
-            trainer = Trainer(
-                model=self.model,
-                args=training_args,
-                train_dataset=train_dataset,
-                eval_dataset=val_dataset,
-                data_collator=self._collate_fn,
+            trainer = pl.Trainer(
+                max_epochs=epochs,
+                accelerator='auto',
+                devices=1,
+                precision='16-mixed',
+                accumulate_grad_batches=gradient_accumulation_steps,
                 callbacks=callbacks,
+                logger=pl.loggers.TensorBoardLogger(
+                    save_dir=model_path,
+                    name=os.path.join(save_dir, f'lightning_logs_{self.model_name}')
+                ),
+                log_every_n_steps=logging_steps
             )
 
+            self.logger.info("Starting training...")
+            trainer.fit(
+                model=self,
+                train_dataloaders=train_loader,
+                val_dataloaders=val_loader
+            )
 
-            print(f"\n=== Starting Training ===\n"
-                  f"Model: {self.model_id}\n"
-                  f"Total Epochs: {epochs}\n"
-                  f"Batch Size: {batch_size}\n"
-                  f"Learning Rate: {lr}\n"
-                  f"Device: {self.device}\n")
-
-            train_result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
-            metrics = train_result.metrics
-
-            trainer.save_model(model_path)
+            self.model.save_pretrained(model_path)
             self.processor.save_pretrained(model_path)
-            self.logger.info(f"Model and processor saved to {model_path}")
 
-            self.logger.info("Conducting Evaluation...")
-            # self.evaluate(dataset_dir) # TODO: Uncomment this line to enable evaluation
+            if self.push_to_hub_with_path is not None:
+                self.logger.info("Pushing to HuggingFace Hub...")
+
+                try:
+                    self.model.push_to_hub(self.push_to_hub_with_path)
+                    self.processor.push_to_hub(self.push_to_hub_with_path)
+                except Exception as e:
+                    self.logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
 
             return {
-                'best_metric': trainer.state.best_metric,
-                'final_train_loss': metrics.get("train_loss"),
-                'final_eval_loss': metrics.get("eval_loss"),
-                'early_stopped': trainer.state.global_step < total_steps,
-                'model_path': os.path.join(self.model_run_path, save_dir)
+                'best_model_path': trainer.checkpoint_callback.best_model_path,
+                'best_model_score': trainer.checkpoint_callback.best_model_score,
+                'early_stopped': trainer.early_stopping_callback.stopped_epoch > 0 if patience else False,
+                'model_path': model_path
             }
 
         except Exception as e:
             self.logger.error(f"Training failed: {str(e)}")
             raise e
-    
+        
     def inference(self, file_path: str,
                   classes: dict = None,
                   conf: float = 0.9, 
@@ -310,6 +261,8 @@ class DETR:
         if classes:
             self.model.config.id2label = classes
 
+        self.model.eval()
+        self.model.to(self.device)
         if file_path.endswith(('.png', '.jpg', '.jpeg')):
             image = cv2.imread(file_path)
 
@@ -324,7 +277,8 @@ class DETR:
                     threshold=conf  
                 )[0]
         
-            detections = sv.Detections.from_transformers(transformers_results=results).with_nms(threshold=conf)
+            detections = sv.Detections.from_transformers(transformers_results=results)
+            print(detections)
             labels = [
                 f"{self.model.config.id2label[class_id]} {confidence:0.2f}" 
                 for _, confidence, class_id, _ 
@@ -411,17 +365,6 @@ class DETR:
 
 
     def evaluate(self, dataset_dir: str) -> Dict:
-        """
-        Evaluate model performance on test dataset.
-
-        Args:
-            dataset_dir (str): Directory containing COCO-format dataset
-
-        Returns:
-            Dict: Evaluation metrics including:
-                - mAP scores at different IoU thresholds
-                - Precision and recall metrics
-        """
         try:
             self.logger.info("Starting evaluation...")
             self.model.eval()
@@ -433,7 +376,7 @@ class DETR:
                 test_dataset,
                 batch_size=self.batch_size,
                 shuffle=False,
-                collate_fn=self._collate_fn
+                collate_fn=self.collate_fn
             )
 
             def convert_to_xywh(boxes):
@@ -446,8 +389,7 @@ class DETR:
                     if len(prediction) == 0:
                         continue
 
-                    boxes = prediction["boxes"]
-                    boxes = convert_to_xywh(boxes).tolist()
+                    boxes = convert_to_xywh(prediction["boxes"]).tolist()
                     scores = prediction["scores"].tolist()
                     labels = prediction["labels"].tolist()
 
@@ -464,8 +406,7 @@ class DETR:
                     )
                 return coco_results
 
-            all_coco_results = []
-            for batch in tqdm(test_loader, desc="Evaluating"):
+            for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating"):
                 pixel_values = batch['pixel_values'].to(self.device)
                 pixel_mask = batch['pixel_mask'].to(self.device)
                 labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch['labels']]
@@ -478,13 +419,8 @@ class DETR:
 
                     predictions = {target['image_id'].item(): output for target, output in zip(labels, results)}
                     coco_results = prepare_for_coco_detection(predictions)
-                    all_coco_results.extend(coco_results)
+                    evaluator.update(coco_results)
 
-            if not all_coco_results:
-                self.logger.warning("No predictions to evaluate.")
-                return {}
-
-            evaluator.update(all_coco_results)
             evaluator.synchronize_between_processes()
             evaluator.accumulate()
             metrics = evaluator.summarize()
@@ -495,11 +431,71 @@ class DETR:
             self.logger.error(f"Evaluation failed: {str(e)}")
             raise e
 
+    def forward(self, pixel_values, pixel_mask):
+        """Forward pass of the model"""
+        outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_mask)
+        return outputs
+
+    def common_step(self, batch, batch_idx):
+        """Common step for training and validation"""
+        pixel_values = batch["pixel_values"]
+        pixel_mask = batch["pixel_mask"]
+        labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch["labels"]]
+
+        outputs = self.model(
+            pixel_values=pixel_values,
+            pixel_mask=pixel_mask,
+            labels=labels
+        )
+
+        loss = outputs.loss
+        loss_dict = outputs.loss_dict
+        return loss, loss_dict
+
+    def training_step(self, batch, batch_idx):
+        loss, loss_dict = self.common_step(batch, batch_idx)
         
-    def _collate_fn(self, batch):
-        """
-        Internal collate function for DETR class.
-        """
+        self.log("training_loss", loss)
+        for k, v in loss_dict.items():
+            self.log("train_" + k, v.item())
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss, loss_dict = self.common_step(batch, batch_idx)
+        
+        self.log("validation_loss", loss)
+        for k, v in loss_dict.items():
+            self.log("validation_" + k, v.item())
+
+        return loss
+
+    def configure_optimizers(self):
+        if not hasattr(self, 'lr') or not hasattr(self, 'lr_backbone') or not hasattr(self, 'weight_decay'):
+            raise ValueError("Learning rates and weight decay must be set via finetune() before training")
+        
+        param_dicts = [
+            {
+                "params": [p for n, p in self.named_parameters() 
+                          if "backbone" not in n and p.requires_grad]
+            },
+            {
+                "params": [p for n, p in self.named_parameters() 
+                          if "backbone" in n and p.requires_grad],
+                "lr": self.lr_backbone,
+            },
+        ]
+        
+        optimizer = torch.optim.AdamW(
+            param_dicts,
+            lr=self.lr,
+            weight_decay=self.weight_decay
+        )
+        
+        return optimizer
+
+    def collate_fn(self, batch):
+        """Collate function for data loading"""
         pixel_values = [item[0] for item in batch]
         encoding = self.processor.pad(pixel_values, return_tensors="pt")
         labels = [item[1] for item in batch]
@@ -509,40 +505,7 @@ class DETR:
             'labels': labels
         }
 
-    # def _calculate_metrics(self, predictions: List[Dict], targets: List[Dict]) -> Dict:
-    #     # Convert to supervision Detections format
-    #     sv_predictions = []
-    #     sv_targets = []
-        
-    #     for pred, target in zip(predictions, targets):
-    #         # Handle empty predictions/targets
-    #         if len(pred['boxes']) == 0 or len(target['boxes']) == 0:
-    #             continue
-
-    #         sv_pred = sv.Detections(
-    #             xyxy=pred['boxes'],
-    #             confidence=pred['scores'],
-    #             class_id=pred['labels']
-    #         )
-    #         sv_predictions.append(sv_pred)
-            
-    #         sv_target = sv.Detections(
-    #             xyxy=target['boxes'],
-    #             class_id=target['labels']
-    #         )
-    #         sv_targets.append(sv_target)
-
-    #     # Calculate metrics
-    #     map_metric = MeanAveragePrecision(metric_target=MetricTarget.BOXES)
-    #     metrics = map_metric.update(sv_predictions, sv_targets).compute()
-
-    #     return {
-    #         'mAP': metrics.map50_95,
-    #         'mAP_50': metrics.map50,
-    #         'mAP_75': metrics.map75
-    #     }
-
-    def _visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
+    def visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
                         targets: List[Dict], metrics: Dict) -> None:
         # Create visualization directory
         vis_dir = os.path.join(self.model_run_path, "evaluation_visualizations")
