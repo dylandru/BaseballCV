@@ -35,7 +35,7 @@ class DETR(pl.LightningModule):
         batch_size (int): Batch size for training/inference
         processor (DetrImageProcessor): Image processor for DETR
         model (DetrForObjectDetection): DETR model instance
-        logger (ModelLogger): Logger instance
+        detr_logger (ModelLogger): Logger instance
         ModelFunctionUtils (ModelFunctionUtils): Utility functions for model operations
     """
     def __init__(self, 
@@ -57,17 +57,20 @@ class DETR(pl.LightningModule):
             image_size (Tuple[int, int], optional): Input image dimensions. Defaults to (800, 800).
         """
         super().__init__()
+        self.save_hyperparameters(ignore=['device'])
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
         
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        # Device and Logger are both PL Lightning attributes - overriding with DETR specific attributes
+
+        self.detr_device = "cuda" if torch.cuda.is_available() else "cpu" if device is None else device
         self.model_id = model_id
         self.model_run_path = model_run_path
         self.model_name = model_id.split('/')[-1]
         self.batch_size = batch_size
 
-        self.logger = ModelLogger(self.model_name, self.model_run_path, 
-                                self.model_id, self.batch_size, self.device).orig_logging()
+        self.detr_logger = ModelLogger(self.model_name, self.model_run_path, 
+                                self.model_id, self.batch_size, self.detr_device).orig_logging()
 
         self.processor = DetrImageProcessor.from_pretrained(
             self.model_id,
@@ -81,12 +84,12 @@ class DETR(pl.LightningModule):
             self.model_id,
             num_labels=num_labels,
             ignore_mismatched_sizes=True
-        ).to(self.device)
+        ).to(self.detr_device)
 
         self.ModelFunctionUtils = ModelFunctionUtils(self.model_name, 
                             self.model_run_path, self.batch_size, 
-                            self.device, self.processor, self.model, 
-                            None, self.logger, torch.float16)
+                            self.detr_device, self.processor, self.model, 
+                            None, self.detr_logger, torch.float16)
         
     def finetune(self, dataset_dir: str,
             classes: dict,
@@ -114,14 +117,11 @@ class DETR(pl.LightningModule):
             self.weight_decay = weight_decay
             self.push_to_hub_with_path = push_to_hub_with_path
 
-            self.save_hyperparameters(ignore=['self', 'dataset_dir', 'classes'])
-            
-            
             model_path = os.path.join(self.model_run_path, save_dir, "model")
             os.makedirs(model_path, exist_ok=True)
 
             if freeze_head: 
-                self.logger.info("Freezing Head Layer...")
+                self.detr_logger.info("Freezing Head Layer...")
                 self.ModelFunctionUtils.freeze_layers([
                     'model.backbone',
                     'model.encoder',
@@ -134,16 +134,16 @@ class DETR(pl.LightningModule):
             elif freeze_layers is not None:
                 self.ModelFunctionUtils.freeze_layers(freeze_layers, show_params=show_model_params)
             else:
-                self.logger.info("No Freezing Layers Specified - Training Entire Model")
+                self.detr_logger.info("No Freezing Layers Specified - Training Entire Model")
 
-            if not num_workers and self.device != "mps":
+            if not num_workers and self.detr_device != "mps":
                 num_workers = min(12, mp.cpu_count() - 1)
-                self.logger.info(f"Using Default of {num_workers} workers")
-            elif num_workers and num_workers > 0 and self.device == "mps":
+                self.detr_logger.info(f"Using Default of {num_workers} workers")
+            elif num_workers and num_workers > 0 and self.detr_device == "mps":
                 num_workers = 0
-                self.logger.info("Using 0 workers for MPS")
+                self.detr_logger.info("Using 0 workers for MPS")
 
-            self.logger.info("Loading Datasets...")
+            self.detr_logger.info("Loading Datasets...")
             train_dataset = CocoDetectionDataset(dataset_dir, "train", self.processor)
             val_dataset = CocoDetectionDataset(dataset_dir, "val", self.processor)
 
@@ -197,7 +197,7 @@ class DETR(pl.LightningModule):
                 log_every_n_steps=logging_steps
             )
 
-            self.logger.info("Starting training...")
+            self.detr_logger.info("Starting training...")
             trainer.fit(
                 model=self,
                 train_dataloaders=train_loader,
@@ -208,13 +208,13 @@ class DETR(pl.LightningModule):
             self.processor.save_pretrained(model_path)
 
             if self.push_to_hub_with_path is not None:
-                self.logger.info("Pushing to HuggingFace Hub...")
+                self.detr_logger.info("Pushing to HuggingFace Hub...")
 
                 try:
                     self.model.push_to_hub(self.push_to_hub_with_path)
                     self.processor.push_to_hub(self.push_to_hub_with_path)
                 except Exception as e:
-                    self.logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
+                    self.detr_logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
 
             return {
                 'best_model_path': trainer.checkpoint_callback.best_model_path,
@@ -224,7 +224,7 @@ class DETR(pl.LightningModule):
             }
 
         except Exception as e:
-            self.logger.error(f"Training failed: {str(e)}")
+            self.detr_logger.error(f"Training failed: {str(e)}")
             raise e
         
     def inference(self, file_path: str,
@@ -262,12 +262,12 @@ class DETR(pl.LightningModule):
             self.model.config.id2label = classes
 
         self.model.eval()
-        self.model.to(self.device)
+        self.model.to(self.detr_device)
         if file_path.endswith(('.png', '.jpg', '.jpeg')):
             image = cv2.imread(file_path)
 
             with torch.no_grad():
-                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                inputs = self.processor(images=image, return_tensors="pt").to(self.detr_device)
                 outputs = self.model(**inputs)
                 
                 target_sizes = [(image.shape[:2])]
@@ -278,14 +278,23 @@ class DETR(pl.LightningModule):
                 )[0]
         
             detections = sv.Detections.from_transformers(transformers_results=results)
-            print(detections)
             labels = [
                 f"{self.model.config.id2label[class_id]} {confidence:0.2f}" 
                 for _, confidence, class_id, _ 
                 in detections
             ]
 
-            annotated_frame = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, detections=detections, labels=labels, save=save, save_viz_dir=os.path.join(self.model_run_path, save_viz_dir))
+            annotated_frame = ModelVisualizationTools(
+                self.model_name, 
+                self.model_run_path, 
+                self.detr_logger
+            ).visualize_detection_results(
+                file_path=file_path, 
+                detections=detections, 
+                labels=labels, 
+                save=save, 
+                save_viz_dir=os.path.join(self.model_run_path, save_viz_dir)
+            )
 
         elif file_path.endswith('.mp4'):
             cap = cv2.VideoCapture(file_path)
@@ -315,7 +324,7 @@ class DETR(pl.LightningModule):
                         break
 
                     inputs = self.processor(images=image, return_tensors="pt")
-                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    inputs = {k: v.to(self.detr_device) for k, v in inputs.items()}
                     
                     with torch.no_grad():
                         outputs = self.model(**inputs)
@@ -345,7 +354,17 @@ class DETR(pl.LightningModule):
                             'scores': score.item(),
                         }
                         frame_detections.append(detection)
-                        annotated_frame = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger).visualize_detection_results(file_path=file_path, detections=detections, labels=labels, save=False)
+                        annotated_frame = ModelVisualizationTools(
+                            self.model_name, 
+                            self.model_run_path, 
+                            self.detr_logger
+                        ).visualize_detection_results(
+                            file_path=file_path, 
+                            detections=detections, 
+                            labels=labels, 
+                            save=False, 
+                            save_viz_dir=os.path.join(self.model_run_path, save_viz_dir)
+                        )
                     
                     all_detections.extend(frame_detections)
 
@@ -366,7 +385,7 @@ class DETR(pl.LightningModule):
 
     def evaluate(self, dataset_dir: str) -> Dict:
         try:
-            self.logger.info("Starting evaluation...")
+            self.detr_logger.info("Starting evaluation...")
             self.model.eval()
 
             test_dataset = CocoDetectionDataset(dataset_dir, "test", self.processor)
@@ -389,7 +408,8 @@ class DETR(pl.LightningModule):
                     if len(prediction) == 0:
                         continue
 
-                    boxes = convert_to_xywh(prediction["boxes"]).tolist()
+                    boxes = prediction["boxes"]
+                    boxes = convert_to_xywh(boxes).tolist()
                     scores = prediction["scores"].tolist()
                     labels = prediction["labels"].tolist()
 
@@ -407,9 +427,9 @@ class DETR(pl.LightningModule):
                 return coco_results
 
             for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating"):
-                pixel_values = batch['pixel_values'].to(self.device)
-                pixel_mask = batch['pixel_mask'].to(self.device)
-                labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch['labels']]
+                pixel_values = batch['pixel_values'].to(self.detr_device)
+                pixel_mask = batch['pixel_mask'].to(self.detr_device)
+                labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch['labels']]
 
                 with torch.no_grad():
                     outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_mask)
@@ -428,7 +448,7 @@ class DETR(pl.LightningModule):
             return metrics
 
         except Exception as e:
-            self.logger.error(f"Evaluation failed: {str(e)}")
+            self.detr_logger.error(f"Evaluation failed: {str(e)}")
             raise e
 
     def forward(self, pixel_values, pixel_mask):
@@ -440,7 +460,7 @@ class DETR(pl.LightningModule):
         """Common step for training and validation"""
         pixel_values = batch["pixel_values"]
         pixel_mask = batch["pixel_mask"]
-        labels = [{k: v.to(self.device) for k, v in t.items()} for t in batch["labels"]]
+        labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch["labels"]]
 
         outputs = self.model(
             pixel_values=pixel_values,

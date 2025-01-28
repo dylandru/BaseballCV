@@ -16,7 +16,6 @@ import numpy as np
 from peft import PeftModel
 from datetime import datetime
 import supervision as sv
-from supervision.metrics import MeanAveragePrecision, MetricTarget
 from .utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger, DataProcessor
 
 """
