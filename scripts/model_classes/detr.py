@@ -108,7 +108,8 @@ class DETR(pl.LightningModule):
             freeze_layers: List[str] = None,
             freeze_head: bool = False,
             show_model_params: bool = True,
-            push_to_hub_with_path: str = None) -> Dict:
+            push_to_hub_with_path: str = None,
+            conf: float = 0.2) -> Dict:
 
         try:
             self.model.config.id2label = classes
@@ -192,7 +193,7 @@ class DETR(pl.LightningModule):
                 callbacks=callbacks,
                 logger=pl.loggers.TensorBoardLogger(
                     save_dir=model_path,
-                    name=os.path.join(save_dir, f'lightning_logs_{self.model_name}')
+                    name=f'pl_tensorboard_logs_{self.model_name}'
                 ),
                 log_every_n_steps=logging_steps
             )
@@ -215,6 +216,9 @@ class DETR(pl.LightningModule):
                     self.processor.push_to_hub(self.push_to_hub_with_path)
                 except Exception as e:
                     self.detr_logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
+            
+            self.detr_logger.info("Training complete... Conducting Evaluation...")
+            self.evaluate(dataset_dir=dataset_dir, conf=conf)
 
             return {
                 'best_model_path': trainer.checkpoint_callback.best_model_path,
@@ -229,7 +233,7 @@ class DETR(pl.LightningModule):
         
     def inference(self, file_path: str,
                   classes: dict = None,
-                  conf: float = 0.9, 
+                  conf: float = 0.2, 
                   save: bool = False, 
                   save_viz_dir: str = 'visualizations',
                   show_video: bool = False) -> List[Dict]:
@@ -383,13 +387,15 @@ class DETR(pl.LightningModule):
         return detections if file_path.endswith(('.png', '.jpg', '.jpeg')) else all_detections
 
 
-    def evaluate(self, dataset_dir: str) -> Dict:
+    def evaluate(self, dataset_dir: str,
+                 conf: float = 0.2) -> Dict:
         try:
             self.detr_logger.info("Starting evaluation...")
             self.model.eval()
 
             test_dataset = CocoDetectionDataset(dataset_dir, "test", self.processor)
             evaluator = CocoEvaluator(coco_gt=test_dataset.coco, iou_types=["bbox"])
+            print(f"evaluator: {evaluator}")
             
             test_loader = DataLoader(
                 test_dataset,
@@ -402,44 +408,43 @@ class DETR(pl.LightningModule):
                 xmin, ymin, xmax, ymax = boxes.unbind(1)
                 return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
 
-            def prepare_for_coco_detection(predictions):
+            def prepare_for_coco_detection(predictions, conf):
                 coco_results = []
                 for original_id, prediction in predictions.items():
-                    if len(prediction) == 0:
+                    if len(prediction["boxes"]) == 0:
                         continue
 
-                    boxes = prediction["boxes"]
-                    boxes = convert_to_xywh(boxes).tolist()
+                    boxes = convert_to_xywh(prediction["boxes"]).tolist()
                     scores = prediction["scores"].tolist()
                     labels = prediction["labels"].tolist()
 
-                    coco_results.extend(
-                        [
-                            {
+                    for k, (box, score, label) in enumerate(zip(boxes, scores, labels)):
+                        if score > conf:
+                            coco_results.append({
                                 "image_id": original_id,
-                                "category_id": labels[k],
+                                "category_id": label,
                                 "bbox": box,
-                                "score": scores[k],
-                            }
-                            for k, box in enumerate(boxes)
-                        ]
-                    )
+                                "score": score,
+                            })
+
                 return coco_results
 
             for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating"):
                 pixel_values = batch['pixel_values'].to(self.detr_device)
                 pixel_mask = batch['pixel_mask'].to(self.detr_device)
                 labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch['labels']]
-
                 with torch.no_grad():
                     outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_mask)
 
                     orig_target_sizes = torch.stack([target["orig_size"] for target in labels], dim=0)
-                    results = self.processor.post_process_object_detection(outputs, target_sizes=orig_target_sizes)
-
+                    results = self.processor.post_process_object_detection(
+                        outputs, 
+                        target_sizes=orig_target_sizes, 
+                        threshold=conf)
                     predictions = {target['image_id'].item(): output for target, output in zip(labels, results)}
-                    coco_results = prepare_for_coco_detection(predictions)
-                    evaluator.update(coco_results)
+                    coco_results = prepare_for_coco_detection(predictions, conf)
+                    if coco_results:
+                        evaluator.update(coco_results)
 
             evaluator.synchronize_between_processes()
             evaluator.accumulate()
