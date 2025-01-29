@@ -3,8 +3,9 @@
 layout: default
 title: Home
 nav_order: 1
+description: "Documentation for BaseballCV - Computer Vision Tools for Baseball Analytics"
+permalink: /
 ---
-
 # BaseballCV Documentation
 
 Welcome to the official documentation for BaseballCV, a comprehensive toolkit for applying computer vision and machine learning to baseball analytics.

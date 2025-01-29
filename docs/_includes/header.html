@@ -1,27 +1,35 @@
 # docs/_includes/header.html
-<header class="site-header">
-    <div class="header-content">
-        <div class="logo">
-            <a href="{{ '/' | relative_url }}">
-                <img src="{{ '/assets/images/baseballcvlogo.png' | relative_url }}" alt="BaseballCV Logo">
-            </a>
+{% assign page_max_width = "1200px" %}
+
+<div class="site-header" role="banner">
+  <div class="navigation-wrap" style="max-width: {{ page_max_width }}">
+    <a href="{{ '/' | absolute_url }}" class="site-title fs-6 lh-tight">
+      {% if site.logo %}
+        <img src="{{ site.logo | absolute_url }}" alt="{{ site.title }}" class="site-logo">
+      {% else %}
+        {{ site.title }}
+      {% endif %}
+    </a>
+    <div class="navigation-tools">
+      {% if site.search_enabled != false %}
+        <div class="search-container">
+          {% include search_input.html %}
         </div>
-        
-        <div class="header-navigation">
-            <nav>
-                <a href="{{ '/pages/introduction' | relative_url }}" class="nav-link">Introduction</a>
-                <a href="{{ '/pages/theory' | relative_url }}" class="nav-link">Theory</a>
-                <a href="{{ '/pages/installation' | relative_url }}" class="nav-link">Installation</a>
-                <a href="{{ '/pages/examples' | relative_url }}" class="nav-link">Examples</a>
-            </nav>
-            
-            <div class="search-box">
-                <input type="text" id="search" placeholder="Search documentation...">
-            </div>
-            
-            <a href="https://github.com/dylandru/BaseballCV" class="github-link" target="_blank">
-                View on GitHub
-            </a>
-        </div>
+      {% endif %}
+      
+      {% if site.aux_links %}
+        <nav class="auxiliary-nav" aria-label="Auxiliary navigation">
+          <ul class="aux-nav-list">
+            {% for link in site.aux_links %}
+              <li class="aux-nav-item">
+                <a href="{{ link[1] }}" class="site-button" {% if site.aux_links_new_tab %}target="_blank" rel="noopener noreferrer"{% endif %}>
+                  {{ link[0] }}
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </nav>
+      {% endif %}
     </div>
-</header>
+  </div>
+</div>

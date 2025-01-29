@@ -1,39 +1,30 @@
 # docs/_includes/navigation.html
-<nav class="site-nav">
-    <div class="nav-group">
-        <div class="nav-section">
-            <h3>Getting Started</h3>
-            <ul>
-                <li class="{% if page.url == '/pages/introduction/' %}active{% endif %}">
-                    <a href="{{ '/pages/introduction/' | relative_url }}">Introduction</a>
-                    {% if page.parent == 'Introduction' %}
-                    <ul class="subnav">
-                        <li><a href="{{ '/pages/introduction/overview' | relative_url }}">Overview</a></li>
-                        <li><a href="{{ '/pages/introduction/why_use' | relative_url }}">Why Use BaseballCV</a></li>
-                        <li><a href="{{ '/pages/introduction/use_cases' | relative_url }}">Use Cases</a></li>
-                        <li><a href="{{ '/pages/introduction/benefits' | relative_url }}">Benefits</a></li>
-                    </ul>
-                    {% endif %}
-                </li>
-            </ul>
-        </div>
+<nav role="navigation" aria-label="Main navigation">
+  <ul class="navigation-list">
+    {%- assign ordered_pages_list = site.html_pages | where_exp:"item", "item.nav_order != nil" -%}
+    {%- assign unordered_pages_list = site.html_pages | where_exp:"item", "item.nav_order == nil" -%}
+    {%- assign sorted_ordered_pages_list = ordered_pages_list | sort:"nav_order" -%}
+    {%- assign sorted_unordered_pages_list = unordered_pages_list | sort:"title" -%}
+    {%- assign pages_list = sorted_ordered_pages_list | concat: sorted_unordered_pages_list -%}
 
-        <div class="nav-section">
-            <h3>Theory & Background</h3>
-            <ul>
-                <li class="{% if page.url == '/pages/theory/' %}active{% endif %}">
-                    <a href="{{ '/pages/theory/' | relative_url }}">Fundamentals</a>
-                    {% if page.parent == 'Theory' %}
-                    <ul class="subnav">
-                        <li><a href="{{ '/pages/theory/cv_fundamentals' | relative_url }}">CV Fundamentals</a></li>
-                        <li><a href="{{ '/pages/theory/yolo_models' | relative_url }}">YOLO Models</a></li>
-                        <li><a href="{{ '/pages/theory/vlm_sports' | relative_url }}">VLM in Sports</a></li>
-                        <li><a href="{{ '/pages/theory/metrics' | relative_url }}">Metrics</a></li>
-                        <li><a href="{{ '/pages/theory/challenges' | relative_url }}">Challenges</a></li>
-                    </ul>
-                    {% endif %}
-                </li>
-            </ul>
-        </div>
-    </div>
+    {%- for node in pages_list -%}
+      {%- unless node.nav_exclude -%}
+        {%- if node.parent == nil and node.has_children -%}
+          <li class="navigation-list-item{% if page.parent == node.title or page.grand_parent == node.title %} active{% endif %}">
+            <a href="{{ node.url | absolute_url }}" class="navigation-list-link{% if page.url == node.url %} active{% endif %}">{{ node.title }}</a>
+            {%- if node.has_children -%}
+              {%- assign children_list = pages_list | where: "parent", node.title -%}
+              <ul class="navigation-list-child-list">
+                {%- for child in children_list -%}
+                  <li class="navigation-list-item {% if page.url == child.url or page.parent == child.title %} active{% endif %}">
+                    <a href="{{ child.url | absolute_url }}" class="navigation-list-link{% if page.url == child.url %} active{% endif %}">{{ child.title }}</a>
+                  </li>
+                {%- endfor -%}
+              </ul>
+            {%- endif -%}
+          </li>
+        {%- endif -%}
+      {%- endunless -%}
+    {%- endfor -%}
+  </ul>
 </nav>

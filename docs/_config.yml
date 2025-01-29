@@ -4,20 +4,26 @@ description: Documentation for BaseballCV - Computer Vision Tools for Baseball A
 baseurl: "/BaseballCV"
 url: "https://dylandru.github.io"
 
-# Theme settings
-theme: just-the-docs
+# Theme configuration
 remote_theme: just-the-docs/just-the-docs
-color_scheme: light
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+# Theme settings
 search_enabled: true
 heading_anchors: true
+color_scheme: light
 
 # Aux links for upper right navigation
 aux_links:
   "BaseballCV on GitHub":
     - "//github.com/dylandru/BaseballCV"
 
-# Makes Aux links open in new tab
 aux_links_new_tab: true
+
+# Footer content appears at the bottom of every page's main content
+footer_content: "Copyright &copy; 2024 BaseballCV. Distributed under an MIT license."
 
 # Collections
 collections:
@@ -25,10 +31,12 @@ collections:
     permalink: "/:collection/:path/"
     output: true
 
-# Default front matter
+# Default front matter settings
 defaults:
   -
     scope:
-      path: "" # Apply to all files
+      path: ""
+      type: docs
     values:
       layout: default
+      nav_order: 1
