@@ -18,7 +18,7 @@ BaseballCV is a collection of tools and models designed to aid in the use of Com
 
 Choose a section from the navigation menu to begin learning about BaseballCV:
 
-1. [Introduction](introduction/) - Overview and use cases
+1. [Introduction](/introduction) - Overview and use cases
 2. [Background Theory](background-theory/) - Computer vision fundamentals
 3. [Repository Structure](repository-structure/) - Framework organization and components
 4. Getting Started - Installation and setup
