@@ -4,35 +4,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+
     <title>{{ page.title }} - {{ site.title }}</title>
+    
+    <!-- Original stylesheet references -->
     <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
     <link rel="stylesheet" href="{{ '/assets/css/syntax.css' | relative_url }}">
+    
+    <!-- Just the Docs theme stylesheets -->
+    <link rel="stylesheet" href="{{ '/assets/css/just-the-docs-default.css' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/custom.css' | relative_url }}">
+    
+    <!-- Code syntax highlighting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
+    
+    <!-- Just the Docs scripts -->
+    <script type="text/javascript" src="{{ '/assets/js/just-the-docs.js' | relative_url }}"></script>
 </head>
 <body>
-    <div class="wrapper">
-        {% include header.html %}
-        
-        <div class="main-content">
-            <div class="sidebar">
+    <div class="page-wrap">
+        <div class="side-bar">
+            <div class="site-header">
+                {% include header.html %}
+            </div>
+            <div class="site-nav">
                 {% include navigation.html %}
             </div>
-            
-            <div class="content">
-                <div class="breadcrumbs">
+        </div>
+
+        <div class="main-content-wrap js-main-content" tabindex="0">
+            <div class="page-header">
+                <div class="main-content">
+                    {% if site.search_enabled != false %}
+                    <div class="search">
+                        <div class="search-input-wrap">
+                            <input type="text" id="search-input" class="search-input" placeholder="Search {{ site.title }}" aria-label="Search {{ site.title }}">
+                            <div id="search-results" class="search-results"></div>
+                        </div>
+                    </div>
+                    {% endif %}
                     {% include breadcrumbs.html %}
                 </div>
-                
-                <main>
+            </div>
+
+            <div class="main-content">
+                <div id="main-content" class="page-content" role="main">
                     {{ content }}
-                </main>
+                </div>
+
+                {% include footer.html %}
             </div>
         </div>
-        
-        {% include footer.html %}
     </div>
-    
+
+    <!-- Original custom scripts -->
     <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+    <script src="{{ '/assets/js/search.js' | relative_url }}"></script>
 </body>
 </html>
