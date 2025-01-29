@@ -32,7 +32,7 @@ specific_objects = model.inference(
     image_path='baseball_game.jpg',
     task='<OPEN_VOCABULARY_DETECTION>',
     text_input='Find the baseball, pitcher, and catcher' 
-```
+)
 
 #### Using Fine-Tuning
 
@@ -67,6 +67,92 @@ metrics = model.finetune(
 - Configurable confidence threshold
 - Memory-efficient processing
 
+### 2. DETR (Detection Transformer)
+A Hugging Face implementation of Facebook's DETR model for object detection, optimized for baseball player detection.
+
+#### Using Inference
+```python
+from scripts import DETR
+
+# Initialize model
+classes = {1: "hitter", 2: "pitcher"}
+detr = DETR(
+    num_labels=len(classes),
+    device="cuda",  # or "cpu", "mps"
+    model_id="facebook/detr-resnet-50" #can also be path to local model or other HF DETR model
+)
+
+# Run detection on single image
+detections = detr.inference(
+    file_path="baseball_game.jpg",
+    classes=classes,
+    conf=0.2
+)
+
+```
+
+#### Using Fine-Tuning
+```python
+# Fine-tune on custom dataset
+detr.finetune(
+    dataset_dir="baseball_dataset",
+    classes=classes,
+    save_dir="finetuned_detr",
+    batch_size=4,
+    epochs=10,
+    patience=3
+)
+
+# Evaluate model
+metrics = detr.evaluate(
+    dataset_dir="test_dataset",
+    conf=0.2
+)
+```
+
+#### Features
+- PyTorch Lightning integration
+- COCO format dataset support
+- Automatic mixed precision training
+- Early stopping and model checkpointing
+- Visualization tools for evaluation
+- Multi-GPU support
+- Configurable backbone freezing
+
+### 3. PaliGemma 2
+A fine-tuned version of the PaliGemma 2B model optimized for baseball play analysis and description.
+
+#### Using Inference
+```python
+from scripts import PaliGemma2
+
+# Initialize model
+model = PaliGemma2(
+    device="cuda",
+    model_id="google/paligemma2-3b-pt-224"
+)
+
+# Generate play description
+description = model.inference(
+    image_path="baseball_play.jpg",
+    text_input="Describe this baseball play:",
+    task="<TEXT_TO_TEXT>"
+)
+
+# Answer specific questions for object detection
+answer  = model.inference(
+    image_path="pitch.jpg",
+    text_input="pitcher.",
+    task="<TEXT_TO_OD>"
+)
+
+```
+
+#### Features
+- Vision-language capabilities
+- Optimized for baseball terminology
+- Memory-efficient processing
+- Support for various image formats
 
 ## Adding New Models
 
@@ -84,7 +170,7 @@ When adding new model classes, follow these guidelines:
            # Run inference on image
            pass
            
-       def fine_tune(self, dataset: str, classes: list, **kwargs) -> list:
+       def finetune(self, dataset: str, classes: list, **kwargs) -> list:
            # Fine-tune model on dataset
            pass
    ```
@@ -104,7 +190,7 @@ All model classes should:
 
 ## Future Models
 Future model classes will be added for:
-- PaliGemma 2
+- Qwen 2.5
 - Phi 3.5
 - Other object detection frameworks
 

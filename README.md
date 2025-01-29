@@ -151,6 +151,10 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 
 - `paligemma2_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
+**Available DETR Models**:
+
+- Coming Soon...
+
 ## Downloading and Loading Models
 
 ### Overview
