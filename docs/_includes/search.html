@@ -1,0 +1,55 @@
+# docs/_includes/search.html
+<div class="search" role="search">
+  <div class="search-input-wrap">
+    <input type="text" 
+           id="search-input" 
+           class="search-input" 
+           tabindex="0" 
+           placeholder="Search {{ site.title }}" 
+           aria-label="Search {{ site.title }}" 
+           autocomplete="off">
+
+    <label for="search-input" class="search-label">
+      <svg viewBox="0 0 24 24" class="search-icon">
+        <svg id="svg-search" viewBox="0 0 24 24" width="24" height="24">
+          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+      </svg>
+    </label>
+
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script type="text/javascript" src="{{ '/assets/js/vendor/lunr.min.js' | relative_url }}"></script>
+<script type="text/javascript" src="{{ '/assets/js/just-the-docs-search.js' | relative_url }}"></script>
+
+<script type="text/javascript">
+  window.onload = function() {
+    var searchInput = document.getElementById('search-input');
+    var searchResults = document.getElementById('search-results');
+    var store = window.store;
+    
+    if (!searchInput || !searchResults || !store) {
+      return;
+    }
+
+    searchInput.addEventListener('keyup', function(e) {
+      var query = this.value;
+      var results = window.searchIndex.search(query);
+      searchResults.innerHTML = '';
+
+      if (results.length > 0) {
+        results.forEach(function(result) {
+          var item = store[result.ref];
+          var li = document.createElement('li');
+          var a = document.createElement('a');
+          a.href = item.url;
+          a.textContent = item.title;
+          li.appendChild(a);
+          searchResults.appendChild(li);
+        });
+      }
+    });
+  };
+</script>
