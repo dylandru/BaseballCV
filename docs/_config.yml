@@ -1,19 +1,19 @@
 title: BaseballCV Documentation
 description: Documentation for BaseballCV - Computer Vision Tools for Baseball Analytics
-theme: just-the-docs
+remote_theme: just-the-docs/just-the-docs
 
 url: https://dylandru.github.io/BaseballCV
 baseurl: /docs
-
-aux_links:
-  "BaseballCV on GitHub":
-    - "https://github.com/dylandru/BaseballCV"
 
 # Color scheme
 color_scheme: light
 
 # Enable or disable the site search
 search_enabled: true
+
+aux_links:
+  "BaseballCV on GitHub":
+    - "https://github.com/dylandru/BaseballCV"
 
 # Enable navigation numbers
 nav_external_links:
@@ -31,3 +31,6 @@ back_to_top_text: "Back to top"
 
 # Footer content
 footer_content: "Copyright &copy; 2024 BaseballCV. Distributed under MIT license."
+
+# For copying code blocks
+enable_copy_code_button: true
