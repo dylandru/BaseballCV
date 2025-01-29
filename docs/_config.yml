@@ -1,42 +1,33 @@
-# docs/_config.yml
 title: BaseballCV Documentation
 description: Documentation for BaseballCV - Computer Vision Tools for Baseball Analytics
-baseurl: "/BaseballCV"
-url: "https://dylandru.github.io"
+theme: just-the-docs
 
-# Theme configuration
-remote_theme: just-the-docs/just-the-docs
-plugins:
-  - jekyll-remote-theme
-  - jekyll-seo-tag
+url: https://dylandru.github.io/BaseballCV
+baseurl: /docs
 
-# Theme settings
-search_enabled: true
-heading_anchors: true
-color_scheme: light
-
-# Aux links for upper right navigation
 aux_links:
   "BaseballCV on GitHub":
-    - "//github.com/dylandru/BaseballCV"
+    - "https://github.com/dylandru/BaseballCV"
 
-aux_links_new_tab: true
+# Color scheme
+color_scheme: light
 
-# Footer content appears at the bottom of every page's main content
-footer_content: "Copyright &copy; 2024 BaseballCV. Distributed under an MIT license."
+# Enable or disable the site search
+search_enabled: true
 
-# Collections
-collections:
-  docs:
-    permalink: "/:collection/:path/"
-    output: true
+# Enable navigation numbers
+nav_external_links:
+  - title: BaseballCV on GitHub
+    url: https://github.com/dylandru/BaseballCV
+    hide_icon: false
+    opens_in_new_tab: true
 
-# Default front matter settings
-defaults:
-  -
-    scope:
-      path: ""
-      type: docs
-    values:
-      layout: default
-      nav_order: 1
+# Sort order for navigation links
+nav_sort: case_sensitive
+
+# Back to top link
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# Footer content
+footer_content: "Copyright &copy; 2024 BaseballCV. Distributed under MIT license."

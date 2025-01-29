@@ -1,30 +1,38 @@
-# docs/index.md
 ---
-layout: default
+layout: home
 title: Home
 nav_order: 1
-description: "Documentation for BaseballCV - Computer Vision Tools for Baseball Analytics"
+description: "BaseballCV documentation - Computer Vision Tools for Baseball Analytics"
 permalink: /
 ---
+
 # BaseballCV Documentation
 
-Welcome to the official documentation for BaseballCV, a comprehensive toolkit for applying computer vision and machine learning to baseball analytics.
+Welcome to the BaseballCV documentation. This comprehensive guide will help you understand and utilize computer vision tools for baseball analytics.
 
-## Quick Navigation
+## What is BaseballCV?
 
-- [Getting Started](/pages/introduction/)
-- [Theory and Background](/pages/theory/)
-- [Installation Guide](/pages/installation/)
-- [Usage Examples](/pages/examples/)
-- [API Reference](/pages/api/)
+BaseballCV is a collection of tools and models designed to aid in the use of Computer Vision in baseball. It provides access to high-quality datasets and computer vision models, making it easier for developers and analysts to create tools that analyze baseball games.
 
-## Latest Updates
+## Getting Started
 
-BaseballCV v0.1.0 is now available with:
-- Pre-trained YOLO models for baseball object detection
-- Integration with Florence 2 and Paligemma 2 VLMs
-- Automated annotation tools
-- Comprehensive baseball-specific datasets
+Choose a section from the navigation menu to begin learning about BaseballCV:
 
-[Get Started →](/pages/introduction/){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub →](https://github.com/dylandru/BaseballCV){: .btn .fs-5 .mb-4 .mb-md-0 }
+1. [Introduction](introduction/) - Overview and use cases
+2. [Background Theory](background-theory/) - Computer vision fundamentals
+3. Repository Overview - Structure and features
+4. Getting Started - Installation and setup
+5. Using the Repository - Practical guides
+6. Datasets - Available data and usage
+7. Advanced Features - Advanced capabilities
+8. Contributing - How to contribute
+9. Best Practices - Guidelines and tips
+10. Additional Resources - Further reading
+11. FAQ - Common questions
+12. Appendices - Additional information
+
+## Quick Links
+
+- [GitHub Repository](https://github.com/dylandru/BaseballCV)
+- [Issue Tracker](https://github.com/dylandru/BaseballCV/issues)
+- [Contributors Guide](contributing/)
