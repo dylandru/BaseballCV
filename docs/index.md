@@ -7,12 +7,12 @@ permalink: /
 ---
 
 # BaseballCV Documentation
+{: .fs-9 }
 
-Welcome to the BaseballCV documentation. BaseballCV is an open-source computer vision toolkit designed specifically for baseball analytics.
-
+A computer vision toolkit designed specifically for baseball analytics, providing pre-trained models, datasets, and utilities for advanced sports analysis.
 {: .fs-6 .fw-300 }
 
-[Get Started](getting-started/){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[Get Started](./getting-started){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View on GitHub](https://github.com/dylandru/BaseballCV){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
@@ -28,14 +28,27 @@ BaseballCV provides a comprehensive suite of computer vision tools and models sp
 
 ## Key Features
 
-- **Pre-trained Models**: Ready-to-use models for common baseball detection tasks
-- **Baseball-Specific Datasets**: Curated and annotated datasets from MLB broadcasts
-- **Training Pipeline**: Tools for training and fine-tuning models
-- **Easy Integration**: Simple API for incorporating computer vision into baseball analytics
+### Pre-trained Models
+{: .text-delta }
+Ready-to-use models for ball tracking, player detection, and equipment identification, optimized for baseball scenarios.
 
-## Quick Links
+### Baseball-Specific Datasets
+{: .text-delta }
+Curated and annotated datasets from MLB broadcasts, perfect for training and testing computer vision models.
 
-- [Installation Guide](getting-started/installation)
-- [Quick Start Tutorial](getting-started/quickstart)
-- [API Reference](api-reference/)
-- [Contributing Guidelines](contribute/guidelines)
+### Training Pipeline
+{: .text-delta }
+Complete tools and workflows for training and fine-tuning models on your own baseball footage.
+
+### Easy Integration
+{: .text-delta }
+Simple API design makes it easy to incorporate computer vision into your baseball analytics workflow.
+
+---
+
+## Getting Started
+
+Begin by installing BaseballCV:
+
+```bash
+pip install git+https://github.com/dylandru/BaseballCV.git

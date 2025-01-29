@@ -1,34 +1,37 @@
-remote_theme: just-the-docs/just-the-docs
-title: BaseballCV Documentation
-description: Documentation for the BaseballCV computer vision toolkit
+# Site settings
+title: BaseballCV
+description: Computer vision toolkit for baseball analytics
 baseurl: "/BaseballCV"
 url: "https://dylandru.github.io"
 
 # Theme settings
+theme: just-the-docs
 color_scheme: light
+
+# Enable or disable the site search
 search_enabled: true
-heading_anchors: true
 
-# Navigation
-nav_external_links:
-  - title: BaseballCV on GitHub
-    url: https://github.com/dylandru/BaseballCV
-    hide_icon: false
-
+# Aux links for the upper right navigation
 aux_links:
-  "View on GitHub":
+  "BaseballCV on GitHub":
     - "//github.com/dylandru/BaseballCV"
 
-# Footer
+# Makes Aux links open in a new tab
+aux_links_new_tab: true
+
+# Sort order for navigation links
+nav_sort: case_sensitive
+
+# Footer content
 footer_content: "Copyright &copy; 2024 Dylan Drummey, Carlos Marcano. Distributed under an MIT license."
 
-# Collections
-collections:
-  docs:
-    permalink: "/:collection/:path/"
-    output: true
+# Back to top link
+back_to_top: true
+back_to_top_text: "Back to top"
 
-just_the_docs:
-  collections:
-    docs:
-      name: Documentation
+# Footer last edited timestamp
+last_edit_timestamp: true
+last_edit_time_format: "%b %e %Y at %I:%M %p"
+
+# Enable copy code button
+enable_copy_code_button: true
