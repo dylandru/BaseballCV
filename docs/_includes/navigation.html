@@ -1,0 +1,39 @@
+# docs/_includes/navigation.html
+<nav class="site-nav">
+    <div class="nav-group">
+        <div class="nav-section">
+            <h3>Getting Started</h3>
+            <ul>
+                <li class="{% if page.url == '/pages/introduction/' %}active{% endif %}">
+                    <a href="{{ '/pages/introduction/' | relative_url }}">Introduction</a>
+                    {% if page.parent == 'Introduction' %}
+                    <ul class="subnav">
+                        <li><a href="{{ '/pages/introduction/overview' | relative_url }}">Overview</a></li>
+                        <li><a href="{{ '/pages/introduction/why_use' | relative_url }}">Why Use BaseballCV</a></li>
+                        <li><a href="{{ '/pages/introduction/use_cases' | relative_url }}">Use Cases</a></li>
+                        <li><a href="{{ '/pages/introduction/benefits' | relative_url }}">Benefits</a></li>
+                    </ul>
+                    {% endif %}
+                </li>
+            </ul>
+        </div>
+
+        <div class="nav-section">
+            <h3>Theory & Background</h3>
+            <ul>
+                <li class="{% if page.url == '/pages/theory/' %}active{% endif %}">
+                    <a href="{{ '/pages/theory/' | relative_url }}">Fundamentals</a>
+                    {% if page.parent == 'Theory' %}
+                    <ul class="subnav">
+                        <li><a href="{{ '/pages/theory/cv_fundamentals' | relative_url }}">CV Fundamentals</a></li>
+                        <li><a href="{{ '/pages/theory/yolo_models' | relative_url }}">YOLO Models</a></li>
+                        <li><a href="{{ '/pages/theory/vlm_sports' | relative_url }}">VLM in Sports</a></li>
+                        <li><a href="{{ '/pages/theory/metrics' | relative_url }}">Metrics</a></li>
+                        <li><a href="{{ '/pages/theory/challenges' | relative_url }}">Challenges</a></li>
+                    </ul>
+                    {% endif %}
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>

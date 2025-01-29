@@ -1,0 +1,38 @@
+# docs/_layouts/default.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }} - {{ site.title }}</title>
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/syntax.css' | relative_url }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-python.min.js"></script>
+</head>
+<body>
+    <div class="wrapper">
+        {% include header.html %}
+        
+        <div class="main-content">
+            <div class="sidebar">
+                {% include navigation.html %}
+            </div>
+            
+            <div class="content">
+                <div class="breadcrumbs">
+                    {% include breadcrumbs.html %}
+                </div>
+                
+                <main>
+                    {{ content }}
+                </main>
+            </div>
+        </div>
+        
+        {% include footer.html %}
+    </div>
+    
+    <script src="{{ '/assets/js/main.js' | relative_url }}"></script>
+</body>
+</html>

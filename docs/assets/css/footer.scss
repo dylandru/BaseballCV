@@ -1,0 +1,82 @@
+# docs/assets/css/footer.scss
+---
+---
+
+.site-footer {
+    background-color: #f8f9fa;
+    padding: 48px 0 24px;
+    margin-top: auto;
+    
+    .footer-content {
+        max-width: $content-max-width + $sidebar-width;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr;
+        gap: 48px;
+        
+        .footer-section {
+            h4 {
+                font-size: 16px;
+                font-weight: 600;
+                margin-bottom: 16px;
+                color: $text-color;
+            }
+            
+            p {
+                color: #5f6368;
+                margin-bottom: 16px;
+            }
+            
+            ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+                
+                li {
+                    margin-bottom: 8px;
+                    
+                    a {
+                        color: #5f6368;
+                        text-decoration: none;
+                        transition: color 0.2s;
+                        
+                        &:hover {
+                            color: $primary-color;
+                        }
+                    }
+                }
+            }
+            
+            .footer-social {
+                display: flex;
+                gap: 16px;
+                margin-top: 16px;
+                
+                .social-link {
+                    img {
+                        width: 24px;
+                        height: 24px;
+                        transition: opacity 0.2s;
+                        
+                        &:hover {
+                            opacity: 0.8;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    .footer-bottom {
+        margin-top: 48px;
+        padding-top: 24px;
+        border-top: 1px solid rgba(0,0,0,0.1);
+        text-align: center;
+        
+        p {
+            color: #5f6368;
+            font-size: 14px;
+        }
+    }
+}

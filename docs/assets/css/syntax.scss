@@ -1,0 +1,41 @@
+# docs/assets/css/syntax.scss
+---
+---
+
+// Syntax highlighting for code blocks
+.highlight {
+    background: #f6f8fa;
+    border-radius: 6px;
+    margin: 1em 0;
+    
+    pre {
+        margin: 0;
+        padding: 16px;
+        overflow-x: auto;
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 14px;
+        line-height: 1.45;
+    }
+    
+    // Language-specific syntax colors
+    .k { color: #d73a49; } // Keyword
+    .s { color: #032f62; } // String
+    .c1 { color: #6a737d; } // Comment
+    .n { color: #24292e; } // Name
+    .o { color: #d73a49; } // Operator
+    .p { color: #24292e; } // Punctuation
+    .mi { color: #005cc5; } // Number
+    .kc { color: #005cc5; } // Constant
+    .nf { color: #6f42c1; } // Function
+    
+    // Python-specific highlighting
+    .language-python {
+        .kn { color: #d73a49; } // Import keyword
+        .nn { color: #6f42c1; } // Module name
+        .bp { color: #005cc5; } // Built-in name
+        .fm { color: #6f42c1; } // Method name
+        .dv { color: #005cc5; } // Decimal value
+        .s1 { color: #032f62; } // Single quoted string
+        .s2 { color: #032f62; } // Double quoted string
+    }
+}

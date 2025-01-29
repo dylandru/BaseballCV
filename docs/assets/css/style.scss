@@ -1,0 +1,137 @@
+# docs/assets/css/style.scss
+---
+---
+
+@import "{{ site.theme }}";
+
+// Variables
+$primary-color: #1a73e8;
+$secondary-color: #4285f4;
+$text-color: #202124;
+$background-color: #ffffff;
+$sidebar-background: #f8f9fa;
+$header-height: 64px;
+$sidebar-width: 280px;
+$content-max-width: 900px;
+
+// Global Styles
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    color: $text-color;
+    background-color: $background-color;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+// Header Styles
+.site-header {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    height: $header-height;
+    background-color: $background-color;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    z-index: 1000;
+    
+    .header-content {
+        max-width: $content-max-width + $sidebar-width;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 100%;
+        
+        .logo {
+            img {
+                height: 40px;
+            }
+        }
+        
+        .header-navigation {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            
+            .nav-link {
+                color: $text-color;
+                text-decoration: none;
+                padding: 8px 12px;
+                border-radius: 4px;
+                transition: background-color 0.2s;
+                
+                &:hover {
+                    background-color: rgba(0,0,0,0.05);
+                }
+            }
+            
+            .github-link {
+                padding: 8px 16px;
+                background-color: $primary-color;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                transition: background-color 0.2s;
+                
+                &:hover {
+                    background-color: darken($primary-color, 5%);
+                }
+            }
+        }
+    }
+}
+
+// Main Content Layout
+.main-content {
+    display: flex;
+    margin-top: $header-height;
+    min-height: calc(100vh - #{$header-height});
+    
+    .sidebar {
+        width: $sidebar-width;
+        background-color: $sidebar-background;
+        padding: 24px;
+        position: fixed;
+        height: calc(100vh - #{$header-height});
+        overflow-y: auto;
+    }
+    
+    .content {
+        flex: 1;
+        margin-left: $sidebar-width;
+        padding: 40px;
+        max-width: $content-max-width;
+        
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+        }
+        
+        code {
+            background-color: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+        }
+        
+        pre {
+            background-color: #f6f8fa;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            
+            code {
+                background-color: transparent;
+                padding: 0;
+            }
+        }
+    }
+}
