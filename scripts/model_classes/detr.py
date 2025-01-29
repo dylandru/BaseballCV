@@ -2,33 +2,37 @@ import cv2
 import torch
 from coco_eval import CocoEvaluator
 from tqdm import tqdm
-from transformers import DetrImageProcessor, DetrForObjectDetection, Trainer, TrainingArguments, EarlyStoppingCallback
+from transformers import DetrImageProcessor, DetrForObjectDetection
 import os
 import warnings
-from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 import multiprocessing as mp
 import supervision as sv
-import matplotlib.pyplot as plt
 from .utils import ModelLogger, ModelFunctionUtils, CocoDetectionDataset, ModelVisualizationTools
 import pytorch_lightning as pl
 
+"""
+
+DETR Class Implementation is based on the following tutorial:
+- https://colab.research.google.com/github/roboflow-ai/notebooks/blob/main/notebooks/train-huggingface-detr-on-custom-dataset.ipynb
+
+"""
+
 class DETR(pl.LightningModule):
     """
-    DETR (DEtection TRansformer) model class for object detection tasks using PyTorch Lightning.
-    Current class only supports detection and COCO format datasets.
+    DETR (DEtection TRansformer) model class for object detection tasks using PyTorch Lightning and HuggingFace Transformers.
+    Current class only supports COCO detection datasets.
     
     This class provides functionality for:
     - Model initialization and configuration
     - Fine-tuning on custom datasets
     - Inference on images and videos
     - Model evaluation
-    - Visualization of results
     
     Attributes:
-        device (torch.device): Device to run model on (cuda/mps/cpu)
+        detr_device (torch.device): Device to run model on (cuda/mps/cpu)
         model_id (str): HuggingFace model identifier
         model_run_path (str): Directory path for model outputs
         model_name (str): Name of the model
@@ -66,7 +70,7 @@ class DETR(pl.LightningModule):
         self.detr_device = "cuda" if torch.cuda.is_available() else "cpu" if device is None else device
         self.model_id = model_id
         self.model_run_path = model_run_path
-        self.model_name = model_id.split('/')[-1]
+        self.model_name = "DETR"
         self.batch_size = batch_size
 
         self.detr_logger = ModelLogger(self.model_name, self.model_run_path, 
@@ -110,7 +114,37 @@ class DETR(pl.LightningModule):
             show_model_params: bool = True,
             push_to_hub_with_path: str = None,
             conf: float = 0.2) -> Dict:
+        """
+        Fine-tune the DETR model on a custom dataset.
 
+        Args:
+            dataset_dir (str): Path to dataset directory
+            classes (dict): Dictionary mapping class IDs to class names
+            save_dir (str, optional): Directory to save model. Defaults to "finetuned_detr".
+            batch_size (int, optional): Training batch size. Defaults to 4.
+            epochs (int, optional): Number of training epochs. Defaults to 10.
+            lr (float, optional): Learning rate. Defaults to 1e-4.
+            lr_backbone (float, optional): Backbone learning rate. Defaults to 1e-5.
+            weight_decay (float, optional): Weight decay. Defaults to 0.01.
+            gradient_accumulation_steps (int, optional): Gradient accumulation steps. Defaults to 2.
+            logging_steps (int, optional): Steps between logging. Defaults to 100.
+            save_limit (int, optional): Maximum checkpoints to save. Defaults to 2.
+            patience (int, optional): Early stopping patience. Defaults to 3.
+            patience_threshold (float, optional): Early stopping threshold. Defaults to 0.01.
+            num_workers (int, optional): DataLoader workers. Defaults to None.
+            freeze_layers (List[str], optional): Layers to freeze. Defaults to None.
+            freeze_head (bool, optional): Whether to freeze head. Defaults to False.
+            show_model_params (bool, optional): Show model parameters. Defaults to True.
+            push_to_hub_with_path (str, optional): HuggingFace Hub path. Defaults to None.
+            conf (float, optional): Confidence threshold. Defaults to 0.2.
+
+        Returns:
+            Dict: Training results...
+                - best_model_path: Path to best checkpoint
+                - best_model_score: Best validation score
+                - early_stopped: Whether training stopped early
+                - model_path: Path to saved model
+        """
         try:
             self.model.config.id2label = classes
             self.lr = lr
@@ -207,6 +241,7 @@ class DETR(pl.LightningModule):
 
             self.model.save_pretrained(model_path)
             self.processor.save_pretrained(model_path)
+            self.detr_logger.info("Model and processor saved locally.")
 
             if self.push_to_hub_with_path is not None:
                 self.detr_logger.info("Pushing to HuggingFace Hub...")
@@ -214,6 +249,7 @@ class DETR(pl.LightningModule):
                 try:
                     self.model.push_to_hub(self.push_to_hub_with_path)
                     self.processor.push_to_hub(self.push_to_hub_with_path)
+                    self.detr_logger.info("Model and processor pushed to HuggingFace Hub successfully")
                 except Exception as e:
                     self.detr_logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
             
@@ -389,6 +425,16 @@ class DETR(pl.LightningModule):
 
     def evaluate(self, dataset_dir: str,
                  conf: float = 0.2) -> Dict:
+        """
+        Evaluate model performance on test dataset.
+
+        Args:
+            dataset_dir (str): Path to dataset directory
+            conf (float, optional): Confidence threshold. Defaults to 0.2.
+
+        Returns:
+            Dict: Evaluation metrics including mAP and other COCO metrics
+        """
         try:
             self.detr_logger.info("Starting evaluation...")
             self.model.eval()
@@ -429,7 +475,7 @@ class DETR(pl.LightningModule):
 
                 return coco_results
 
-            for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating"):
+            for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating", total=len(test_loader)):
                 pixel_values = batch['pixel_values'].to(self.detr_device)
                 pixel_mask = batch['pixel_mask'].to(self.detr_device)
                 labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch['labels']]
@@ -457,12 +503,30 @@ class DETR(pl.LightningModule):
             raise e
 
     def forward(self, pixel_values, pixel_mask):
-        """Forward pass of the model"""
+        """
+        Forward pass of the model.
+
+        Args:
+            pixel_values: Input image pixel values
+            pixel_mask: Input image pixel mask
+
+        Returns:
+            Model outputs
+        """
         outputs = self.model(pixel_values=pixel_values, pixel_mask=pixel_mask)
         return outputs
 
     def common_step(self, batch, batch_idx):
-        """Common step for training and validation"""
+        """
+        Common step for training and validation.
+
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+
+        Returns:
+            Tuple[torch.Tensor, Dict]: Loss and loss dictionary
+        """
         pixel_values = batch["pixel_values"]
         pixel_mask = batch["pixel_mask"]
         labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch["labels"]]
@@ -478,6 +542,16 @@ class DETR(pl.LightningModule):
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
+        """
+        Training step.
+
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+
+        Returns:
+            torch.Tensor: Training loss
+        """
         loss, loss_dict = self.common_step(batch, batch_idx)
         
         self.log("training_loss", loss)
@@ -487,6 +561,16 @@ class DETR(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """
+        Validation step.
+
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+
+        Returns:
+            torch.Tensor: Validation loss
+        """
         loss, loss_dict = self.common_step(batch, batch_idx)
         
         self.log("validation_loss", loss)
@@ -496,6 +580,12 @@ class DETR(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
+        """
+        Configure optimizers for training.
+
+        Returns:
+            torch.optim.Optimizer: Configured optimizer
+        """
         if not hasattr(self, 'lr') or not hasattr(self, 'lr_backbone') or not hasattr(self, 'weight_decay'):
             raise ValueError("Learning rates and weight decay must be set via finetune() before training")
         
@@ -520,7 +610,15 @@ class DETR(pl.LightningModule):
         return optimizer
 
     def collate_fn(self, batch):
-        """Collate function for data loading"""
+        """
+        Collate function for data loading.
+
+        Args:
+            batch: Input batch
+
+        Returns:
+            Dict: Collated batch with pixel values, mask and labels
+        """
         pixel_values = [item[0] for item in batch]
         encoding = self.processor.pad(pixel_values, return_tensors="pt")
         labels = [item[1] for item in batch]
@@ -529,64 +627,3 @@ class DETR(pl.LightningModule):
             'pixel_mask': encoding['pixel_mask'],
             'labels': labels
         }
-
-    def visualize_results(self, images: List[torch.Tensor], predictions: List[Dict], 
-                        targets: List[Dict], metrics: Dict) -> None:
-        # Create visualization directory
-        vis_dir = os.path.join(self.model_run_path, "evaluation_visualizations")
-        os.makedirs(vis_dir, exist_ok=True)
-
-        # Plot metrics summary
-        plt.figure(figsize=(10, 6))
-        plt.bar(metrics.keys(), metrics.values())
-        plt.title("Evaluation Metrics")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig(os.path.join(vis_dir, "metrics_summary.png"))
-        plt.close()
-
-        # Visualize example detections
-        annotated_images = []
-        for img, pred, target in zip(images[:25], predictions[:25], targets[:25]):
-            # Convert image tensor to PIL Image
-            img_array = (img.cpu().numpy() * 255).astype('uint8').transpose(1, 2, 0)
-            img_pil = Image.fromarray(img_array)
-            
-            # Create annotated image with predictions and ground truth
-            annotated_img = img_pil.copy()
-            
-            # Draw predictions in red
-            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.red())
-            if len(pred['boxes']) > 0:  # Only draw if we have predictions
-                pred_detections = sv.Detections(
-                    xyxy=pred['boxes'],
-                    confidence=pred['scores'],
-                    class_id=pred['labels']
-                )
-                annotated_img = box_annotator.annotate(scene=annotated_img, detections=pred_detections)
-            
-            # Draw ground truth in green
-            box_annotator = sv.BoxAnnotator(color=sv.ColorPalette.green())
-            if len(target['boxes']) > 0:  # Only draw if we have ground truth
-                target_detections = sv.Detections(
-                    xyxy=target['boxes'],
-                    class_id=target['labels']
-                )
-                annotated_img = box_annotator.annotate(scene=annotated_img, detections=target_detections)
-            
-            annotated_images.append(annotated_img)
-
-        # Create grid visualization
-        figure, axs = plt.subplots(5, 5, figsize=(20, 20))
-        for idx, img in enumerate(annotated_images):
-            if idx < 25:  # Only show up to 25 images
-                row = idx // 5
-                col = idx % 5
-                axs[row, col].imshow(img)
-                axs[row, col].axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(vis_dir, "detection_examples.png"))
-        plt.close()
-
-        self.logger.info(f"Visualizations saved to {vis_dir}")
