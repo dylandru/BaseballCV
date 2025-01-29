@@ -20,7 +20,7 @@ Choose a section from the navigation menu to begin learning about BaseballCV:
 
 1. [Introduction](introduction/) - Overview and use cases
 2. [Background Theory](background-theory/) - Computer vision fundamentals
-3. Repository Overview - Structure and features
+3. [Repository Structure](repository-structure/) - Framework organization and components
 4. Getting Started - Installation and setup
 5. Using the Repository - Practical guides
 6. Datasets - Available data and usage
