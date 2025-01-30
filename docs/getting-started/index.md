@@ -1,3 +1,11 @@
+---
+layout: default
+title: Getting Started
+nav_order: 4
+has_children: true
+permalink: /repository-structure
+---
+
 ## Using Google Colab for Training
 
 While local installation works well for many use cases, training deep learning models often requires substantial computational resources. Google Colab provides free access to GPU resources, making it an excellent platform for training BaseballCV models. Let's explore how to effectively use BaseballCV in Google Colab.
