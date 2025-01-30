@@ -87,40 +87,6 @@ sequence_results = analyze_pitch_sequence("pitch_video.mp4")
 
 This code demonstrates how to process video sequences frame by frame, maintaining context across the sequence. Florence 2's multimodal capabilities allow us to specify exactly what we're looking for in natural language.
 
-## Advanced Player Analysis
-
-One of BaseballCV's most powerful features is its ability to analyze player mechanics in detail. Here's how to perform detailed player analysis:
-
-```python
-from baseballcv.model_classes import DETR
-
-def analyze_pitcher_mechanics(video_path):
-    """
-    Perform detailed analysis of pitcher mechanics
-    """
-    # Initialize DETR model with specific focus on player detection
-    model = DETR(num_labels=4)  # Players, ball, glove, plate
-    
-    results = model.inference(
-        video_path,
-        task="<TEXT_TO_OD>",
-        text_input="Track the pitcher's delivery sequence"
-    )
-    
-    # Extract key points from the delivery
-    key_frames = {
-        'setup': results[0],      # Initial stance
-        'leg_lift': results[30],  # Maximum leg lift
-        'drive': results[45],     # Drive toward home
-        'release': results[60],   # Ball release
-        'follow': results[75]     # Follow-through
-    }
-    
-    return key_frames
-```
-
-This example shows how we can use DETR's sophisticated detection capabilities to analyze specific aspects of player mechanics. The model understands the sequence of movements and can identify key points in the delivery.
-
 ## Ball Trajectory Analysis
 
 Understanding ball movement is crucial in baseball analytics. Here's how to track and analyze pitch trajectories:
@@ -154,25 +120,18 @@ def analyze_pitch_trajectory(video_path):
     
     # Calculate trajectory metrics
     trajectory = np.array(ball_positions)
-    
-    # Estimate pitch metrics
-    initial_velocity = calculate_velocity(trajectory[:5])
-    break_amount = calculate_break(trajectory)
-    spin_rate = estimate_spin(trajectory)
+ 
     
     return {
-        'velocity': initial_velocity,
-        'break': break_amount,
-        'spin_rate': spin_rate,
         'trajectory': trajectory
     }
 ```
 
-This code demonstrates how to track a baseball through space and calculate important metrics about its movement. The analysis combines multiple frames to build a complete understanding of the pitch's characteristics.
+This code demonstrates how to track a baseball through space. The analysis combines multiple frames to build a complete understanding of the pitch's characteristics.
 
 ## Catcher Positioning Analysis
 
-Let's examine how to analyze catcher positioning and pitch framing:
+(This is a theoretical example) Let's examine how to analyze catcher positioning and pitch framing:
 
 ```python
 def analyze_catcher_framing(video_path):
