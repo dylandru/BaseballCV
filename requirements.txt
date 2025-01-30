@@ -5,7 +5,7 @@ pip==24.0
 pybaseball==2.2.7
 pytest==8.3.2
 ultralytics>=8.2.90,!=8.3.41,!=8.3.42
-transformers==4.46.3
+transformers==4.48.0
 peft==0.13.2
 streamlit==1.37.0
 streamlit-image-coordinates==0.1.6
@@ -13,8 +13,10 @@ streamlit-drawable-canvas==0.9.3
 awscli==1.36.5
 pytest-cov==6.0.0
 pytest==8.3.2
-supervision==0.25.0
+supervision==0.3.0
 pillow==10.3.0
 tensorboard>=2.15.0
 wandb==0.19.1
+coco_eval==0.0.4
+pytorch-lightning==2.5.0
 git+https://github.com/Jensen-holm/statcast-era-pitches.git

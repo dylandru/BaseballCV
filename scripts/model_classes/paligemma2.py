@@ -16,7 +16,6 @@ import numpy as np
 from peft import PeftModel
 from datetime import datetime
 import supervision as sv
-from supervision.metrics import MeanAveragePrecision, MetricTarget
 from .utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger, DataProcessor
 
 """
@@ -341,7 +340,7 @@ class PaliGemma2:
             patience_counter = 0
             saved_checkpoints = []
             global_step = 0
-            scaler = torch.cuda.amp.GradScaler() if self.device == "cuda" else None
+            scaler = torch.amp.GradScaler() if self.device == "cuda" else None
 
             print(f"\n=== Starting Training ===\n"
                 f"Model: {self.model_id}\n"

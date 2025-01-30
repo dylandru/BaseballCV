@@ -2,12 +2,12 @@ import logging
 import random
 import os
 import string
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, List
 import torch
-from peft import LoraConfig, get_peft_model, PeftModel
+from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
 from transformers import BitsAndBytesConfig
-from .yolo_to_jsonl import JSONLDetection
+from .dataset_jsonl_detection import JSONLDetection
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
@@ -277,6 +277,31 @@ class ModelFunctionUtils:
                                 os.path.join(checkpoint_dir, correct))
         else:
             raise ValueError("PEFT model not found. Cannot save checkpoint.")
+        
+    def freeze_layers(self, layers_to_freeze: List[str] = None, show_params: bool = True) -> None:
+        """
+        Freeze specified layers in PyTorch model
+        
+        Args:
+            layers_to_freeze (List[str]): List of layer names or patterns to freeze.
+                                        If None, shows all available layers.
+            show_params (bool): Whether to print the trainable status of all parameters.
+        
+        """
+            
+        for name, param in self.model.named_parameters():
+            if any(pattern in name for pattern in layers_to_freeze):
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+                
+        if show_params:
+            for name, param in self.model.named_parameters():
+                self.logger.info(f"{name} -  Frozen: {not param.requires_grad}")
+            frozen_count = sum(1 for p in self.model.parameters() if not p.requires_grad)
+            total_count = sum(1 for _ in self.model.parameters())
+            self.logger.info(f"\nFrozen parameters: {frozen_count}/{total_count}")
+
     
     @staticmethod
     def setup_quantization(load_in_4bit: bool = True, bnb_4bit_quant_type: str = "nf4") -> BitsAndBytesConfig:

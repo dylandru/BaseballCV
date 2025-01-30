@@ -1,4 +1,5 @@
 from .florence2 import Florence2
 from .paligemma2 import PaliGemma2
+from .detr import DETR
 
-__all__ = ['Florence2', 'PaliGemma2']
+__all__ = ['Florence2', 'PaliGemma2', 'DETR']

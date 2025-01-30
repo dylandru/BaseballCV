@@ -22,7 +22,9 @@ setup(
         'supervision==0.25.0',
         'pillow==10.3.0',
         'tensorboard>=2.15.0',
-        'wandb==0.19.1'
+        'wandb==0.19.1',
+        'coco_eval==0.0.4',
+        'pytorch-lightning==2.5.0'
     ],
     dependency_links=[
         'git+https://github.com/Jensen-holm/statcast-era-pitches.git#egg=statcast_era_pitches'

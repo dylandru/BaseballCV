@@ -1,8 +1,12 @@
 import os
+import cv2
+import torch
 import matplotlib.pyplot as plt
-from typing import Dict
+from typing import Dict, List
+from tqdm import tqdm
 from PIL import Image
 import logging
+import supervision as sv
 
 
 class ModelVisualizationTools:
@@ -22,47 +26,48 @@ class ModelVisualizationTools:
         self.model_run_path = model_run_path
         self.logger = logger
 
-    def visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations') -> logging.Logger:
+    def visualize_detection_results(self, file_path: str, detections: sv.Detections, labels: List[str], save: bool = True, save_viz_dir: str = 'visualizations') -> logging.Logger:
         """
         Visualize the results.
 
         Args:
-            image (PIL.Image.Image): The input image.
-            results (Dict): Dictionary containing the results.
+            file_path (str): The path to the image file.
+            detections (sv.Detections): Detections object containing boxes, class IDs and confidence scores
+            labels (List[str]): List of formatted label strings
             save_viz_dir (str): Directory to save the visualizations.
 
         Returns:
             logger_message (logging.Logger): The logger message for logging the completed visualization saving.
         """
-        plt.figure(figsize=(10, 8))
-        plt.imshow(image)
-        ax = plt.gca()
 
-        for bbox, label in zip(results['bboxes'], results['labels']):
-            xmin, ymin, xmax, ymax = bbox
-            rect = plt.Rectangle(
-                (xmin, ymin),
-                xmax - xmin,
-                ymax - ymin,
-                fill=False,
-                edgecolor='red',
-                linewidth=2
-            )
-            ax.add_patch(rect)
-            ax.text(
-                xmin,
-                ymin - 2,
-                label,
-                bbox=dict(facecolor='red', alpha=0.5),
-                fontsize=12,
-                color='white'
-            )
+        image = cv2.imread(file_path)
+        box_annotator = sv.BoxAnnotator()
+        annotated_frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
 
-        plt.axis('off')
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.imshow(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
+        ax.axis('off')
+
+        if save:
+            os.makedirs(save_viz_dir, exist_ok=True)
+            
+            if isinstance(file_path, str):
+                base_name = os.path.basename(file_path)
+                save_name = os.path.splitext(base_name)[0]
+            else:
+                save_name = 'frame'
+                
+            save_path = os.path.join(save_viz_dir, f'detection_{save_name}.jpg')
+            
+            cv2.imwrite(save_path, annotated_frame)
+            self.logger.info(f"Visualizations saved to {save_path}")
+        
         plt.show()
-        os.makedirs(save_viz_dir, exist_ok=True)
-        plt.savefig(os.path.join(self.model_run_path, save_viz_dir, 'result.png'))
         plt.close()
-        return self.logger.info(f"Visualization saved to {os.path.join(self.model_run_path, save_viz_dir, 'result.png')}")
+
+        return (save_path, annotated_frame) if save else annotated_frame
+
+
+        
 
     

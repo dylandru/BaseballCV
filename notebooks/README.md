@@ -13,6 +13,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `autolabeling_semisupervised.ipynb`: Demonstrates how to use the `DataTools` class for auto-annotating images using the BaseballCV pipeline, in a semi-supervised manner
 - `Florence_2_example.ipynb`: Demonstrates how to use the Florence2 class to custom train a Florence 2 model using the BaseballCV pipeline
 - `PaliGemma2_demo.ipynb`: Demonstrates how to use the PaliGemma2 class for computer vision tasks, specifically using the ball dataset
+- `DETR_example.ipynb`: Demonstrates baseball detection using DETR (Detection Transformer) model with PyTorch Lightning integration
 
 ## Usage
 
@@ -86,5 +87,23 @@ The `PaliGemma2_demo.ipynb` notebook demonstrates how to:
 - Load and fine-tune the model on the ball dataset
 - Evaluate the model's performance on mAP and mAP@50:95 metrics
 - Visualize training metrics using TensorBoard
+
+### DETR Example Notebook
+
+The `DETR_example.ipynb` notebook demonstrates how to:
+- Initialize and configure the DETR model for baseball detection
+- Load and prepare COCO-format baseball datasets
+- Train the model using PyTorch Lightning integration
+- Perform inference
+- Extract and interpret detection results
+- Visualize detection results and training progress
+
+The notebook includes comprehensive examples of:
+- Environment setup and model initialization
+- Data loading and preprocessing
+- Model training with various configurations
+- Inference on single images and video streams
+- Detection result processing and visualization
+
 
 These notebooks should guide the user in using the BaseballCV tools in their own projects.
