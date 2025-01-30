@@ -2,7 +2,7 @@
 layout: default
 title: Repository Structure
 nav_order: 4
-has_children: true
+has_children: false
 permalink: /repository-structure
 ---
 
