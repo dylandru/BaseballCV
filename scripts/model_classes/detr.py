@@ -1,3 +1,4 @@
+import logging
 import cv2
 import torch
 from coco_eval import CocoEvaluator
@@ -64,6 +65,7 @@ class DETR(pl.LightningModule):
         self.save_hyperparameters(ignore=['device'])
         
         warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+        logging.getLogger("transformers").setLevel(logging.ERROR)
         
         # Device and Logger are both PL Lightning attributes - overriding with DETR specific attributes
 
@@ -107,7 +109,8 @@ class DETR(pl.LightningModule):
             logging_steps: int = 100,
             save_limit: int = 2,
             patience: int = 3,
-            patience_threshold: float = 0.01,
+            patience_threshold: float = 0.0001,
+            precision: str = '16-mixed',
             num_workers: int = None,
             freeze_layers: List[str] = None,
             freeze_head: bool = False,
@@ -222,7 +225,7 @@ class DETR(pl.LightningModule):
                 max_epochs=epochs,
                 accelerator='auto',
                 devices=1,
-                precision='16-mixed',
+                precision=precision,
                 accumulate_grad_batches=gradient_accumulation_steps,
                 callbacks=callbacks,
                 logger=pl.loggers.TensorBoardLogger(
@@ -253,7 +256,7 @@ class DETR(pl.LightningModule):
                 except Exception as e:
                     self.detr_logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
             
-            self.detr_logger.info("Training complete... Conducting Evaluation...")
+            self.detr_logger.info("Training complete...")
             self.evaluate(dataset_dir=dataset_dir, conf=conf)
 
             return {
@@ -438,6 +441,7 @@ class DETR(pl.LightningModule):
         try:
             self.detr_logger.info("Starting evaluation...")
             self.model.eval()
+            self.model = self.model.to(self.detr_device)
 
             test_dataset = CocoDetectionDataset(dataset_dir, "test", self.processor)
             evaluator = CocoEvaluator(coco_gt=test_dataset.coco, iou_types=["bbox"])
