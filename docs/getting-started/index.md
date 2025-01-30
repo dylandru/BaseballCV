@@ -1,9 +1,9 @@
 ---
 layout: default
 title: Getting Started
-nav_order: 4
+nav_order: 5
 has_children: true
-permalink: /repository-structure
+permalink: /getting-started
 ---
 
 ## Using Google Colab for Training
