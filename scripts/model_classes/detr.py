@@ -257,7 +257,11 @@ class DETR(pl.LightningModule):
                     self.detr_logger.error(f"Failed to push to HuggingFace Hub: {str(e)}")
             
             self.detr_logger.info("Training complete...")
-            self.evaluate(dataset_dir=dataset_dir, conf=conf)
+            
+            try:
+                self.evaluate(dataset_dir=dataset_dir, conf=conf)
+            except Exception as e:
+                self.detr_logger.warning(f"Evaluation failed: {str(e)}")
 
             return {
                 'best_model_path': trainer.checkpoint_callback.best_model_path,
