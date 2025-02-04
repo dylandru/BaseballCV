@@ -2,7 +2,7 @@
 layout: default
 title: Using the Repository
 nav_order: 6
-has_children: false
+has_children: true
 permalink: /using-repository
 ---
 
