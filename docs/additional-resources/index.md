@@ -62,7 +62,7 @@ The OpenBiomechanics Project's datasets and tools can be particularly valuable w
 ### Deep Learning
 - [PyTorch Documentation](https://pytorch.org/docs/stable/index.html)
 - [Transformers Library](https://huggingface.co/docs)
-- [Ultralytics YOLOv8 Docs](https://docs.ultralytics.com/)
+- [Ultralytics YOLO Docs](https://docs.ultralytics.com/)
 
 ### Computer Vision
 - [OpenCV Tutorials](https://docs.opencv.org/4.x/d9/df8/tutorial_root.html)
@@ -120,5 +120,5 @@ These resources are regularly updated. Check the latest versions and releases fo
 
 If you have additional resources to suggest:
 1. Join our Discord channel
-2. Share in the #resources channel
+2. Share in the #general channel
 3. Provide context about why the resource is valuable for BaseballCV users
