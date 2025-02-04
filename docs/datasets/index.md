@@ -2,7 +2,7 @@
 layout: default
 title: Datasets
 nav_order: 7
-has_children: true
+has_children: false
 permalink: /datasets
 ---
 

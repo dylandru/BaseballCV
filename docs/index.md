@@ -25,9 +25,9 @@ Choose a section from the navigation menu to begin learning about BaseballCV:
 5. [Using the Repository](/using-repository) - Practical guides
 6. [Datasets](/datasets)  - Available data and usage
 7. Advanced Features - Advanced capabilities
-8. Contributing - How to contribute
+8. [Contributing](/contributing) - How to contribute
 9. Best Practices - Guidelines and tips
-10. Additional Resources - Further reading
+10. [Additional Resources](/additional-resources) - Further reading
 11. FAQ - Common questions
 12. Appendices - Additional information
 
