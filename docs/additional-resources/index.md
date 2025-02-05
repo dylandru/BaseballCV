@@ -29,6 +29,8 @@ Our Discord server is the central hub for:
 - [Understanding YOLO Series](https://arxiv.org/abs/2304.00501) - Comprehensive overview of YOLO evolution
 - [DETR: End-to-End Object Detection with Transformers](https://arxiv.org/abs/2005.12872) - Original DETR paper
 - [Vision Transformers (ViT)](https://arxiv.org/abs/2010.11929) - Fundamental paper on vision transformers
+- [Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385) - ResNet paper
+
 
 ### Vision-Language Models
 - [Florence-2 Paper](https://arxiv.org/abs/2311.06242) - Technical details of Florence-2
