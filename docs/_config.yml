@@ -1,0 +1,24 @@
+title: BaseballCV Documentation
+description: Documentation for BaseballCV - Computer Vision Tools for Baseball Analytics
+remote_theme: just-the-docs/just-the-docs@v0.7.0
+
+url: https://dylandru.github.io/BaseballCV
+
+# Set a path/url to a logo that will be displayed instead of the title
+logo: "/assets/images/logo.png"
+
+# Aux links for the upper right navigation
+aux_links:
+  "BaseballCV on GitHub":
+    - "//github.com/dylandru/BaseballCV"
+
+callouts:
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green
+  warning:
+    title: Warning
+    color: red
