@@ -26,10 +26,10 @@ Choose a section from the navigation menu to begin learning about BaseballCV:
 6. [Datasets](/datasets)  - Available data and usage
 7. Advanced Features - Advanced capabilities
 8. [Contributing](/contributing) - How to contribute
-9. Best Practices - Guidelines and tips
+9. [Best Practices](/best-practices) - Guidelines and tips
 10. [Additional Resources](/additional-resources) - Further reading
-11. FAQ - Common questions
-12. Appendices - Additional information
+11. [FAQ](/faq) - Common questions
+12. [Appendices](/appendices) - Additional information
 
 ## Quick Links
 
