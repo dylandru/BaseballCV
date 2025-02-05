@@ -66,6 +66,7 @@ For most applications, we recommend starting with `ball_trackingv4` and only mov
 To improve ball detection accuracy:
 
 1. Optimize your confidence threshold:
+
 ```python
 model = YOLO(load_tools.load_model("ball_trackingv4"))
 results = model.predict(
@@ -75,8 +76,9 @@ results = model.predict(
 ```
 
 2. Use multiple frames for validation:
+
 ```python
-from baseballcv import DataTools
+from baseballcv.scripts import DataTools
 
 data_tools = DataTools()
 frames = data_tools.generate_photo_dataset(
@@ -99,7 +101,7 @@ BaseballCV provides tools for creating custom datasets:
 
 1. First, collect video footage:
 ```python
-from baseballcv import BaseballSavVideoScraper
+from baseballcv.scripts import BaseballSavVideoScraper
 
 scraper = BaseballSavVideoScraper()
 scraper.run_statcast_pull_scraper(
@@ -110,8 +112,9 @@ scraper.run_statcast_pull_scraper(
 ```
 
 2. Then generate frames and annotations:
+
 ```python
-from baseballcv import DataTools
+from baseballcv.scripts import DataTools
 
 data_tools = DataTools()
 data_tools.generate_photo_dataset(

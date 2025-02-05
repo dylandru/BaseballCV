@@ -17,7 +17,7 @@ Understanding and following best practices ensures you get the most out of Baseb
 Video quality significantly impacts ball detection accuracy. When working with baseball footage, consider these important factors:
 
 ```python
-from baseballcv import DataTools
+from baseballcv.scripts import DataTools
 
 def prepare_analysis_footage(video_path: str) -> str:
     """
@@ -48,7 +48,7 @@ For optimal results, ensure your source videos have:
 Maintaining well-organized datasets is crucial for reliable model training and evaluation. Here's an effective structure:
 
 ```python
-from baseballcv import LoadTools
+from baseballcv.scripts import LoadTools
 
 def organize_training_data():
     """
@@ -83,8 +83,8 @@ def organize_training_data():
 BaseballCV offers several models optimized for ball tracking. Understanding their characteristics helps choose the right one for your needs:
 
 ```python
-from baseballcv import LoadTools
-from baseballcv.model_classes import Florence2, PaliGemma2
+from baseballcv.scripts import LoadTools
+from baseballcv.scripts import Florence2, PaliGemma2
 from ultralytics import YOLO
 
 def select_appropriate_model(use_case: str):
@@ -244,7 +244,7 @@ def handle_processing_errors(func):
 When integrating with external data sources:
 
 ```python
-from baseballcv import BaseballSavVideoScraper
+from baseballcv.scripts import BaseballSavVideoScraper
 
 def integrate_with_savant():
     """

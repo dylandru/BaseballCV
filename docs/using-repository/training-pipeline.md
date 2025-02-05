@@ -14,8 +14,7 @@ This guide walks through creating a complete training pipeline for baseball obje
 First, let's set up a comprehensive training pipeline that handles data preparation, model training, and evaluation:
 
 ```python
-from baseballcv import LoadTools, DataTools
-from baseballcv.model_classes import DETR
+from baseballcv.scripts import LoadTools, DataTools, DETR
 import torch
 import os
 

@@ -14,8 +14,7 @@ This guide demonstrates how to train a Florence2 model specifically for baseball
 First, let's create a comprehensive training pipeline that leverages BaseballCV's utilities:
 
 ```python
-from baseballcv import LoadTools
-from baseballcv.model_classes import Florence2
+from baseballcv.scripts import Florence2, LoadTools
 import os
 import torch
 

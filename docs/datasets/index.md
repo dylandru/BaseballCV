@@ -99,7 +99,7 @@ COCO format datasets are ideal for training DETR and other transformer-based mod
 BaseballCV provides a simple interface for loading datasets:
 
 ```python
-from baseballcv import LoadTools
+from baseballcv.scripts import LoadTools
 
 # Initialize LoadTools
 load_tools = LoadTools()
@@ -146,7 +146,7 @@ def process_coco_dataset(dataset_path):
 BaseballCV supports creating custom datasets from video footage:
 
 ```python
-from baseballcv import DataTools
+from baseballcv.scripts import DataTools
 
 data_tools = DataTools()
 

@@ -15,7 +15,7 @@ Welcome to the practical guide for BaseballCV. We'll explore how to use the fram
 Let's begin with fundamental object detection, which forms the basis of most baseball analysis tasks. We'll start by detecting basic elements like baseballs, players, and equipment in single images.
 
 ```python
-from baseballcv import LoadTools
+from baseballcv.scripts import LoadTools
 from ultralytics import YOLO
 
 # Initialize our tools
@@ -92,7 +92,7 @@ This code demonstrates how to process video sequences frame by frame, maintainin
 Understanding ball movement is crucial in baseball analytics. Here's how to track and analyze pitch trajectories:
 
 ```python
-from baseballcv import DataTools
+from baseballcv.scripts import DataTools
 import numpy as np
 
 def analyze_pitch_trajectory(video_path):
