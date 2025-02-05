@@ -76,11 +76,6 @@ The OpenBiomechanics Project's datasets and tools can be particularly valuable w
 
 ## Research Papers
 
-### Baseball-Specific Computer Vision
-- "Automated Baseball Pitch Classification Using Machine Learning" - Smith et al., 2019
-- "Deep Learning for Baseball Player Tracking" - Johnson et al., 2020
-- "Computer Vision Analysis of Baseball Pitching Mechanics" - Brown et al., 2021
-
 ### Related Technologies
 - [Detection Transformers Beyond DETR](https://arxiv.org/abs/2110.06399)
 - [Scaling Up Visual and Vision-Language Models](https://arxiv.org/abs/2212.09741)
