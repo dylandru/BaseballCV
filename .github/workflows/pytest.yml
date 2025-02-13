@@ -30,7 +30,7 @@ jobs:
         
     - name: Run tests
       run: |
-        PYTEST_DISABLE_PLUGIN_AUTOLOAD=true pytest  --cov=baseballcv tests/ --cov-report=xml 
+        pytest -c /dev/null --cov=baseballcv tests/ --cov-report=xml 
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
