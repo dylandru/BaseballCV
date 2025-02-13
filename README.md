@@ -24,7 +24,10 @@ To get started with our datasets and models, follow these steps:
 The package can be installed from Github with the required dependencies using the following command:
 
 ```bash
-pip install git+https://github.com/dylandru/BaseballCV.git
+pip install baseballcv
+
+#If using the Savant Scraper, you will need to seperately install the statcast-era-pitches package
+pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git
 ```
 
 ### Clone the Repository Locally
