@@ -27,8 +27,8 @@ drive.mount('/content/drive')
 !nvidia-smi
 
 # Import essential modules
-from baseballcv.scripts import LoadTools, DataTools
-from baseballcv.scripts import Florence2, DETR
+from baseballcv.functions import LoadTools, DataTools
+from baseballcv.models import Florence2, DETR
 ```
 
 ### Managing Training Data in Colab

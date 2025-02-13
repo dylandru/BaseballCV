@@ -68,6 +68,10 @@ To improve ball detection accuracy:
 1. Optimize your confidence threshold:
 
 ```python
+from baseballcv.functions import LoadTools
+from ultralytics import YOLO
+
+load_tools = LoadTools()
 model = YOLO(load_tools.load_model("ball_trackingv4"))
 results = model.predict(
     source=video_path,
@@ -78,7 +82,7 @@ results = model.predict(
 2. Use multiple frames for validation:
 
 ```python
-from baseballcv.scripts import DataTools
+from baseballcv.functions import DataTools
 
 data_tools = DataTools()
 frames = data_tools.generate_photo_dataset(
@@ -114,7 +118,7 @@ scraper.run_statcast_pull_scraper(
 2. Then generate frames and annotations:
 
 ```python
-from baseballcv.scripts import DataTools
+from baseballcv.functions import DataTools
 
 data_tools = DataTools()
 data_tools.generate_photo_dataset(
