@@ -109,7 +109,7 @@ All contributions must include appropriate tests:
 ```python
 # Example test file: tests/test_video_processing.py
 import pytest
-from baseballcv.scripts import extract_frames_from_video
+from baseballcv.functions import extract_frames_from_video
 
 def test_frame_extraction():
     """Test video frame extraction functionality"""

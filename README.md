@@ -77,7 +77,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 If you are interested in training your own models with our datasets, you can download the one of the pre-annotated datasets. To download the datasets into a folder, you can use the following:
 
 ```python
-  from scripts import LoadTools
+  from baseballcv.functions import LoadTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
@@ -92,7 +92,7 @@ If you are interested in training your own models with our datasets, you can dow
 If you are interested in annotating your own dataset, you can use one of the raw photos datasets. To download the raw photos datasets into a folder prefaced with `unlabeled_`, you can use the following:
 
 ```python
-  from scripts import LoadTools
+  from baseballcv.functions import LoadTools
 
   # Initialize LoadTools class
   load_tools = LoadTools()
@@ -109,7 +109,7 @@ If you are interested in annotating your own dataset, you can use one of the raw
 If you are interested in creating your own datasets from scratch, you can use our tools to help you, such as our photo generator.
 
 ```python
-  from scripts import DataTools
+  from baseballcv.functions import DataTools
 
   # Initialize DataTools class
   data_tools = DataTools()
@@ -121,7 +121,7 @@ If you are interested in creating your own datasets from scratch, you can use ou
 With that given dataset, you can then use our automatic annotation tool to annotate the dataset based on an existing model.
 
 ```python
-  from scripts import DataTools
+  from baseballcv.functions import DataTools
 
   # Initialize DataTools class
   data_tools = DataTools()
@@ -166,7 +166,7 @@ The `LoadTools` class provides a convenient way to download and load different t
 To load a YOLO model, you can use the `load_model` method of the `LoadTools` class. Below is an example of how to load a YOLO model:
 
 ```python
-from scripts import LoadTools
+from baseballcv.functions import LoadTools
 
 # Initialize LoadTools class
 load_tools = LoadTools()
@@ -184,7 +184,7 @@ To load a Florence 2 model, you can also use the load_model method of the LoadTo
 
 
 ```python
-from scripts import LoadTools
+from baseballcv.functions import LoadTools
 
 # Initialize LoadTools class
 load_tools = LoadTools()
@@ -202,7 +202,7 @@ To load a PaliGemma 2 model, you can also use the load_model method of the LoadT
 
 
 ```python
-from scripts import LoadTools
+from baseballcv.functions import LoadTools
 
 # Initialize LoadTools class
 load_tools = LoadTools()
@@ -283,7 +283,7 @@ for r in results: #loop through each frame
 Here's an example of how to use our pre-trained Florence 2 models to run inference on an image. The Florence 2 model supports multiple vision tasks including object detection, image captioning, and open vocabulary detection.
 
 ```python
-from scripts import Florence2
+from baseballcv.models import Florence2
 
 # Initialize our Florence 2 model - automatically selects the best available device (CUDA, MPS, or CPU)
 model = Florence2()
@@ -313,7 +313,7 @@ specific_objects = model.inference(
 Here's an example of how to use our pre-trained Florence 2 models to extract predictions from an image. This example shows how to fine-tune the model on your own dataset and extract custom predictions.
 
 ```python
-from scripts import Florence2
+from baseballcv.models import Florence2
 
 # Initialize the model for training
 model = Florence2()

@@ -22,8 +22,8 @@ A baseball analysis pipeline typically involves several key steps working in har
 Let's build a complete pipeline that demonstrates these concepts:
 
 ```python
-from baseballcv import LoadTools, DataTools
-from baseballcv.model_classes import Florence2
+from baseballcv.functions import LoadTools, DataTools
+from baseballcv.models import Florence2
 import cv2
 import numpy as np
 

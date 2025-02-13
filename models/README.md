@@ -45,7 +45,7 @@ The model weights can be downloaded directly from the links below:
 If you prefer to load the model directly using built-in functions versus downloading the model weights, you can use the `load_model` function from `scripts.load_tools`:
 
 ```python
-from scripts.load_tools import LoadTools
+from baseballcv.functions import LoadTools
 from ultralytics import YOLO
 
 # Initialize LoadTools class

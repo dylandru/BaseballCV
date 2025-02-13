@@ -15,7 +15,7 @@ Welcome to the practical guide for BaseballCV. We'll explore how to use the fram
 Let's begin with fundamental object detection, which forms the basis of most baseball analysis tasks. We'll start by detecting basic elements like baseballs, players, and equipment in single images.
 
 ```python
-from baseballcv.scripts import LoadTools
+from baseballcv.functions import LoadTools
 from ultralytics import YOLO
 
 # Initialize our tools
