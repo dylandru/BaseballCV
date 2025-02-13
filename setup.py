@@ -7,7 +7,7 @@ setup(
     package_dir={"": "baseballcv"},
     install_requires=[
         'bs4==0.0.2',
-        'cryptography==43.0.1',
+        'cryptography==44.0.1',
         'opencv-python==4.10.0.84',
         'pybaseball==2.2.7',
         'pytest==8.3.2',
