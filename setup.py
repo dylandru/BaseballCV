@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 setup(
     name="baseballcv",
     version="0.1.0",
-    package_dir={"baseballcv": ""},
-    packages=["baseballcv"] + ["baseballcv." + p for p in find_packages()],
+    packages=find_packages(where="baseballcv"),
+    package_dir={"": "baseballcv"},
     install_requires=[
         'bs4==0.0.2',
         'cryptography==43.0.1',
@@ -12,9 +12,9 @@ setup(
         'pybaseball==2.2.7',
         'pytest==8.3.2',
         'ultralytics>=8.2.90,!=8.3.41,!=8.3.42',
-        'transformers==4.46.3',
+        'transformers>=4.48.0',
         'peft==0.13.2',
-        'streamlit==1.37.0',
+        'streamlit>=1.37.0',
         'streamlit-image-coordinates==0.1.6',
         'streamlit-drawable-canvas==0.9.3',
         'awscli==1.36.5',
