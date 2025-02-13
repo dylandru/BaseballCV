@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 import pytest
 import requests
-from scripts import DataTools, LoadTools, BaseballSavVideoScraper
+from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper
 
 @pytest.fixture
 def data_tools() -> DataTools:
