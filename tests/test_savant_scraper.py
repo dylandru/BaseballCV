@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 def test_run_statcast_pull_scraper(scraper):
     """
     Tests the main video scraping functionality.
@@ -8,8 +10,8 @@ def test_run_statcast_pull_scraper(scraper):
     """
     #Run Scraper for Yankees on 3/28/2024 w/ minimal videos
     df = scraper.run_statcast_pull_scraper(
-        start_date="2024-03-28",
-        end_date="2024-03-28",
+        start_date="2024-04-01",
+        end_date="2024-04-01",
         download_folder="test_videos",
         max_workers=2,
         max_videos=2,
@@ -22,3 +24,6 @@ def test_run_statcast_pull_scraper(scraper):
     videos = os.listdir("test_videos")
     assert len(videos) > 0 and videos[0].endswith(".mp4"), "Should have downloaded videos"
     scraper.cleanup_savant_videos("test_videos")
+
+if __name__ == '__main__':
+    pytest.main([__file__])
