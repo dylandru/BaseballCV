@@ -1,8 +1,19 @@
-from unittest.mock import Mock
 import pytest
+import multiprocessing as mp
+from unittest.mock import Mock
 import requests
 from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_multiprocessing() -> None:
+    """
+    Ensures that the multiprocessing start method is set to 'spawn' for tests.
+    """
+    if mp.get_start_method(allow_none=True) != 'spawn':
+        mp.set_start_method('spawn', force=True)
+    
+    return None
+        
 @pytest.fixture
 def data_tools() -> DataTools:
     """

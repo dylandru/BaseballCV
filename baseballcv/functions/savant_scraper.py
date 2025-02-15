@@ -153,6 +153,8 @@ class BaseballSavVideoScraper:
         """
         start_date, end_date = pd.Timestamp(start_date) if isinstance(start_date, str) else start_date, pd.Timestamp(end_date) if isinstance(end_date, str) else end_date
 
+        print(f"start_date: {start_date}")
+        print(f"end_date: {end_date}")
         statcast_df = (statcast_pitches.load()
                        .filter(
             (pl.col("game_date").dt.date() >= start_date.date()) &
@@ -164,9 +166,15 @@ class BaseballSavVideoScraper:
             .to_pandas())
 
         game_pks = statcast_df['game_pk'].unique()
+
+        if len(game_pks) == 0:
+            raise ValueError("No game_pks found for given date range and team")
+        
         dfs = [self.process_game_data(self.fetch_game_data(
             game_pk), pitch_call=pitch_call) for game_pk in game_pks]
-
+        
+        if not dfs:
+            raise ValueError("No data found for given date range and team")
         play_id_df = pd.concat(dfs, ignore_index=True)
         return play_id_df
 

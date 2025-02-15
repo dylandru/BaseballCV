@@ -28,7 +28,7 @@ drive.mount('/content/drive')
 
 # Import essential modules
 from baseballcv.functions import LoadTools, DataTools
-from baseballcv.models import Florence2, DETR
+from baseballcv.model import Florence2, DETR
 ```
 
 ### Managing Training Data in Colab

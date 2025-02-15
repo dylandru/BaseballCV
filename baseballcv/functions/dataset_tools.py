@@ -26,7 +26,7 @@ class DataTools:
 
     def __init__(self, max_workers: int = 10):
         self.scraper = BaseballSavVideoScraper()
-        self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
+        self.max_workers = max_workers
         self.LoadTools = LoadTools()
         self.output_folder = ''
 
@@ -62,7 +62,7 @@ class DataTools:
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
         end_date = datetime.strptime(end_date, "%Y-%m-%d")
         self.scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
-                                download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game)
+                                download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game, max_workers=1)
                 
         os.makedirs(self.output_folder, exist_ok=True)
         video_files = [f for f in os.listdir(video_download_folder) if f.endswith(('.mp4', '.mov'))]
@@ -94,15 +94,29 @@ class DataTools:
         
         extracted_frames = []
 
-        with self.process_pool as executor:
-            future_videos = {executor.submit(extract_frames_from_video, *task): task for task in extraction_tasks}
-            for future in concurrent.futures.as_completed(future_videos):
-                video_path, game_id, _, _ = future_videos[future]
-                try:
-                    result = future.result()
-                    extracted_frames.extend(result)
-                except Exception as e:
-                    print(f"Error with {video_path}: {str(e)}")
+        with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            try:
+                future_videos = {executor.submit(extract_frames_from_video, *task): task 
+                               for task in extraction_tasks}
+                for future in concurrent.futures.as_completed(future_videos):
+                    video_path, game_id, _, _ = future_videos[future]
+                    try:
+                        result = future.result()
+                        extracted_frames.extend(result)
+                    except Exception as e:
+                        print(f"Error with {video_path}: {str(e)}")
+            except KeyboardInterrupt:
+                print("\nShutting down gracefully...")
+                executor.shutdown(wait=False)
+                raise
+            finally:
+                for task in extraction_tasks:
+                    video_path = task[0]
+                    if os.path.exists(video_path):
+                        try:
+                            os.close(os.open(video_path, os.O_RDONLY))
+                        except:
+                            pass
 
         random.shuffle(extracted_frames)
         
@@ -152,6 +166,7 @@ class DataTools:
         os.makedirs(annotations_dir, exist_ok=True)
 
         model = YOLO(self.LoadTools.load_model(model_alias))
+        print(f"Model loaded: {model}")
 
         annotation_tasks = [image_file for image_file in os.listdir(image_dir)]
 

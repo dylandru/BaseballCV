@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 import multiprocessing as mp
 import supervision as sv
-from baseballcv.models.utils import ModelLogger, ModelFunctionUtils, ModelVisualizationTools
+from baseballcv.model.utils import ModelLogger, ModelFunctionUtils, ModelVisualizationTools
 from baseballcv.datasets import CocoDetectionDataset
 import pytorch_lightning as pl
 
