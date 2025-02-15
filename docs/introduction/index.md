@@ -10,6 +10,8 @@ permalink: /introduction
 
 BaseballCV represents a significant advancement in baseball analytics, offering a comprehensive suite of computer vision tools specifically designed for baseball analysis. At its core, BaseballCV combines cutting-edge object detection models with specialized baseball domain knowledge to create a powerful toolkit for understanding and analyzing the game through video.
 
+The official package information can be found on [BaseballCV's PyPI page](https://pypi.org/project/baseballcv/).
+
 ## Core Components and Capabilities
 
 The framework integrates several key technologies that work together seamlessly. At its foundation, BaseballCV utilizes different types of CV models like: YOLO (You Only Look Once), DETR,  and enhanced Vision-Language Models (VLMs) like Florence 2 and PaliGemma 2, which add contextual understanding and advanced analytical capabilities.

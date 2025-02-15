@@ -16,8 +16,8 @@ First, we need to configure our Colab environment properly. This setup process n
 
 ```python
 # Install BaseballCV and its dependencies
-!pip install git+https://github.com/dylandru/BaseballCV.git
-!pip install supervision==0.3.0 ultralytics>=8.2.90 transformers==4.48.0
+!pip install baseballcv
+!pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git
 
 # Connect to Google Drive for persistent storage
 from google.colab import drive

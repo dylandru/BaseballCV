@@ -17,6 +17,6 @@ supervision==0.3.0
 pillow==10.3.0
 tensorboard>=2.15.0
 wandb==0.19.1
-coco_eval==0.0.4
+coco-eval==0.0.4
 pytorch-lightning==2.5.0
 git+https://github.com/Jensen-holm/statcast-era-pitches.git

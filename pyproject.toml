@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baseballcv"
+version = "0.1.0"
+authors = [
+    { name="Dylan Drummey", email="dylandrummey22@gmail.com" },
+    { name="Carlos Marcano", email="c.marcano@balldatalab.com" }
+]
+description = "A collection of tools and models designed to aid in the use of Computer Vision in baseball."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "bs4==0.0.2",
+    "cryptography>=42.0.3",
+    "opencv-python==4.10.0.84",
+    "pybaseball==2.2.7",
+    "pytest==8.3.2",
+    "ultralytics>=8.2.90,!=8.3.41,!=8.3.42",
+    "transformers>=4.48.0",
+    "peft==0.13.2",
+    "streamlit>=1.37.0",
+    "streamlit-image-coordinates==0.1.6",
+    "streamlit-drawable-canvas==0.9.3",
+    "awscli==1.36.5",
+    "pytest-cov==6.0.0",
+    "supervision==0.25.0",
+    "pillow==10.3.0",
+    "tensorboard>=2.15.0",
+    "wandb==0.19.1",
+    "coco-eval==0.0.4",
+    "pytorch-lightning==2.5.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/dylandru/BaseballCV"
+"Bug Tracker" = "https://github.com/dylandru/BaseballCV/issues"
+Documentation = "https://baseballcv.com"
+
+[tool.setuptools]
+packages = ["baseballcv"]

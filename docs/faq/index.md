@@ -42,7 +42,12 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
 3. Then install BaseballCV:
 ```bash
-pip install git+https://github.com/dylandru/BaseballCV.git
+pip install baseballcv
+```
+
+4. If using the Savant Scraper, you will need to seperately install the statcast-era-pitches package:
+```bash
+pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git
 ```
 
 ### Can I use BaseballCV without a GPU?
