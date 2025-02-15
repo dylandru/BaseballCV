@@ -16,7 +16,7 @@ import numpy as np
 from peft import PeftModel
 from datetime import datetime
 import supervision as sv
-from baseballcv.models.utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger
+from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger
 from baseballcv.datasets import DataProcessor
 
 """
