@@ -15,7 +15,7 @@ First, let's set up a comprehensive training pipeline that handles data preparat
 
 ```python
 from baseballcv.functions import LoadTools, DataTools
-from baseballcv.models import DETR
+from baseballcv.model import DETR
 import torch
 import os
 

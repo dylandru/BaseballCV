@@ -84,7 +84,7 @@ BaseballCV offers several models optimized for ball tracking. Understanding thei
 
 ```python
 from baseballcv.functions import LoadTools
-from baseballcv.models import Florence2, PaliGemma2
+from baseballcv.model import Florence2, PaliGemma2
 from ultralytics import YOLO
 
 def select_appropriate_model(use_case: str):

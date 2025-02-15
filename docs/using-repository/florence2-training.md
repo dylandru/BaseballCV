@@ -15,7 +15,7 @@ First, let's create a comprehensive training pipeline that leverages BaseballCV'
 
 ```python
 from baseballcv.functions import LoadTools
-from baseballcv.models import Florence2
+from baseballcv.model import Florence2
 import os
 import torch
 
