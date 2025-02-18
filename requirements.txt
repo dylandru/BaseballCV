@@ -20,3 +20,4 @@ wandb==0.19.1
 coco-eval==0.0.4
 pytorch-lightning==2.5.0
 git+https://github.com/Jensen-holm/statcast-era-pitches.git
+git+https://github.com/dylandru/yolov9.git

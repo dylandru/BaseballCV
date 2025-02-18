@@ -3,6 +3,9 @@
 [![BaseballCV Scripts](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml)
 [![Package Build](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml)
 [![codecov](https://codecov.io/github/dylandru/BaseballCV/graph/badge.svg?token=86UGAREPSB)](https://codecov.io/github/dylandru/BaseballCV)
+[![PyPI version](https://badge.fury.io/py/baseballcv.svg)](https://pypi.org/project/baseballcv/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 **Created By: Dylan Drummey ([@drummeydylan](https://x.com/DrummeyDylan)) and Carlos Marcano ([@camarcano](https://x.com/camarcano))  
 Maintained By: Carlos Marcano**
