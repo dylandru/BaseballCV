@@ -1,63 +1,39 @@
+import os
 from typing import Dict, List, Optional, Union
-from baseballcv.functions import check_import
+from baseballcv.functions import check_import 
 from yolov9 import detect, train, val
 
 class YOLOv9:
-    def __init__(self, device: str = "cpu", ) -> None:
+    def __init__(self, device: str = "cpu", model_path: str = None, cfg_path: str = None) -> None: 
+        """
+        Initialize YOLOv9 model.
+
+        Args:
+            device (str, optional): Device to use. Defaults to "cpu".
+            model_path (str, optional): Path to initial weight. Defaults to 'yolov9-e.pt'.
+            cfg_path (str, optional): Path to model config. Defaults to 'models/detect/yolov9-c.yaml'.
+        """
         check_import("git+https://github.com/dylandru/yolov9.git", "yolov9")
         self.device = device
+        self.model_path = model_path
+        self.cfg_path = cfg_path
 
-    def finetune(
-        self,
-        data_path: str,
-        model: str,
-        cfg_path: str = 'yolo.yaml',
-        hyp_path: str = 'example',
-        epochs: int = 100,
-        imgsz: int = 640,
-        batch_size: int = 16,
-        rect: bool = False,
-        resume: bool = False,
-        nosave: bool = False,
-        noval: bool = False,
-        noautoanchor: bool = False,
-        noplots: bool = False,
-        evolve: Optional[bool] = None,
-        bucket: str = '',
-        cache: Optional[str] = None,
-        image_weights: bool = False,
-        multi_scale: bool = False,
-        single_cls: bool = False,
-        optimizer: str = 'SGD',
-        sync_bn: bool = False,
-        workers: int = 8,
-        project: str = 'runs/train',
-        name: str = 'exp',
-        exist_ok: bool = False,
-        quad: bool = False,
-        cos_lr: bool = False,
-        flat_cos_lr: bool = False,
-        fixed_lr: bool = False,
-        label_smoothing: float = 0.0,
-        patience: int = 100,
-        freeze: List[int] = [0],
-        save_period: int = -1,
-        seed: int = 0,
-        local_rank: int = -1,
-        min_items: int = 0,
-        close_mosaic: int = 0,
-        entity: Optional[str] = None,
-        upload_dataset: bool = False,
-        bbox_interval: int = -1
-    ) -> Dict:
+    def finetune(self, data_path: str, epochs: int = 100,
+                 imgsz: int = 640, batch_size: int = 16, rect: bool = False, resume: bool = False, nosave: bool = False,
+                 noval: bool = False, noautoanchor: bool = False, noplots: bool = False, evolve: Optional[bool] = None,
+                 bucket: str = '', cache: Optional[str] = None, image_weights: bool = False, multi_scale: bool = False,
+                 single_cls: bool = False, optimizer: str = 'SGD', sync_bn: bool = False, num_workers: int = (os.cpu_count() -1),
+                 project: str = 'runs/train', name: str = 'exp', exist_ok: bool = False, quad: bool = False,
+                 cos_lr: bool = False, flat_cos_lr: bool = False, fixed_lr: bool = False, label_smoothing: float = 0.0,
+                 patience: int = 100, freeze: List[int] = [0], save_period: int = -1, seed: int = 0, local_rank: int = -1,
+                 min_items: int = 0, close_mosaic: int = 0, entity: Optional[str] = None, upload_dataset: bool = False,
+                 bbox_interval: int = -1) -> Dict:
+        
         """
         Finetune a YOLOv9 model.
 
         Args:
-            data_path (str): Path to data config file
-            model (str): Path to initial weights
-            cfg_path (str, optional): Path to model config. Defaults to 'yolo.yaml'.
-            hyp_path (str, optional): Path to hyperparameters. Defaults to 'data/hyps/hyp.scratch-low.yaml'.
+            data_path (str): Path to data config file.
             epochs (int, optional): Number of epochs. Defaults to 100.
             imgsz (int, optional): Image size. Defaults to 640.
             batch_size (int, optional): Batch size. Defaults to 16.
@@ -76,7 +52,7 @@ class YOLOv9:
             single_cls (bool, optional): Train as single-class dataset. Defaults to False.
             optimizer (str, optional): Optimizer (SGD, Adam, AdamW, LION). Defaults to 'SGD'.
             sync_bn (bool, optional): Use SyncBatchNorm. Defaults to False.
-            workers (int, optional): Max dataloader workers. Defaults to 8.
+            num_workers (int, optional): Max dataloader workers. Defaults to 8.
             project (str, optional): Project name. Defaults to 'runs/train'.
             name (str, optional): Experiment name. Defaults to 'exp'.
             exist_ok (bool, optional): Existing project/name ok. Defaults to False.
@@ -97,76 +73,25 @@ class YOLOv9:
             bbox_interval (int, optional): Bbox interval. Defaults to -1.
         """
 
-        results = train.run(
-            data=data_path,
-            weights=model,
-            cfg=cfg_path,
-            hyp=hyp_path,
-            epochs=epochs,
-            batch_size=batch_size,
-            imgsz=imgsz,
-            rect=rect,
-            resume=resume,
-            nosave=nosave,
-            noval=noval,
-            noautoanchor=noautoanchor,
-            noplots=noplots,
-            evolve=evolve,
-            bucket=bucket,
-            cache=cache,
-            image_weights=image_weights,
-            device=self.device,
-            multi_scale=multi_scale,
-            single_cls=single_cls,
-            optimizer=optimizer,
-            sync_bn=sync_bn,
-            workers=workers,
-            project=project,
-            name=name,
-            exist_ok=exist_ok,
-            quad=quad,
-            cos_lr=cos_lr,
-            flat_cos_lr=flat_cos_lr,
-            fixed_lr=fixed_lr,
-            label_smoothing=label_smoothing,
-            patience=patience,
-            freeze=freeze,
-            save_period=save_period,
-            seed=seed,
-            local_rank=local_rank,
-            min_items=min_items,
-            close_mosaic=close_mosaic,
-            entity=entity,
-            upload_dataset=upload_dataset,
-            bbox_interval=bbox_interval
-        )
-
+        results = train.run(data=data_path, weights=self.model_path, cfg=self.cfg_path, epochs=epochs, batch_size=batch_size,
+                          imgsz=imgsz, rect=rect, resume=resume, nosave=nosave, noval=noval, noautoanchor=noautoanchor,
+                          noplots=noplots, evolve=evolve, bucket=bucket, cache=cache, image_weights=image_weights,
+                          device=self.device, multi_scale=multi_scale, single_cls=single_cls, optimizer=optimizer,
+                          sync_bn=sync_bn, workers=num_workers, project=project, name=name, exist_ok=exist_ok, quad=quad,
+                          cos_lr=cos_lr, flat_cos_lr=flat_cos_lr, fixed_lr=fixed_lr, label_smoothing=label_smoothing,
+                          patience=patience, freeze=freeze, save_period=save_period, seed=seed, local_rank=local_rank,
+                          min_items=min_items, close_mosaic=close_mosaic, entity=entity, upload_dataset=upload_dataset,
+                          bbox_interval=bbox_interval)
         return results
 
-    def evaluate(
-        self,
-        data_path: str,
-        batch_size: int = 32,
-        imgsz: int = 640,
-        conf_thres: float = 0.001,
-        iou_thres: float = 0.7,
-        max_det: int = 300,
-        workers: int = 8,
-        single_cls: bool = False,
-        augment: bool = False,
-        verbose: bool = False,
-        save_txt: bool = False,
-        save_hybrid: bool = False,
-        save_conf: bool = False,
-        save_json: bool = False,
-        project: str = 'runs/val',
-        name: str = 'exp',
-        exist_ok: bool = False,
-        half: bool = True,
-        dnn: bool = False) -> tuple:
-
+    def evaluate(self, data_path: str, batch_size: int = 32, imgsz: int = 640, conf_thres: float = 0.001,
+                iou_thres: float = 0.7, max_det: int = 300, workers: int = 8, single_cls: bool = False,
+                augment: bool = False, verbose: bool = False, save_txt: bool = False, save_hybrid: bool = False,
+                save_conf: bool = False, save_json: bool = False, project: str = 'runs/val', name: str = 'exp',
+                exist_ok: bool = False, half: bool = True, dnn: bool = False) -> tuple:
+        
         """
-        Validate YOLOv9 model performance.
+        Evaluate YOLOv9 model performance on given dataset.
 
         Args:
             data_path (str): Path to data config file
@@ -189,59 +114,19 @@ class YOLOv9:
             half (bool, optional): Half precision. Defaults to True.
             dnn (bool, optional): DNN. Defaults to False.
         """
-
-        results = val.run(
-            data=data_path,
-            batch_size=batch_size,
-            imgsz=imgsz,
-            conf_thres=conf_thres,
-            iou_thres=iou_thres,
-            max_det=max_det,
-            workers=workers,
-            single_cls=single_cls,
-            augment=augment,
-            verbose=verbose,
-            save_txt=save_txt,
-            save_hybrid=save_hybrid,
-            save_conf=save_conf,
-            save_json=save_json,
-            project=project,
-            name=name,
-            exist_ok=exist_ok,
-            half=half,
-            dnn=dnn,
-            device=self.device
-        )
-
+        results = val.run(weights=self.model_path, data=data_path, batch_size=batch_size, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres,
+                         max_det=max_det, workers=workers, single_cls=single_cls, augment=augment, verbose=verbose,
+                         save_txt=save_txt, save_hybrid=save_hybrid, save_conf=save_conf, save_json=save_json,
+                         project=project, name=name, exist_ok=exist_ok, half=half, dnn=dnn, device=self.device)
         return results
 
-    def inference(
-        self,
-        source: Union[str, List[str]],
-        imgsz: tuple = (640, 640),
-        conf_thres: float = 0.25,
-        iou_thres: float = 0.45,
-        max_det: int = 1000,
-        view_img: bool = False,
-        save_txt: bool = False,
-        save_conf: bool = False,
-        save_crop: bool = False,
-        nosave: bool = False,
-        classes: Optional[List[int]] = None,
-        agnostic_nms: bool = False,
-        augment: bool = False,
-        visualize: bool = False,
-        update: bool = False,
-        project: str = 'runs/detect',
-        name: str = 'exp',
-        exist_ok: bool = False,
-        line_thickness: int = 3,
-        hide_labels: bool = False,
-        hide_conf: bool = False,
-        half: bool = False,
-        dnn: bool = False,
-        vid_stride: int = 1) -> List[Dict]:
-
+    def inference(self, source: Union[str, List[str]], imgsz: tuple = (640, 640), conf_thres: float = 0.25,
+                 iou_thres: float = 0.45, max_det: int = 1000, view_img: bool = False, save_txt: bool = False,
+                 save_conf: bool = False, save_crop: bool = False, nosave: bool = False,
+                 classes: Optional[List[int]] = None, agnostic_nms: bool = False, augment: bool = False,
+                 visualize: bool = False, update: bool = False, project: str = 'runs/detect', name: str = 'exp',
+                 exist_ok: bool = False, line_thickness: int = 3, hide_labels: bool = False, hide_conf: bool = False,
+                 half: bool = False, dnn: bool = False, vid_stride: int = 1) -> List[Dict]:
         """
         Run inference with YOLOv9 model.
 
@@ -274,33 +159,10 @@ class YOLOv9:
         Returns:
             List[Dict]: List of dictionaries containing detection results
         """
-
-        results = detect.run(
-            source=source,
-            imgsz=imgsz,
-            conf_thres=conf_thres,
-            iou_thres=iou_thres,
-            max_det=max_det,
-            device=self.device,
-            view_img=view_img,
-            save_txt=save_txt,
-            save_conf=save_conf,
-            save_crop=save_crop,
-            nosave=nosave,
-            classes=classes,
-            agnostic_nms=agnostic_nms,
-            augment=augment,
-            visualize=visualize,
-            update=update,
-            project=project,
-            name=name,
-            exist_ok=exist_ok,
-            line_thickness=line_thickness,
-            hide_labels=hide_labels,
-            hide_conf=hide_conf,
-            half=half,
-            dnn=dnn,
-            vid_stride=vid_stride
-        )
-
+        results = detect.run(weights=self.model_path, source=source, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det,
+                           device=self.device, view_img=view_img, save_txt=save_txt, save_conf=save_conf,
+                           save_crop=save_crop, nosave=nosave, classes=classes, agnostic_nms=agnostic_nms,
+                           augment=augment, visualize=visualize, update=update, project=project, name=name,
+                           exist_ok=exist_ok, line_thickness=line_thickness, hide_labels=hide_labels,
+                           hide_conf=hide_conf, half=half, dnn=dnn, vid_stride=vid_stride)
         return results
