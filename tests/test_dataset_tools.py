@@ -40,6 +40,7 @@ def test_automated_annotation(load_tools, data_tools):
     test_generate_photo_dataset(data_tools)  # Reuse dataset generation
     
     try:
+        os.makedirs('models/YOLO/glove_tracking/model_weights', exist_ok=True)
         data_tools.automated_annotation(
             model_alias="glove_tracking",  
             model_type="detection",

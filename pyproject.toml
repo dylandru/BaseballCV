@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "baseballcv"
-version = "0.1.0"
+version = "0.1.01"
 authors = [
     { name="Dylan Drummey", email="dylandrummey22@gmail.com" },
     { name="Carlos Marcano", email="c.marcano@balldatalab.com" }
@@ -35,7 +35,8 @@ dependencies = [
     "tensorboard>=2.15.0",
     "wandb==0.19.1",
     "coco-eval==0.0.4",
-    "pytorch-lightning==2.5.0"
+    "pytorch-lightning==2.5.0",
+    "polars==1.10.0"
 ]
 
 [project.urls]
@@ -43,5 +44,6 @@ Homepage = "https://github.com/dylandru/BaseballCV"
 "Bug Tracker" = "https://github.com/dylandru/BaseballCV/issues"
 Documentation = "https://baseballcv.com"
 
-[tool.setuptools]
-packages = ["baseballcv"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["baseballcv*"]

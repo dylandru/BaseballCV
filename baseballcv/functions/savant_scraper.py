@@ -6,8 +6,8 @@ import os
 from bs4 import BeautifulSoup
 import time
 import shutil
-import statcast_pitches
 import polars as pl
+import statcast_pitches
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
