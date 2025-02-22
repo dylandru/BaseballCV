@@ -140,6 +140,7 @@ class LoadTools:
 
         base_dir = os.path.dirname(model_txt_path)
         base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
+        os.makedirs(base_dir, exist_ok=True)
 
         if model_type == 'YOLO':
             model_weights_path = f"{base_dir}/{base_name}.pt"
