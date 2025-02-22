@@ -16,6 +16,7 @@ class BaseballSavVideoScraper:
     def __init__(self):
         self.session = requests.Session()
         check_import('git+https://github.com/Jensen-holm/statcast-era-pitches.git','statcast_pitches')
+        import statcast_pitches
 
     def run_statcast_pull_scraper(self,
                                   start_date: str | pd.Timestamp = '2024-05-01',

@@ -6,7 +6,7 @@ def test_load_model(load_tools):
     Tests loading a model using LoadTools with example call.
     Verifies that the model is downloaded correctly and the file is in the expected location.
     """
-    
+    os.makedirs('models/YOLO/pitcher_hitter_catcher_detector/model_weights', exist_ok=True)
     # Test loading PHC Detector model
     model_path = load_tools.load_model(
         model_alias="phc_detector",
@@ -25,7 +25,7 @@ def test_load_dataset(load_tools):
     Tests loading a dataset using LoadTools with example call.
     Verifies that the dataset is downloaded and extracted correctly.
     """ 
-    
+    os.makedirs('datasets/baseball', exist_ok=True)
     # Test loading baseball dataset
     dataset_path = load_tools.load_dataset(
         dataset_alias="baseball",
