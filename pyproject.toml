@@ -43,11 +43,6 @@ Homepage = "https://github.com/dylandru/BaseballCV"
 "Bug Tracker" = "https://github.com/dylandru/BaseballCV/issues"
 Documentation = "https://baseballcv.com"
 
-[tool.setuptools]
-packages = ["baseballcv"]
-
-[tool.setuptools.package-data]
-baseballcv = ["*"]
-
-[tool.setuptools.find-namespace-packages]
-include = ["baseballcv.*"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["baseballcv*"]
