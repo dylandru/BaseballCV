@@ -175,19 +175,17 @@ train_loader, val_loader = utils.setup_data_loaders(
 
 ### Dependencies
 
-Python 3.8+
+| Package | Version |
+|---------|---------|
+| Python | ≥3.8 |
+| PyTorch | ≥2.0 |
+| Transformers | Latest |
+| Ultralytics YOLO | Latest |
+| Supervision | Latest |
+| Pandas | Latest |
+| OpenCV | Latest |
 
-PyTorch 2.0+
-
-Transformers
-
-Ultralytics YOLO
-
-Supervision
-
-Pandas
-
-OpenCV
+For a complete list of dependencies and version requirements, see [requirements.txt](requirements.txt).
 
 ### Contributing
 
@@ -212,4 +210,4 @@ pytest tests/
 
 ### License
 
-This project is licensed under the MIT License 
+This project is licensed under the MIT License - please see model folders for more information on individual licenses.

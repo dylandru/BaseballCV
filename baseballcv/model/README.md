@@ -154,6 +154,45 @@ answer  = model.inference(
 - Memory-efficient processing
 - Support for various image formats
 
+### 4. YOLOv9 (GPL-3.0 license)
+The `YOLOv9` class provides a similar functionality to the Ultralytics YOLO class with a more permissive license. It acts as a wrapper for this forked repo: [https://github.com/dylandru/yolov9](https://github.com/dylandru/yolov9)
+
+```python
+from baseballcv.model.od import YOLOv9
+
+# Initialize model
+model = YOLOv9(
+    device="cuda",  # or 'cpu', 'mps'
+    name="yolov9-c",  # optional, defaults to latest YOLOv9
+)
+
+# Run inference on single image
+detections = model.inference(
+    source="baseball_play.jpg",
+    conf=0.25  # confidence threshold
+)
+
+# Run inference on video
+video_results = model.inference(
+    source="game_clip.mp4",
+    conf=0.25
+)
+
+# Fine-tune on custom dataset
+metrics = model.finetune(
+    data_path="baseball_dataset/data.yaml",
+    epochs=50,
+    batch_size=16,
+    save_dir="checkpoints/"
+)
+```
+
+The class automatically handles:
+- Model initialization
+- Batch processing for efficient inference
+- Standardized output format for easy post-processing
+- Automatic YOLOv9 installation and weight downloads if needed
+
 ## Adding New Models
 
 When adding new model classes, follow these guidelines:
