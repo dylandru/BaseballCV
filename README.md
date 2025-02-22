@@ -22,17 +22,6 @@ Our goal is to provide access to high-quality datasets and computer vision model
 
 To get started with our datasets and models, follow these steps:
 
-### Install Package
-
-The package can be installed from Github with the required dependencies using the following command:
-
-```bash
-pip install baseballcv
-
-#If using the Savant Scraper, you will need to seperately install the statcast-era-pitches package
-pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git
-```
-
 ### Clone the Repository Locally
 
 The repository can be cloned from Github with the required dependencies installed using the following commands:
@@ -42,11 +31,19 @@ git clone https://github.com/dylandru/BaseballCV.git
 cd BaseballCV
 pip install -r requirements.txt
 ```
+
+### Install Package
+
+The package can be installed from Github with the required dependencies using the following command:
+
+```bash
+pip install baseballcv
+```
 ### Important Reminders
 
 - Imports vary from using package to using local files; every import from the package is prefixed with `baseballcv.`
 - The package is currently in development and may not be fully functional. 
-- The package is not yet available on PyPI, so it must be installed from Github.
+- While available on PyPI, the package is still not completely stable and may not work as expected. For reliable results, we recommend using the local files (for the time being).
 
 ## Available Assets
 
@@ -141,7 +138,7 @@ More datasets and tools will likely be added in the future, so check back!
 ### 2. Pre-trained Models
 We offer pre-trained YOLO models for object detection. The models are trained to detect the aforementioned objects with high accuracy.
 
-**Available YOLO Models**:
+**Available YOLO Models (currently only from Ultralytics)**:
 
 - `bat_tracking.pt`: Trained to detect bat movement from a broadcast feed
 - `ball_tracking.pt`: Trained to detect the baseball from the pitcher's hand to home from a broadcast feed.
@@ -242,11 +239,11 @@ These videos showcase our models' ability to track multiple objects, including t
 
 ## Example Code
 
-### YOLO Models
+### YOLO (Ultralytics) Models
 
 #### Inference Example
 
-Here's an example of how to use our pre-trained YOLO models to run inference on an image or video.
+Here's an example of how to use our pre-trained YOLO models to run inference on an image or video. 
 
 ```python
 from ultralytics import YOLO
@@ -280,6 +277,47 @@ for r in results: #loop through each frame
     print(f"Confidence: {box.conf}") #print confidence of the box
     print(f"Track ID: {box.id}") #print track id of the box (may not exist)
     print(f"Class Value: {box.cls}") #print class value of the box
+```
+
+### YOLOv9 Models
+
+#### Inference Example
+
+Here's an example of how to use our pre-trained YOLO models to run inference on an image or video. 
+
+```python
+from baseballcv.model import YOLOv9
+
+# Initialize our YOLOv9 model
+model = YOLOv9()
+
+# Run inference on image
+model.inference("example_baseball_broadcast.jpg")
+
+# Run inference on video
+model.inference("assets/example_broadcast_video.mp4")
+```
+
+#### Extraction Example
+
+```python
+from baseballcv.model import YOLOv9
+
+model = YOLOv9()
+
+# assign inference on video to results
+results = model.inference("assets/example_broadcast_video.mp4")
+
+
+for r in results['predictions']: #loop through each prediction
+    print(f"X: {r['x']}") #print x coordinate of the box center
+    print(f"Y: {r['y']}") #print y coordinate of the box center
+    print(f"Width: {r['width']}") #print width of the box
+    print(f"Height: {r['height']}") #print height of the box
+    print(f"Confidence: {r['confidence']}") #print confidence of the box
+    print(f"Class: {r['class']}") #print class name of the box
+    print(f"Class ID: {r['class_id']}") #print class id of the box
+    print(f"Detection ID: {r['detection_id']}") #print unique detection id
 ```
 
 ### Florence 2 Models
