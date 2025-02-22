@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 import polars as pl
-from baseballcv.functions import check_import
+from baseballcv.functions.utils import check_import
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 

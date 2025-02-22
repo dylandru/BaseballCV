@@ -1,6 +1,6 @@
 import os
 from typing import Dict, List, Optional, Union
-from baseballcv.functions import check_import 
+from baseballcv.functions.utils import check_import 
 from baseballcv.model.utils import ModelFunctionUtils
 from yolov9 import detect_dual as detect, train_dual as train, val_dual as val
 from pkg_resources import resource_filename
