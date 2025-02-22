@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import time
 import shutil
 import polars as pl
-from baseballcv.functions.utils import check_import
+import statcast_pitches
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -15,8 +15,6 @@ from baseballcv.functions.utils import check_import
 class BaseballSavVideoScraper:
     def __init__(self):
         self.session = requests.Session()
-        check_import('git+https://github.com/Jensen-holm/statcast-era-pitches.git','statcast_pitches')
-        import statcast_pitches
 
     def run_statcast_pull_scraper(self,
                                   start_date: str | pd.Timestamp = '2024-05-01',
