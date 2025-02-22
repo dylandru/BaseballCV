@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "baseballcv"
-version = "0.1.0"
+version = "0.1.01"
 authors = [
     { name="Dylan Drummey", email="dylandrummey22@gmail.com" },
     { name="Carlos Marcano", email="c.marcano@balldatalab.com" }
@@ -45,3 +45,9 @@ Documentation = "https://baseballcv.com"
 
 [tool.setuptools]
 packages = ["baseballcv"]
+
+[tool.setuptools.package-data]
+baseballcv = ["*"]
+
+[tool.setuptools.find-namespace-packages]
+include = ["baseballcv.*"]
