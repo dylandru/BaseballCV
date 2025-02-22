@@ -1,6 +1,7 @@
 import logging
 import random
 import os
+import subprocess
 import string
 from typing import Dict, Tuple, Any, List
 import torch
@@ -8,7 +9,7 @@ from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
 from transformers import BitsAndBytesConfig
 from baseballcv.datasets import JSONLDetection
-
+from pkg_resources import resource_filename
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: Any, model: Any, 
@@ -321,6 +322,35 @@ class ModelFunctionUtils:
             bnb_4bit_quant_storage=torch.bfloat16
         )
         return quant_config
+    
+    @staticmethod
+    def setup_yolo_weights(model_file: str, output_dir: str = None) -> str:
+        """
+        Retrieve YOLO model weights files.
+
+        Args:
+            model_file (str): The model file to retrieve.
+            output_dir (str): The output directory. If None, uses current directory.
+
+        Returns:
+            str: The path to the model weights file.
+        """
+        if not output_dir:
+            output_dir = os.getcwd()
+        
+        os.makedirs(os.path.join(output_dir, "weights"), exist_ok=True)
+        output = os.path.join(output_dir, "weights", os.path.basename(model_file))
+        if not os.path.exists(output):
+            try:
+                script = resource_filename("yolov9", "scripts/download_model_weights.sh")
+                subprocess.run(["bash", script, model_file, output_dir], check=True)
+            except Exception as e:
+                print(f"Error downloading weights: {e}")
+                print("Please download weights manually from: https://github.com/WongKinYiu/yolov9/releases")
+        else:
+            print(f"Model weights file found at {output}.")
+
+        return output
 
 
     

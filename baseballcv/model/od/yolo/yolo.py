@@ -1,11 +1,12 @@
 import os
 from typing import Dict, List, Optional, Union
 from baseballcv.functions import check_import 
-from yolov9 import detect, train, val
+from baseballcv.model.utils import ModelFunctionUtils
+from yolov9 import detect_dual as detect, train_dual as train, val_dual as val
 from pkg_resources import resource_filename
 
 class YOLOv9:
-    def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-e.yaml', name: str = 'yolov9-c') -> None: 
+    def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c') -> None: 
         """
         Initialize YOLOv9 model.
 
@@ -19,6 +20,7 @@ class YOLOv9:
         self.device = device
         self.name = name
         self.model_path = model_path
+        self.model_weights = ModelFunctionUtils.setup_yolo_weights(model_file=f"{name}.pt", output_dir=model_path)
 
         if not os.path.exists(cfg_path):
             cfg_path = resource_filename('yolov9', cfg_path)
@@ -78,11 +80,11 @@ class YOLOv9:
             bbox_interval (int, optional): Bbox interval. Defaults to -1.
         """
 
-        results = train.run(data=data_path, name=self.name, weights=self.model_path, cfg=self.cfg_path, epochs=epochs, batch_size=batch_size,
+        results = train.run(data=data_path, name=self.name, weights=self.model_weights, cfg=self.cfg_path, epochs=epochs, batch_size=batch_size,
                           imgsz=imgsz, rect=rect, resume=resume, nosave=nosave, noval=noval, noautoanchor=noautoanchor,
                           noplots=noplots, evolve=evolve, bucket=bucket, cache=cache, image_weights=image_weights,
                           device=self.device, multi_scale=multi_scale, single_cls=single_cls, optimizer=optimizer,
-                          sync_bn=sync_bn, workers=num_workers, project=project, exist_ok=exist_ok, quad=quad, hyp=resource_filename('yolov9', 'data/hyps/hyp.scratch-high.yaml'),
+                          sync_bn=sync_bn, workers=num_workers, project=project, exist_ok=exist_ok, quad=quad, hyp=resource_filename("yolov9", "data/hyps/hyp.scratch-high.yaml"),
                           cos_lr=cos_lr, flat_cos_lr=flat_cos_lr, fixed_lr=fixed_lr, label_smoothing=label_smoothing,
                           patience=patience, freeze=freeze, save_period=save_period, seed=seed, local_rank=local_rank,
                           min_items=min_items, close_mosaic=close_mosaic, entity=entity, upload_dataset=upload_dataset,
@@ -119,7 +121,7 @@ class YOLOv9:
             half (bool, optional): Half precision. Defaults to True.
             dnn (bool, optional): DNN. Defaults to False.
         """
-        results = val.run(weights=self.model_path, data=data_path, name=self.name, batch_size=batch_size, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres,
+        results = val.run(weights=self.model_weights, data=data_path, name=self.name, batch_size=batch_size, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres,
                          max_det=max_det, workers=workers, single_cls=single_cls, augment=augment, verbose=verbose,
                          save_txt=save_txt, save_hybrid=save_hybrid, save_conf=save_conf, save_json=save_json,
                          project=project, exist_ok=exist_ok, half=half, dnn=dnn, device=self.device)
@@ -163,7 +165,7 @@ class YOLOv9:
         Returns:
             List[Dict]: List of dictionaries containing detection results
         """
-        results = detect.run(weights=self.model_path, name=self.name, source=source, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det,
+        results = detect.run(weights=self.model_weights, name=self.name, source=source, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det,
                            device=self.device, view_img=view_img, save_txt=save_txt, save_conf=save_conf,
                            save_crop=save_crop, nosave=nosave, classes=classes, agnostic_nms=agnostic_nms,
                            augment=augment, visualize=visualize, update=update, project=project,
