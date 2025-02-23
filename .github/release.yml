@@ -1,0 +1,31 @@
+changelog:
+  categories:
+    - title: 🚀 Features
+      labels:
+        - "enhancement"
+    - title: 🐛 Bug Fixes
+      labels:
+        - "bug"
+    - title: 📚 Documentation
+      labels:
+        - "documentation"
+    - title: 🔧 Model Updates
+      labels:
+        - "model"
+    - title: 📊 Dataset Updates
+      labels:
+        - "dataset"
+    - title: 🛠️ Maintenance
+      labels:
+        - "maintenance"
+        - "dependencies"
+        - "testing"
+        - "workflow"
+    - title: Other Changes
+      labels:
+        - "*"
+  exclude:
+    labels:
+      - "duplicate"
+      - "invalid"
+      - "wontfix"
