@@ -1,0 +1,25 @@
+name: Discord Package Notification
+
+on:
+    release:
+        types: [created]
+
+jobs:
+  discord_notification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
+        uses: Ilshidur/action-discord@master
+        with:
+            args: |
+              **New Package Release**
+              ${{ github.event.release.name }}
+
+              Created by: ${{ github.event.release.author.login }}
+
+              **Description:**
+              ${{ github.event.release.body }}
+
+              ${{ github.event.release.html_url }}
