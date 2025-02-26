@@ -65,6 +65,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home_glove.txt`: A comprehensive MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
 - `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
 - `baseball.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for solely baseballs.
+- `amateur_pitcher_hitter.txt`: An amateur baseball-based YOLO-format annotated dataset with annotations for pitchers and hitters.
 
 **Available Raw Photos Datasets**: 
 
@@ -157,6 +158,10 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 **Available DETR Models**:
 
 - Coming Soon...
+
+**Available YOLOv9 Models**:
+
+- `amateur_pitcher_hitter.pt`: Trained to detect pitchers and hitters in amateur baseball games.
 
 ## Downloading and Loading Models
 

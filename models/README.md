@@ -18,6 +18,9 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 
 - `paligemma2_ball_tracking`: Utilizes a fine-tuned version of PaliGemma2 to track the baseball from pitcher's hand to home plate among other VLM tasks.
 
+## Available YOLOv9 Models
+
+- `amateur_pitcher_hitter`: Utilizes YOLOv9 Detection model to detect pitchers and hitters in amateur baseball games (model in PyTorch).
 
 ## Model Weights
 
@@ -30,6 +33,7 @@ The model weights can be downloaded directly from the links below:
 - Ball Tracking: [ball_tracking_v3-YOLOv11.pt](https://data.balldatalab.com/index.php/s/xdaTeMtmnpx8NbE/download/ball_tracking_v3-YOLOv11.pt)
 - Bat Tracking: [bat_tracking.pt](https://data.balldatalab.com/index.php/s/SqMzsxKkCrzojSF/download/bat_tracking.pt)
 - Ball Tracking v4: [ball_tracking_v4-YOLOv11.pt](https://data.balldatalab.com/index.php/s/cfoxjLS5BiZAgKs/download/ball_tracking_v4-YOLOv11.pt)
+- Amateur Pitcher Hitter: [amateur_pitcher_hitter_v1.pt](https://data.balldatalab.com/index.php/s/bqQZG5Gz7qsMq9X/download/amateur_pitcher_hitter_v1.pt)
 
 ### Florence2 Models
 

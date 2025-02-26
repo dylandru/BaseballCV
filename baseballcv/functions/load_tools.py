@@ -37,7 +37,8 @@ class LoadTools:
             'bat_tracking': 'models/YOLO/bat_tracking/model_weights/bat_tracking.txt',
             'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
             'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
-            'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt'
+            'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
+            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt'
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
@@ -55,7 +56,8 @@ class LoadTools:
             'baseball_rubber_home_COCO': 'datasets/COCO/baseball_rubber_home_COCO.txt',
             'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
             'baseball': 'datasets/yolo/baseball.txt',
-            'phc': 'datasets/yolo/phc.txt'
+            'phc': 'datasets/yolo/phc.txt',
+            'amateur_pitcher_hitter': 'datasets/yolo/amateur_pitcher_hitter.txt'
         }
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
