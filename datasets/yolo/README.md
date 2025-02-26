@@ -129,6 +129,20 @@ Contents: OKD, NOKD folders.
 - OKD: 1408 images.
 - NOKD: 1408 images.
 
+## amateur_pitcher_hitter.txt dataset.
+
+This is a dataset for detecting pitchers and hitters in amateur baseball games.
+
+Contents: train, test, valid folders, each one with its respective images and labels folders.
+
+- train: NA
+- test: NA
+- valid: NA
+
+This is the dictionary of available classes: 
+
+{0: 'pitcher', 1: 'hitter'}
+
 ## test_dataset.txt dataset.
 
 This is a test dataset for testing the model classes functionality.

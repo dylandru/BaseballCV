@@ -61,6 +61,13 @@ YOLO format datasets are primarily used for object detection tasks and are compa
      - OKD: 1,408 images
      - NOKD: 1,408 images
 
+5. **amateur_pitcher_hitter**
+   - Content: Pitchers and hitters in amateur baseball games
+   - Distribution:
+     - Train: NA
+     - Test: NA
+     - Valid: NA
+
 ### COCO Format Datasets
 
 {: .note }
