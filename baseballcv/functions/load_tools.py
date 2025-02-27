@@ -21,7 +21,7 @@ class LoadTools:
             Loads a given baseball computer vision model into the repository.
         load_dataset(dataset_alias: str, use_bdl_api: Optional[bool] = True) -> str:
             Loads a zipped dataset and extracts it to a folder.
-        _download_files(url: str, dest: Union[str, os.PathLike], is_dataset: bool = False) -> None:
+        _download_files(url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
             Protected method to handle model and dataset downloads.
         _get_url(alias: str, txt_path: str, use_bdl_api: bool, api_endpoint: str) -> str:
             Protected method to obtain the download URL from the BDL API or a text file.
@@ -74,26 +74,43 @@ class LoadTools:
                 
                 progress_bar.close()
 
-                with zipfile.ZipFile(content) as zip_ref:
-                    for file in zip_ref.namelist():
-                        if not file.startswith('__MACOSX') and not file.startswith('._'):
-                            if is_labeled:
-                                zip_ref.extract(file, dest)
-                            else:
-                                if '/' in file:
-                                    filename = file.split('/')[-1]
-                                    if filename:
-                                        with zip_ref.open(file) as source, open(os.path.join(dest, filename), 'wb') as target:
-                                            shutil.copyfileobj(source, target)
-                                else:
-                                    zip_ref.extract(file, dest)
+                os.makedirs(dest, exist_ok=True)
                 
-                if not is_labeled:
-                    for root, dirs, files in os.walk(dest, topdown=False):
-                        for dir in dirs:
-                            dir_path = os.path.join(root, dir)
-                            if not os.listdir(dir_path):
-                                os.rmdir(dir_path)
+                with zipfile.ZipFile(content) as zip_ref:
+                    temp_dir = os.path.join(dest, "_temp_extract")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    zip_ref.extractall(temp_dir)
+                    
+                    # Error Handling for unzipping files
+                    dest_name = os.path.basename(os.path.normpath(dest))
+                    same_name_dir = os.path.join(temp_dir, dest_name)
+                    
+                    if os.path.isdir(same_name_dir):
+                        for item in os.listdir(same_name_dir):
+                            src_path = os.path.join(same_name_dir, item)
+                            dst_path = os.path.join(dest, item)
+                            
+                            if os.path.exists(dst_path):
+                                if os.path.isdir(dst_path):
+                                    shutil.rmtree(dst_path)
+                                else:
+                                    os.remove(dst_path)
+                            
+                            shutil.move(src_path, dst_path)
+                    else:
+                        for item in os.listdir(temp_dir):
+                            src_path = os.path.join(temp_dir, item)
+                            dst_path = os.path.join(dest, item)
+                            
+                            if os.path.exists(dst_path):
+                                if os.path.isdir(dst_path):
+                                    shutil.rmtree(dst_path)
+                                else:
+                                    os.remove(dst_path)
+                            
+                            shutil.move(src_path, dst_path)
+                    
+                    shutil.rmtree(temp_dir)
                 
                 print(f"Dataset downloaded and extracted to {dest}")
             else:
@@ -184,7 +201,30 @@ class LoadTools:
             return dir_name
 
         url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
-        os.makedirs(dir_name, exist_ok=True)
         self._download_files(url, dir_name, is_folder=True)
+
+        redundant_dir = os.path.join(dir_name, dataset_alias)
+        if os.path.exists(redundant_dir):
+            print(f"Processing dataset {dataset_alias}...")
+            for item in os.listdir(redundant_dir):
+                source = os.path.join(redundant_dir, item)
+                destination = os.path.join(dir_name, item)
+                
+                if os.path.isdir(source):
+                    if not os.path.exists(destination):
+                        shutil.move(source, destination)
+                    else:
+                        for subitem in os.listdir(source):
+                            shutil.move(os.path.join(source, subitem), destination)
+                        os.rmdir(source)
+                else:
+                    if not os.path.exists(destination):
+                        shutil.move(source, destination)
+            
+            if os.path.exists(redundant_dir):
+                os.rmdir(redundant_dir)
+            print(f"Successfully processed dataset {dataset_alias}.")
+        else:
+            print(f"Dataset download failed.")
 
         return dir_name
