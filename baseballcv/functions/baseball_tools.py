@@ -34,7 +34,6 @@ class BaseballTools:
             phc_model (str): Path to the PHCDetector model (default is  YOLO model 'phc_detector')
             glove_model (str): Path to the GloveTracking model (default is YOLO model 'glove_tracking')
             ball_model (str): Path to the BallTracking model (default is YOLO model 'ball_trackingv4')
-
         Returns:
             results (list): List of results from the DistanceToZone class for each video analyzed.
         """
