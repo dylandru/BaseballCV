@@ -120,7 +120,6 @@ class DistanceToZone:
                     catcher_detections, 
                     glove_detections,
                     ball_detections,
-                    strike_zone_frame,
                     strike_zone,
                     ball_glove_frame,
                     distance,
@@ -399,16 +398,8 @@ class DistanceToZone:
         
         distance_inches = distance_pixels * inches_per_pixel
         
-        positions = []
-        if ball_y < zone_top:
-            positions.append("High")
-        elif ball_y > zone_bottom:
-            positions.append("Low")
-        
-        if ball_x < zone_left:
-            positions.append("Inside" if pitch_data['p_throws'] == 'R' else "Outside")
-        elif ball_x > zone_right:
-            positions.append("Outside" if pitch_data['p_throws'] == 'R' else "Inside")
+        vertical_position = "High" if ball_y < zone_top else "Low" if ball_y > zone_bottom else ""
+        positions = [p for p in [vertical_position, "Inside" if ball_x < zone_left and pitch_data['p_throws'] == 'R' else "Outside" if ball_x < zone_left else "Outside" if ball_x > zone_right and pitch_data['p_throws'] == 'R' else "Inside" if ball_x > zone_right else ""] if p]
         
         position = " ".join(positions) or "Adjacent to Zone"
         
@@ -518,6 +509,7 @@ class DistanceToZone:
                                     homeplate_box = (x1, y1, x2, y2)
                                     homeplate_conf = conf
                     homeplate_cache[frame_idx] = (homeplate_box, homeplate_conf)
+
                 except Exception as e:
                     if self.verbose:
                         print(f"Error detecting home plate in frame {frame_idx}: {e}")
@@ -594,19 +586,17 @@ class DistanceToZone:
                                    ((ball_cx + closest_x)//2, (ball_cy + closest_y)//2),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
-            # Add frame information
             cv2.putText(annotated_frame, f"Frame: {frame_idx}", (10, height - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # Mark contact frames
             if frame_idx == ball_glove_frame:
                 cv2.putText(annotated_frame, "GLOVE CONTACT FRAME", (10, height - 30),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                
             elif frame_idx == ball_glove_frame - 2:
                 cv2.putText(annotated_frame, "ORIGINAL CONTACT FRAME", (10, height - 30),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
             
-            # Write frame to output
             out.write(annotated_frame)
             
             frame_idx += 1
