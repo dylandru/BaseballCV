@@ -141,6 +141,12 @@ class DistanceToZone:
                     box=hitter_box
                 )
             
+            # Detect home plate for strike zone positioning
+            homeplate_box, homeplate_confidence, homeplate_frame = self._detect_homeplate(
+                video_path, 
+                reference_frame=ball_glove_frame
+            )
+            
             # Enhanced strike zone computation with consensus-based approach
             strike_zone, pixels_per_foot = self._compute_strike_zone(
                 catcher_detections, 
@@ -149,7 +155,8 @@ class DistanceToZone:
                 video_path, 
                 self.catcher_model,
                 hitter_keypoints=hitter_keypoints,
-                hitter_box=hitter_box
+                hitter_box=hitter_box,
+                homeplate_box=homeplate_box
             )
             
             distance = None
@@ -177,7 +184,8 @@ class DistanceToZone:
                     position,
                     hitter_keypoints=hitter_keypoints,
                     hitter_frame_idx=hitter_frame_idx,
-                    hitter_box=hitter_box
+                    hitter_box=hitter_box,
+                    homeplate_box=homeplate_box
                 )
             
             results = {
@@ -901,7 +909,8 @@ class DistanceToZone:
     def _compute_strike_zone(self, catcher_detections: List[Dict], pitch_data: pd.Series, 
                              ball_glove_frame: int, video_path: str, 
                              phc_model: YOLO, hitter_keypoints: Optional[np.ndarray] = None,
-                             hitter_box: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
+                             hitter_box: Optional[Tuple[int, int, int, int]] = None,
+                             homeplate_box: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
         """
         Compute strike zone dimensions based on home plate detection and Statcast data.
         Uses a consensus-based approach for accurate home plate detection.
@@ -914,6 +923,7 @@ class DistanceToZone:
             phc_model (YOLO): PHC model for home plate detection
             hitter_keypoints (Optional[np.ndarray]): Optional keypoints for hitter pose
             hitter_box (Optional[Tuple[int, int, int, int]]): Optional bounding box for hitter
+            homeplate_box (Optional[Tuple[int, int, int, int]]): Optional home plate detection
             
         Returns:
             Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
@@ -922,8 +932,9 @@ class DistanceToZone:
         if self.verbose:
             print("\nComputing strike zone using MLB official dimensions...")
 
-        # Try to detect the home plate first
-        homeplate_box, homeplate_confidence, homeplate_frame = self._detect_homeplate(video_path, ball_glove_frame)
+        # Use provided home plate detection if available, otherwise detect it
+        if homeplate_box is None:
+            homeplate_box, homeplate_confidence, homeplate_frame = self._detect_homeplate(video_path, ball_glove_frame)
 
         # If home plate detection is successful
         if homeplate_box is not None:
@@ -936,6 +947,11 @@ class DistanceToZone:
             # Center the strike zone on the home plate
             plate_center_x = (homeplate_box[0] + homeplate_box[2]) / 2
             
+            # Get home plate Y position for reference
+            plate_top_y = homeplate_box[1]
+            plate_bottom_y = homeplate_box[3]
+            plate_center_y = (plate_top_y + plate_bottom_y) / 2
+            
             # Use Statcast data for vertical positioning
             sz_top = float(pitch_data["sz_top"])
             sz_bot = float(pitch_data["sz_bot"])
@@ -944,9 +960,6 @@ class DistanceToZone:
             zone_height_inches = (sz_top - sz_bot) * 12  # Convert feet to inches
             zone_height_pixels = int(zone_height_inches * pixels_per_inch)
             zone_width_pixels = int(17.0 * pixels_per_inch)  # MLB standard width
-            
-            # Estimate ground level from home plate
-            ground_y = homeplate_box[3]  # Bottom of home plate
             
             # Use hitter pose to refine strike zone if available
             if hitter_keypoints is not None:
@@ -1008,18 +1021,43 @@ class DistanceToZone:
                         
                         if self.verbose:
                             print(f"Strike zone from home plate and pose: {strike_zone}")
+                            print(f"Home plate center: ({plate_center_x}, {plate_center_y})")
                             print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
                             print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
                             print(f"Zone height: {zone_height_pixels} pixels")
                         
                         return strike_zone, pixels_per_foot
             
-            # If pose detection wasn't available or reliable, use Statcast data
-            # Calculate vertical zone positions
-            zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
-            zone_top_y = int(ground_y - (sz_top * 12 * pixels_per_inch))
+            # If pose detection wasn't available or reliable, use home plate and Statcast data
+            # Get a reference to the video to read a frame for height estimation
+            cap = cv2.VideoCapture(video_path)
+            if ball_glove_frame is not None:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, ball_glove_frame)
+            ret, frame = cap.read()
+            frame_height = frame.shape[0] if ret else 720  # Default if can't read frame
+            cap.release()
             
-            # Center the zone horizontally
+            # Estimate ground level
+            # In baseball, home plate is on the ground, so use its bottom edge
+            ground_y = plate_bottom_y
+            
+            # MLB strike zone is from hollow of knee to midpoint between shoulders and belt
+            # Standard heights: knee (aprx 18-22" from ground), belt/midpoint(aprx 36-42" from ground)
+            
+            # We need to position the zone ABOVE the home plate, not directly on it
+            # Calculate vertical distance from home plate to strike zone bottom
+            # Use Statcast data for sz_bot (measured in feet from ground)
+            # Typical sz_bot value is around 1.5-1.7 feet (18-20 inches)
+            
+            # Calculate vertical positions relative to estimated ground level
+            sz_bot_pixels = int(sz_bot * pixels_per_foot)  # Convert feet to pixels
+            sz_top_pixels = int(sz_top * pixels_per_foot)  # Convert feet to pixels
+            
+            # Position the strike zone relative to the ground (which is at home plate level)
+            zone_bottom_y = int(ground_y - sz_bot_pixels)
+            zone_top_y = int(ground_y - sz_top_pixels)
+            
+            # Center the zone horizontally on home plate
             zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
             zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
             
@@ -1027,9 +1065,14 @@ class DistanceToZone:
             
             if self.verbose:
                 print(f"Strike zone computed using home plate: {strike_zone}")
+                print(f"Home plate: {homeplate_box}")
+                print(f"Home plate center: ({plate_center_x}, {plate_center_y})")
+                print(f"Ground level estimate: {ground_y}")
+                print(f"sz_bot: {sz_bot} feet = {sz_bot_pixels} pixels from ground")
+                print(f"sz_top: {sz_top} feet = {sz_top_pixels} pixels from ground")
                 print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
                 print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
-                print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches ({sz_bot:.2f}-{sz_top:.2f} feet)")
+                print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches")
             
             return strike_zone, pixels_per_foot
         
@@ -1047,7 +1090,7 @@ class DistanceToZone:
                     if knee_y is None or hitter_keypoints[knee_idx, 1].item() < knee_y:
                         knee_y = hitter_keypoints[knee_idx, 1].item()
             
-            # Mid-point between shoulders and hips (top of zone)
+            # Mid-point between shoulders and hips (top of strike zone)
             top_y = None
             shoulder_y = None
             hip_y = None
@@ -1158,8 +1201,12 @@ class DistanceToZone:
                 ground_y = plate_bottom_y
                 
                 # Calculate vertical zone positions
-                zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
-                zone_top_y = int(ground_y - (sz_top * 12 * pixels_per_inch))
+                sz_bot_pixels = int(sz_bot * pixels_per_foot)  # Convert feet to pixels
+                sz_top_pixels = int(sz_top * pixels_per_foot)  # Convert feet to pixels
+                
+                # Position the strike zone relative to ground level
+                zone_bottom_y = int(ground_y - sz_bot_pixels)
+                zone_top_y = int(ground_y - sz_top_pixels)
                 
                 # Center the zone horizontally
                 zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
@@ -1169,6 +1216,7 @@ class DistanceToZone:
                 
                 if self.verbose:
                     print(f"Strike zone computed using catcher (fallback): {strike_zone}")
+                    print(f"Estimated ground level: {ground_y}")
                     print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
                     print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
                     print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches")
@@ -1271,6 +1319,7 @@ class DistanceToZone:
         hitter_keypoints: Optional[np.ndarray] = None,
         hitter_frame_idx: Optional[int] = None,
         hitter_box: Optional[Tuple[int, int, int, int]] = None,
+        homeplate_box: Optional[Tuple[int, int, int, int]] = None,
         frames_before: int = 8,
         frames_after: int = 8
     ) -> str:
@@ -1290,6 +1339,7 @@ class DistanceToZone:
             hitter_keypoints (Optional[np.ndarray]): Keypoints for hitter's pose
             hitter_frame_idx (Optional[int]): Frame where hitter was detected
             hitter_box (Optional[Tuple[int, int, int, int]]): Bounding box for hitter
+            homeplate_box (Optional[Tuple[int, int, int, int]]): Home plate bounding box
             frames_before (int): Number of frames before glove contact to show zone
             frames_after (int): Number of frames after glove contact to show zone
             
@@ -1425,6 +1475,20 @@ class DistanceToZone:
                     cv2.putText(annotated_frame, "Ball", (det["x1"], det["y1"] - 10),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             
+            # Draw home plate if detected (orange)
+            if homeplate_box is not None:
+                cv2.rectangle(annotated_frame, 
+                             (homeplate_box[0], homeplate_box[1]), 
+                             (homeplate_box[2], homeplate_box[3]), 
+                             (0, 128, 255), 2)
+                cv2.putText(annotated_frame, "Home Plate", (homeplate_box[0], homeplate_box[1] - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 128, 255), 2)
+                
+                # Draw center of home plate
+                home_center_x = (homeplate_box[0] + homeplate_box[2]) // 2
+                home_center_y = (homeplate_box[1] + homeplate_box[3]) // 2
+                cv2.circle(annotated_frame, (home_center_x, home_center_y), 5, (0, 128, 255), -1)
+            
             # Draw strike zone around ball-glove contact
             if ball_glove_frame is not None and ball_glove_frame - frames_before <= frame_idx <= ball_glove_frame + frames_after:
                 # Draw strike zone (yellow)
@@ -1435,8 +1499,15 @@ class DistanceToZone:
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
                 cv2.putText(annotated_frame, f"Height: {zone_height}px", (zone_left, zone_bottom + 40),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                cv2.line(annotated_frame, (zone_center_x, zone_top - 20), (zone_center_x, zone_bottom + 20),
-                        (0, 255, 255), 1, cv2.LINE_AA)
+                
+                # Draw line from home plate center to strike zone center
+                if homeplate_box is not None:
+                    home_center_x = (homeplate_box[0] + homeplate_box[2]) // 2
+                    home_center_y = (homeplate_box[1] + homeplate_box[3]) // 2
+                    zone_center_x = (zone_left + zone_right) // 2
+                    zone_center_y = (zone_top + zone_bottom) // 2
+                    cv2.line(annotated_frame, (home_center_x, home_center_y), 
+                            (zone_center_x, zone_center_y), (0, 255, 255), 1, cv2.LINE_AA)
                 
                 # Add distance info at ball-glove contact frame
                 if frame_idx == ball_glove_frame and distance_inches is not None:
