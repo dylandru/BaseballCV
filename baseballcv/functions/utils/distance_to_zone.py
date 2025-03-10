@@ -115,14 +115,23 @@ class DistanceToZone:
             glove_detections = self._detect_objects(video_path, self.glove_model, "glove")
             ball_detections = self._detect_objects(video_path, self.ball_model, "baseball")
             
+            # Also get pitcher and hitter detections for better filtering
+            pitcher_detections = self._detect_objects(video_path, self.catcher_model, "pitcher")
+            hitter_detections = self._detect_objects(video_path, self.catcher_model, "hitter")
+            
             ball_glove_frame, ball_center, ball_detection = self._find_ball_reaches_glove(video_path, glove_detections, ball_detections)
+            
+            # Get catcher position to help distinguish hitter from umpire
+            catcher_position = self._get_catcher_position(catcher_detections, ball_glove_frame)
             
             # Detect the batter's pose for accurate strike zone measurements
             hitter_keypoints, hitter_frame_idx, hitter_box, _ = self._detect_batter_pose_yolo(
                 video_path=video_path, 
                 phc_model=self.catcher_model,
                 frame_idx_start=max(0, ball_glove_frame - 90) if ball_glove_frame else 0, 
-                frame_search_range=90
+                frame_search_range=90,
+                hitter_detections=hitter_detections,
+                catcher_position=catcher_position
             )
             
             # Enhanced strike zone computation with consensus-based approach
@@ -132,7 +141,8 @@ class DistanceToZone:
                 ball_glove_frame, 
                 video_path, 
                 self.catcher_model,
-                hitter_keypoints=hitter_keypoints
+                hitter_keypoints=hitter_keypoints,
+                hitter_box=hitter_box
             )
             
             distance = None
@@ -178,6 +188,57 @@ class DistanceToZone:
             dtoz_results.append(results)
             
         return dtoz_results
+    
+    def _get_catcher_position(self, catcher_detections: List[Dict], reference_frame: int) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Get the catcher position near the reference frame to help identify where the umpire is
+        
+        Args:
+            catcher_detections (List[Dict]): List of catcher detections
+            reference_frame (int): Reference frame (usually ball-glove contact)
+            
+        Returns:
+            Optional[Tuple[int, int, int, int]]: Catcher box coordinates (x1, y1, x2, y2)
+        """
+        if not catcher_detections or reference_frame is None:
+            return None
+            
+        # Group detections by frame
+        catcher_by_frame = {}
+        for det in catcher_detections:
+            frame = det["frame"]
+            if frame not in catcher_by_frame:
+                catcher_by_frame[frame] = []
+            catcher_by_frame[frame].append(det)
+            
+        # Find the closest frame to reference frame with catcher detections
+        closest_frame = None
+        min_distance = float('inf')
+        
+        for frame in catcher_by_frame.keys():
+            dist = abs(frame - reference_frame)
+            if dist < min_distance:
+                min_distance = dist
+                closest_frame = frame
+                
+        if closest_frame is None:
+            return None
+            
+        # Use the largest catcher detection (most likely the actual catcher)
+        largest_detection = None
+        max_area = 0
+        
+        for det in catcher_by_frame[closest_frame]:
+            area = (det["x2"] - det["x1"]) * (det["y2"] - det["y1"])
+            if area > max_area:
+                max_area = area
+                largest_detection = det
+                
+        if largest_detection is None:
+            return None
+            
+        return (largest_detection["x1"], largest_detection["y1"], 
+                largest_detection["x2"], largest_detection["y2"])
     
     def _detect_objects(self, video_path: str, model: YOLO, object_name: str) -> List[Dict]:
         """
@@ -329,9 +390,12 @@ class DistanceToZone:
             print("Could not detect when ball reaches glove")
         return None, None, None
 
-    def _detect_batter_pose_yolo(self, video_path: str, phc_model: YOLO, frame_idx_start: int = 0, frame_search_range: int = 120) -> Tuple[Optional[np.ndarray], Optional[int], Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
+    def _detect_batter_pose_yolo(self, video_path: str, phc_model: YOLO, 
+                              frame_idx_start: int = 0, frame_search_range: int = 120,
+                              hitter_detections: List[Dict] = None,
+                              catcher_position: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[np.ndarray], Optional[int], Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
         """
-        Detect ONLY the batter's pose for strike zone calculation
+        Detect ONLY the batter's pose for strike zone calculation with improved umpire filtering
         Returns keypoints, frame index, and bounding box for integration with video processing
         
         Args:
@@ -339,6 +403,8 @@ class DistanceToZone:
             phc_model (YOLO): The PHC model for hitter detection
             frame_idx_start (int): Starting frame index
             frame_search_range (int): Number of frames to search
+            hitter_detections (List[Dict]): Pre-computed hitter detections
+            catcher_position (Tuple[int, int, int, int]): Position of the catcher
             
         Returns:
             Tuple[Optional[np.ndarray], Optional[int], Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
@@ -355,8 +421,10 @@ class DistanceToZone:
             os.system("wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n-pose.pt")
             pose_model = YOLO("yolov8n-pose.pt")
         
-        # Capture specific frame
+        # Capture video
         cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         # Define search range (look BEFORE pitch arrives)
@@ -370,39 +438,106 @@ class DistanceToZone:
         best_keypoints = None
         best_confidence = 0
         
-        # First pass: find hitter using PHC model
-        if self.verbose:
-            print("Looking for hitter in frames before pitch arrival...")
-        
-        for frame_idx in range(search_start, search_end, 5):  # Step by 5 frames for efficiency
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                continue
+        # First, try to use pre-computed hitter detections if available
+        if hitter_detections:
+            hitter_by_frame = {}
+            for det in hitter_detections:
+                frame = det["frame"]
+                if search_start <= frame <= search_end:
+                    if frame not in hitter_by_frame:
+                        hitter_by_frame[frame] = []
+                    hitter_by_frame[frame].append(det)
             
-            # Detect hitter with PHC model
-            with io.StringIO() as buf, redirect_stdout(buf):
-                phc_results = phc_model.predict(frame, conf=0.4, verbose=False)
+            valid_frames = sorted(hitter_by_frame.keys())
             
-            for result in phc_results:
-                for box in result.boxes:
-                    cls = int(box.cls)
-                    conf = float(box.conf)
+            for frame_idx in valid_frames:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                
+                for det in hitter_by_frame[frame_idx]:
+                    x1, y1, x2, y2 = det["x1"], det["y1"], det["x2"], det["y2"]
+                    conf = det["confidence"]
                     
-                    # Look specifically for "hitter" class
-                    if phc_model.names[cls].lower() == "hitter" and conf > best_confidence:
-                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                    # Apply heuristics to identify the actual hitter (not umpire):
+                    # 1. Usually larger in area than umpire
+                    # 2. Typically on opposite side from catcher
+                    # 3. Often higher in the frame than umpire
+                    is_valid_hitter = True
+                    
+                    # Size check
+                    area = (x2 - x1) * (y2 - y1)
+                    if area < 10000:  # Too small to be a hitter
+                        is_valid_hitter = False
+                    
+                    # Position check
+                    if catcher_position:
+                        catcher_center_x = (catcher_position[0] + catcher_position[2]) / 2
+                        hitter_center_x = (x1 + x2) / 2
                         
-                        # Make sure detection is large enough to be a real hitter
-                        if (x2-x1) > 60 and (y2-y1) > 120:  # Minimum size thresholds
-                            best_hitter_box = (x1, y1, x2, y2)
-                            best_hitter_frame = frame.copy()
-                            best_frame_idx = frame_idx
-                            best_confidence = conf
+                        # If catcher is on right, hitter should be on left (and vice versa)
+                        if ((catcher_center_x > width/2 and hitter_center_x > width/2) or
+                            (catcher_center_x < width/2 and hitter_center_x < width/2)):
+                            is_valid_hitter = False
+                    
+                    # If detection is valid and better than current best
+                    if is_valid_hitter and conf > best_confidence:
+                        best_hitter_box = (x1, y1, x2, y2)
+                        best_hitter_frame = frame.copy()
+                        best_frame_idx = frame_idx
+                        best_confidence = conf
+        
+        # If we couldn't find a good hitter from existing detections, search with PHC model
+        if best_hitter_box is None:
+            if self.verbose:
+                print("Looking for hitter in frames before pitch arrival...")
+            
+            for frame_idx in range(search_start, search_end, 5):  # Step by 5 frames for efficiency
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                
+                # Detect hitter with PHC model
+                with io.StringIO() as buf, redirect_stdout(buf):
+                    phc_results = phc_model.predict(frame, conf=0.4, verbose=False)
+                
+                for result in phc_results:
+                    for box in result.boxes:
+                        cls = int(box.cls)
+                        conf = float(box.conf)
+                        
+                        # Look specifically for "hitter" class
+                        if phc_model.names[cls].lower() == "hitter" and conf > best_confidence:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                            
+                            # Apply the same heuristics as above
+                            is_valid_hitter = True
+                            
+                            # Size check
+                            area = (x2 - x1) * (y2 - y1)
+                            if area < 10000:
+                                is_valid_hitter = False
+                            
+                            # Position check
+                            if catcher_position:
+                                catcher_center_x = (catcher_position[0] + catcher_position[2]) / 2
+                                hitter_center_x = (x1 + x2) / 2
+                                
+                                if ((catcher_center_x > width/2 and hitter_center_x > width/2) or
+                                    (catcher_center_x < width/2 and hitter_center_x < width/2)):
+                                    is_valid_hitter = False
+                            
+                            if is_valid_hitter and (x2-x1) > 60 and (y2-y1) > 120:
+                                best_hitter_box = (x1, y1, x2, y2)
+                                best_hitter_frame = frame.copy()
+                                best_frame_idx = frame_idx
+                                best_confidence = conf
         
         if best_hitter_box is None:
             if self.verbose:
-                print("Could not find hitter with PHC model. Cannot draw pose skeleton.")
+                print("Could not find valid hitter. Cannot draw pose skeleton.")
             cap.release()
             return None, None, None, None
         
@@ -444,8 +579,13 @@ class DistanceToZone:
                 keypoints[i, 1] += y1  # Add y offset
             
             if has_keypoints:
-                cap.release()
-                return keypoints, best_frame_idx, best_hitter_box, best_hitter_frame
+                # Verify the pose doesn't belong to the umpire - check if knees are significantly below hips
+                if (keypoints[13, 2] > 0.5 and keypoints[11, 2] > 0.5 and  # Left knee and hip
+                    keypoints[13, 1] > keypoints[11, 1] + 20) or \
+                   (keypoints[14, 2] > 0.5 and keypoints[12, 2] > 0.5 and  # Right knee and hip
+                    keypoints[14, 1] > keypoints[12, 1] + 20):
+                    cap.release()
+                    return keypoints, best_frame_idx, best_hitter_box, best_hitter_frame
         
         # As fallback, try pose detection on full frame but focus on hitter area
         with io.StringIO() as buf, redirect_stdout(buf):
@@ -457,10 +597,6 @@ class DistanceToZone:
             # Find which skeleton is closest to the hitter box center
             hitter_center_x = (best_hitter_box[0] + best_hitter_box[2]) / 2
             hitter_center_y = (best_hitter_box[1] + best_hitter_box[3]) / 2
-            
-            # If multiple people detected, keypoints would have multiple entries
-            # But with the current model, we just have one person, so we'll use it
-            # We'd need to filter if there were multiple detections
             
             # Check if this keypoint set is actually in the hitter box
             # (looking at hip positions for best reliability)
@@ -526,7 +662,7 @@ class DistanceToZone:
         if self.verbose:
             print(f"Searching for home plate around ball-glove contact frame {search_frame}...")
 
-        # Dictionary to store all frames with home plate detections (for visualization)
+        # Dictionary to store all frames with home plate detections (for visualization
         detection_frames = {}
         all_homeplate_detections = []
 
@@ -728,7 +864,8 @@ class DistanceToZone:
     
     def _compute_strike_zone(self, catcher_detections: List[Dict], pitch_data: pd.Series, 
                              ball_glove_frame: int, video_path: str, 
-                             phc_model: YOLO, hitter_keypoints: Optional[np.ndarray] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
+                             phc_model: YOLO, hitter_keypoints: Optional[np.ndarray] = None,
+                             hitter_box: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
         """
         Compute strike zone dimensions based on home plate detection and Statcast data.
         Uses a consensus-based approach for accurate home plate detection.
@@ -740,6 +877,7 @@ class DistanceToZone:
             video_path (str): Path to the video file
             phc_model (YOLO): PHC model for home plate detection
             hitter_keypoints (Optional[np.ndarray]): Optional keypoints for hitter pose
+            hitter_box (Optional[Tuple[int, int, int, int]]): Optional bounding box for hitter
             
         Returns:
             Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
@@ -774,6 +912,73 @@ class DistanceToZone:
             # Estimate ground level from home plate
             ground_y = homeplate_box[3]  # Bottom of home plate
             
+            # Use hitter pose to refine strike zone if available
+            if hitter_keypoints is not None:
+                # Check for knee landmarks (bottom of strike zone)
+                knee_y = None
+                for knee_idx in [13, 14]:  # Left and right knee
+                    if hitter_keypoints[knee_idx, 2] > 0.5:  # If detected with good confidence
+                        if knee_y is None or hitter_keypoints[knee_idx, 1].item() < knee_y:
+                            knee_y = hitter_keypoints[knee_idx, 1].item()
+                
+                # Check for midpoint between shoulders and hips (top of strike zone)
+                top_y = None
+                shoulder_y = None
+                hip_y = None
+                
+                # Get shoulder position
+                shoulder_idxs = [5, 6]  # Left and right shoulder
+                shoulders_detected = 0
+                shoulder_y_sum = 0
+                for idx in shoulder_idxs:
+                    if hitter_keypoints[idx, 2] > 0.5:
+                        shoulder_y_sum += hitter_keypoints[idx, 1].item()
+                        shoulders_detected += 1
+                if shoulders_detected > 0:
+                    shoulder_y = shoulder_y_sum / shoulders_detected
+                
+                # Get hip position
+                hip_idxs = [11, 12]  # Left and right hip
+                hips_detected = 0
+                hip_y_sum = 0
+                for idx in hip_idxs:
+                    if hitter_keypoints[idx, 2] > 0.5:
+                        hip_y_sum += hitter_keypoints[idx, 1].item()
+                        hips_detected += 1
+                if hips_detected > 0:
+                    hip_y = hip_y_sum / hips_detected
+                
+                # Calculate midpoint for top of strike zone
+                if shoulder_y is not None and hip_y is not None:
+                    top_y = (shoulder_y + hip_y) / 2
+                
+                # If we have both landmarks, use them to define the strike zone height
+                if knee_y is not None and top_y is not None:
+                    # Verify that top is actually above knee (sanity check)
+                    if top_y < knee_y - 50:  # At least 50 pixels difference
+                        zone_top_y = int(top_y)
+                        zone_bottom_y = int(knee_y)
+                        zone_height_pixels = zone_bottom_y - zone_top_y
+                        
+                        # Recalculate calibration based on zone height and Statcast data
+                        if self.verbose:
+                            print(f"Using hitter pose to refine strike zone height: {zone_height_pixels}px")
+                        
+                        # Center the zone horizontally
+                        zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
+                        zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
+                        
+                        strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
+                        
+                        if self.verbose:
+                            print(f"Strike zone from home plate and pose: {strike_zone}")
+                            print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
+                            print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
+                            print(f"Zone height: {zone_height_pixels} pixels")
+                        
+                        return strike_zone, pixels_per_foot
+            
+            # If pose detection wasn't available or reliable, use Statcast data
             # Calculate vertical zone positions
             zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
             zone_top_y = int(ground_y - (sz_top * 12 * pixels_per_inch))
@@ -792,94 +997,70 @@ class DistanceToZone:
             
             return strike_zone, pixels_per_foot
         
-        # Try using hitter's pose to augment the strike zone
-        elif hitter_keypoints is not None:
+        # Try using hitter's pose to estimate strike zone when home plate detection fails
+        elif hitter_keypoints is not None and hitter_box is not None:
             # Use the hitter's pose to estimate strike zone
             if self.verbose:
                 print("Using hitter's pose to estimate strike zone...")
             
-            # Estimate ground level using pose (find feet or ankles)
-            ankle_ids = [15, 16]  # Left and right ankle
-            foot_y_positions = []
-            
-            for ankle_id in ankle_ids:
-                if hitter_keypoints[ankle_id, 2] > 0.5:  # Check confidence
-                    foot_y_positions.append(hitter_keypoints[ankle_id, 1].item())
-            
-            if foot_y_positions:
-                ground_y = max(foot_y_positions) + 20  # Add offset for ground
-            else:
-                # Fall back to arbitrary ground level
-                cap = cv2.VideoCapture(video_path)
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                cap.release()
-                ground_y = int(height * 0.85)
-            
-            # Calculate strike zone from StatCast and player pose
+            # Extract relevant keypoints
             # Knees (bottom of zone)
-            knee_ids = [13, 14]  # Left and right knee
-            knee_y_positions = []
-            
-            for knee_id in knee_ids:
-                if hitter_keypoints[knee_id, 2] > 0.5:  # Check confidence
-                    knee_y_positions.append(hitter_keypoints[knee_id, 1].item())
-            
-            knee_y = min(knee_y_positions) if knee_y_positions else None
+            knee_y = None
+            for knee_idx in [13, 14]:  # Left and right knee
+                if hitter_keypoints[knee_idx, 2] > 0.5:
+                    if knee_y is None or hitter_keypoints[knee_idx, 1].item() < knee_y:
+                        knee_y = hitter_keypoints[knee_idx, 1].item()
             
             # Mid-point between shoulders and hips (top of zone)
-            shoulder_ids = [5, 6]  # Left and right shoulder
-            hip_ids = [11, 12]  # Left and right hip
-            
+            top_y = None
             shoulder_y = None
             hip_y = None
             
-            shoulders_detected = sum(1 for i in shoulder_ids if hitter_keypoints[i, 2] > 0.5) > 0
-            hips_detected = sum(1 for i in hip_ids if hitter_keypoints[i, 2] > 0.5) > 0
+            # Get shoulder position
+            shoulder_idxs = [5, 6]  # Left and right shoulder
+            shoulders_detected = 0
+            shoulder_y_sum = 0
+            for idx in shoulder_idxs:
+                if hitter_keypoints[idx, 2] > 0.5:
+                    shoulder_y_sum += hitter_keypoints[idx, 1].item()
+                    shoulders_detected += 1
+            if shoulders_detected > 0:
+                shoulder_y = shoulder_y_sum / shoulders_detected
             
-            if shoulders_detected:
-                shoulder_positions = [hitter_keypoints[i, 1].item() for i in shoulder_ids 
-                                      if hitter_keypoints[i, 2] > 0.5]
-                shoulder_y = sum(shoulder_positions) / len(shoulder_positions)
+            # Get hip position
+            hip_idxs = [11, 12]  # Left and right hip
+            hips_detected = 0
+            hip_y_sum = 0
+            for idx in hip_idxs:
+                if hitter_keypoints[idx, 2] > 0.5:
+                    hip_y_sum += hitter_keypoints[idx, 1].item()
+                    hips_detected += 1
+            if hips_detected > 0:
+                hip_y = hip_y_sum / hips_detected
             
-            if hips_detected:
-                hip_positions = [hitter_keypoints[i, 1].item() for i in hip_ids 
-                                if hitter_keypoints[i, 2] > 0.5]
-                hip_y = sum(hip_positions) / len(hip_positions)
-            
-            top_y = None
+            # Calculate midpoint for top of strike zone
             if shoulder_y is not None and hip_y is not None:
                 top_y = (shoulder_y + hip_y) / 2
             
-            # Try to determine horizontal position (center of hips)
-            center_x = None
-            if hips_detected:
-                hip_x_positions = [hitter_keypoints[i, 0].item() for i in hip_ids 
-                                  if hitter_keypoints[i, 2] > 0.5]
-                if hip_x_positions:
-                    center_x = sum(hip_x_positions) / len(hip_x_positions)
+            # Determine horizontal center of hitter
+            hitter_center_x = (hitter_box[0] + hitter_box[2]) / 2
             
             # If we have critical landmarks, use them for the strike zone
-            if knee_y is not None and top_y is not None:
-                # For calibration, we estimate player height and convert to pixels per inch
-                estimated_player_height_px = ground_y - top_y
-                estimated_player_height_inches = 72  # Average MLB player is about 6 feet tall
-                pixels_per_inch = estimated_player_height_px / estimated_player_height_inches
+            if knee_y is not None and top_y is not None and knee_y > top_y:
+                # For calibration, estimate height of player and convert to pixels per inch
+                # Average MLB player height is around 6'2" (74 inches)
+                player_height_px = hitter_box[3] - hitter_box[1]  # Full body height in pixels
+                estimated_player_height_inches = 74
+                pixels_per_inch = player_height_px / estimated_player_height_inches
                 pixels_per_foot = pixels_per_inch * 12
                 
                 # Zone dimensions (17 inches wide by rule)
                 zone_width_pixels = int(17.0 * pixels_per_inch)
                 zone_height_pixels = int(knee_y - top_y)
                 
-                if center_x is None:
-                    # Fall back to center of frame
-                    cap = cv2.VideoCapture(video_path)
-                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    cap.release()
-                    center_x = width / 2
-                
                 # Construct the strike zone
-                zone_left_x = int(center_x - (zone_width_pixels / 2))
-                zone_right_x = int(center_x + (zone_width_pixels / 2))
+                zone_left_x = int(hitter_center_x - (zone_width_pixels / 2))
+                zone_right_x = int(hitter_center_x + (zone_width_pixels / 2))
                 zone_top_y = int(top_y)
                 zone_bottom_y = int(knee_y)
                 
@@ -893,12 +1074,17 @@ class DistanceToZone:
                 
                 return strike_zone, pixels_per_foot
         
-        # Fallback to catcher detection if home plate detection fails and no pose
-        catcher_by_frame = {}
-        for det in catcher_detections:
-            catcher_by_frame[det["frame"]] = det
-        
-        if catcher_by_frame and ball_glove_frame is not None:
+        # Fallback to catcher detection if home plate detection fails and no reliable pose
+        if catcher_detections and ball_glove_frame is not None:
+            if self.verbose:
+                print("Falling back to catcher detection for strike zone estimation...")
+            
+            # Group detections by frame
+            catcher_by_frame = {}
+            for det in catcher_detections:
+                catcher_by_frame[det["frame"]] = det
+            
+            # Find catcher detection closest to ball-glove frame
             nearby_frames = []
             for frame, det in catcher_by_frame.items():
                 nearby_frames.append((abs(frame - ball_glove_frame), frame, det))
@@ -908,9 +1094,9 @@ class DistanceToZone:
             if nearby_frames:
                 _, frame_used, catcher_det = nearby_frames[0]
                 
-                # Estimate plate width and position from catcher (improved estimation)
+                # Estimate plate width and position from catcher
                 catcher_width = catcher_det["x2"] - catcher_det["x1"]
-                # Typical catcher is about 1.5-2x the width of home plate 
+                # Typical catcher width compared to home plate (17 inches)
                 plate_width_pixels = catcher_width / 1.8
                 
                 # Place the plate in front of catcher
@@ -937,7 +1123,7 @@ class DistanceToZone:
                 
                 # Calculate vertical zone positions
                 zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
-                zone_top_y = int(zone_bottom_y - zone_height_pixels)
+                zone_top_y = int(ground_y - (sz_top * 12 * pixels_per_inch))
                 
                 # Center the zone horizontally
                 zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
@@ -953,7 +1139,7 @@ class DistanceToZone:
                 
                 return strike_zone, pixels_per_foot
         
-        # Last resort: use video dimensions for a rough estimate
+        # Last resort: use video dimensions and Statcast data for a rough estimate
         if self.verbose:
             print("Using video dimensions for a rough strike zone estimate (last resort)")
         
@@ -985,7 +1171,7 @@ class DistanceToZone:
             print(f"Estimated calibration: {pixels_per_inch:.2f} pixels/inch")
         
         return strike_zone, pixels_per_foot
-
+    
     def _calculate_distance_to_zone(self, ball_center: Tuple[float, float], 
                                     strike_zone: Tuple[int, int, int, int],
                                     pixels_per_foot: float) -> Tuple[float, float, str]:
@@ -1179,11 +1365,6 @@ class DistanceToZone:
             # Create a copy for annotations
             annotated_frame = frame.copy()
             
-            # Try to detect the home plate in frames near ball-glove contact
-            homeplate_box = None    
-            homeplate_conf = 0
-            near_contact = ball_glove_frame is not None and abs(frame_idx - ball_glove_frame) <= max(frames_before, frames_after)
-            
             # Draw catcher detections (green)
             if frame_idx in catcher_by_frame:
                 for det in catcher_by_frame[frame_idx]:
@@ -1238,7 +1419,7 @@ class DistanceToZone:
                     cv2.putText(annotated_frame, f"Frame: {frame_idx}", (width - 300, 110),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                     cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                     
                     # If ball is in this frame, draw line to nearest point on strike zone
                     if frame_idx in ball_by_frame:
