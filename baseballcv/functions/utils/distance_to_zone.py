@@ -25,6 +25,7 @@ class DistanceToZone:
         catcher_model: str = 'phc_detector',
         glove_model: str = 'glove_tracking',
         ball_model: str = 'ball_trackingv4',
+        homeplate_model: str = 'ball_trackingv4',
         results_dir: str = "results",
         verbose: bool = True,
         device: str = None
@@ -36,6 +37,7 @@ class DistanceToZone:
             catcher_model (str): Model name for detecting catchers
             glove_model (str): Model name for detecting gloves
             ball_model (str): Model name for detecting baseballs
+            homeplate_model (str): Model name for detecting home plate
             results_dir (str): Directory to save results
             verbose (bool): Whether to print detailed progress information
             device (str): Device to run models on (cpu, cuda, etc.)
@@ -44,6 +46,7 @@ class DistanceToZone:
         self.catcher_model = YOLO(self.load_tools.load_model(catcher_model))
         self.glove_model = YOLO(self.load_tools.load_model(glove_model))
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
+        self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
@@ -153,7 +156,6 @@ class DistanceToZone:
                 pitch_data_row, 
                 ball_glove_frame, 
                 video_path, 
-                self.catcher_model,
                 hitter_keypoints=hitter_keypoints,
                 hitter_box=hitter_box,
                 homeplate_box=homeplate_box
@@ -665,7 +667,7 @@ class DistanceToZone:
         
     def _detect_homeplate(self, video_path: str, reference_frame: int = None) -> Tuple[Optional[Tuple[int, int, int, int]], float, int]:
         """
-        Detect the home plate in the video using a consensus-based approach.
+        Detect the home plate in the video using the dedicated homeplate model.
         Returns the home plate bounding box, confidence score, and the frame used.
         
         Args:
@@ -677,7 +679,7 @@ class DistanceToZone:
                 (home plate box, confidence, frame used)
         """
         if self.verbose:
-            print("\nDetecting home plate using consensus-based approach...")
+            print("\nDetecting home plate using specialized model...")
         
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -716,24 +718,24 @@ class DistanceToZone:
             if not ret:
                 continue
 
-            # Try with catcher model
+            # Use the dedicated homeplate model
             with io.StringIO() as buf, redirect_stdout(buf):
-                results = self.catcher_model.predict(frame, conf=0.2, verbose=False)
+                results = self.homeplate_model.predict(frame, conf=0.2, verbose=False)
             
             frame_detections = []
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls)
                     conf = float(box.conf)
-                    cls_name = self.catcher_model.names[cls].lower()
+                    cls_name = self.homeplate_model.names[cls].lower()
 
-                    # Check for home plate in class name
+                    # Check for home plate class
                     if "homeplate" == cls_name:
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
-                            "model": "PHC",
+                            "model": "ball_trackingv4",
                             "frame": frame_idx
                         }
                         frame_detections.append(detection)
@@ -763,23 +765,23 @@ class DistanceToZone:
                 if not ret:
                     continue
 
-                # Try catcher model
+                # Use dedicated homeplate model
                 with io.StringIO() as buf, redirect_stdout(buf):
-                    results = self.catcher_model.predict(frame, conf=0.15, verbose=False)
+                    results = self.homeplate_model.predict(frame, conf=0.15, verbose=False)
                 
                 frame_detections = []
                 for result in results:
                     for box in result.boxes:
                         cls = int(box.cls)
                         conf = float(box.conf)
-                        cls_name = self.catcher_model.names[cls].lower()
+                        cls_name = self.homeplate_model.names[cls].lower()
 
                         if cls_name == "homeplate":
                             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
-                                "model": "PHC",
+                                "model": "ball_trackingv4",
                                 "frame": frame_idx
                             }
                             frame_detections.append(detection)
@@ -901,14 +903,66 @@ class DistanceToZone:
                     homeplate_frame = detection_frames[homeplate_frame_idx]["frame"].copy()
         else:
             if self.verbose:
-                print("No home plate detections found in any frame")
+                print("No home plate detections found using the dedicated model")
+                print("Attempting fallback with catcher model...")
+                
+            # Try catcher model as fallback
+            for frame_idx in search_frames:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+
+                with io.StringIO() as buf, redirect_stdout(buf):
+                    results = self.catcher_model.predict(frame, conf=0.2, verbose=False)
+                
+                frame_detections = []
+                for result in results:
+                    for box in result.boxes:
+                        cls = int(box.cls)
+                        conf = float(box.conf)
+                        cls_name = self.catcher_model.names[cls].lower()
+
+                        if "homeplate" == cls_name:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                            detection = {
+                                "box": (x1, y1, x2, y2),
+                                "conf": conf,
+                                "model": "PHC",
+                                "frame": frame_idx
+                            }
+                            frame_detections.append(detection)
+                            all_homeplate_detections.append(detection)
+                            
+                if frame_detections:
+                    detection_frames[frame_idx] = {
+                        "frame": frame.copy(),
+                        "detections": frame_detections
+                    }
+                    
+            # If we found fallback detections, process them as before
+            if all_homeplate_detections:
+                # Get the best detection
+                best_detection = max(all_homeplate_detections, key=lambda det: det["conf"])
+                consensus_homeplate_box = best_detection["box"]
+                homeplate_confidence = best_detection["conf"]
+                homeplate_frame_idx = best_detection["frame"]
+                
+                if homeplate_frame_idx in detection_frames:
+                    homeplate_frame = detection_frames[homeplate_frame_idx]["frame"].copy()
+                    
+                if self.verbose:
+                    print(f"Found fallback homeplate detection with confidence {homeplate_confidence:.2f}")
+            else:
+                if self.verbose:
+                    print("No home plate detections found with any model")
 
         cap.release()
         return consensus_homeplate_box, homeplate_confidence, homeplate_frame_idx
     
     def _compute_strike_zone(self, catcher_detections: List[Dict], pitch_data: pd.Series, 
                              ball_glove_frame: int, video_path: str, 
-                             phc_model: YOLO, hitter_keypoints: Optional[np.ndarray] = None,
+                             hitter_keypoints: Optional[np.ndarray] = None,
                              hitter_box: Optional[Tuple[int, int, int, int]] = None,
                              homeplate_box: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
         """
@@ -920,7 +974,6 @@ class DistanceToZone:
             pitch_data (pd.Series): Pitch data containing strike zone information
             ball_glove_frame (int): Frame where ball reaches glove
             video_path (str): Path to the video file
-            phc_model (YOLO): PHC model for home plate detection
             hitter_keypoints (Optional[np.ndarray]): Optional keypoints for hitter pose
             hitter_box (Optional[Tuple[int, int, int, int]]): Optional bounding box for hitter
             homeplate_box (Optional[Tuple[int, int, int, int]]): Optional home plate detection
