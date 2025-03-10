@@ -125,7 +125,7 @@ class DistanceToZone:
             catcher_position = self._get_catcher_position(catcher_detections, ball_glove_frame)
             
             # First detect the reliable bounding box for the hitter
-            hitter_box, hitter_frame = self._find_best_hitter_box(
+            hitter_box, hitter_frame, hitter_frame_idx = self._find_best_hitter_box(
                 video_path=video_path,
                 hitter_detections=hitter_detections,
                 catcher_position=catcher_position,
@@ -176,7 +176,7 @@ class DistanceToZone:
                     distance,
                     position,
                     hitter_keypoints=hitter_keypoints,
-                    hitter_frame_idx=hitter_frame,
+                    hitter_frame_idx=hitter_frame_idx,
                     hitter_box=hitter_box
                 )
             
@@ -399,7 +399,7 @@ class DistanceToZone:
 
     def _find_best_hitter_box(self, video_path: str, hitter_detections: List[Dict],
                             catcher_position: Optional[Tuple[int, int, int, int]] = None,
-                            frame_idx_start: int = 0, frame_search_range: int = 90) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
+                            frame_idx_start: int = 0, frame_search_range: int = 90) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray], Optional[int]]:
         """
         Find the best bounding box for the hitter using robust filtering to avoid detecting the umpire.
         
@@ -411,8 +411,8 @@ class DistanceToZone:
             frame_search_range (int): Number of frames to search
             
         Returns:
-            Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray]]:
-                (hitter box, frame containing the hitter)
+            Tuple[Optional[Tuple[int, int, int, int]], Optional[np.ndarray], Optional[int]]:
+                (hitter box, frame containing the hitter, frame index)
         """
         if self.verbose:
             print("\nFinding best hitter bounding box...")
@@ -548,7 +548,7 @@ class DistanceToZone:
             if self.verbose:
                 print("Could not find valid hitter box")
         
-        return best_hitter_box, best_hitter_frame
+        return best_hitter_box, best_hitter_frame, best_frame_idx
 
     def _detect_pose_in_box(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> Optional[np.ndarray]:
         """
@@ -1550,4 +1550,4 @@ class DistanceToZone:
             if saved_pose_frame:
                 print(f"Hitter pose frame saved to {pose_frame_path}")
         
-        return output_path  
+        return output_path
