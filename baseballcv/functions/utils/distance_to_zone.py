@@ -9,6 +9,7 @@ import io
 from contextlib import redirect_stdout
 from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 from baseballcv.functions.load_tools import LoadTools
+import math
 
 class DistanceToZone:
     """
@@ -97,7 +98,7 @@ class DistanceToZone:
             glove_detections = self._detect_objects(video_path, self.glove_model, "glove")
             ball_detections = self._detect_objects(video_path, self.ball_model, "baseball")
             
-            ball_glove_frame, ball_center = self._find_ball_reaches_glove(video_path, glove_detections)
+            ball_glove_frame, ball_center = self._find_ball_reaches_glove(video_path, glove_detections, ball_detections)
             
             strike_zone_frame, strike_zone = self._compute_strikezone(
                 video_path, pitch_data_row, catcher_detections, reference_frame=ball_glove_frame
@@ -110,7 +111,7 @@ class DistanceToZone:
                 distance, position = self._calculate_distance_to_zone(pitch_data_row, ball_center, strike_zone)
                 
                 if self.verbose:
-                    print(f"Distance to zone: {distance:.2f} pixels")
+                    print(f"Distance to zone: {distance:.2f} inches")
                     print(f"Position relative to zone: {position}")
             
             if create_video and output_path and strike_zone is not None:
@@ -202,13 +203,14 @@ class DistanceToZone:
         
         return detections
     
-    def _find_ball_reaches_glove(self, video_path: str, glove_detections: List[Dict], tolerance: float = 0.1) -> Tuple[Optional[int], Optional[Tuple[float, float]]]:
+    def _find_ball_reaches_glove(self, video_path: str, glove_detections: List[Dict], ball_detections: List[Dict], tolerance: float = 0.1) -> Tuple[Optional[int], Optional[Tuple[float, float]]]:
         """
         Find the first frame where a baseball's center is within a glove detection bounding box.
         
         Args:
             video_path (str): Path to the video file
             glove_detections (List[Dict]): List of glove detection dictionaries
+            ball_detections (List[Dict]): List of ball detection dictionaries
             tolerance (float): Tolerance factor to expand the glove bounding box
             
         Returns:
@@ -218,6 +220,7 @@ class DistanceToZone:
         if self.verbose:
             print(f"\nFinding when ball reaches glove in: {video_path}")
         
+        # Group detections by frame for easier processing
         glove_by_frame = {}
         for det in glove_detections:
             frame = det["frame"]
@@ -225,60 +228,85 @@ class DistanceToZone:
                 glove_by_frame[frame] = []
             glove_by_frame[frame].append(det)
         
-        cap = cv2.VideoCapture(video_path)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        ball_by_frame = {}
+        for det in ball_detections:
+            frame = det["frame"]
+            if frame not in ball_by_frame:
+                ball_by_frame[frame] = []
+            ball_by_frame[frame].append(det)
+        
+        # Identify continuous ball detection sequences
+        ball_frames = sorted(ball_by_frame.keys())
+        
+        # Function to find continuous sequences
+        def find_continuous_sequences(frames):
+            sequences = []
+            current_sequence = []
+            
+            for i in range(len(frames)):
+                if not current_sequence or frames[i] == current_sequence[-1] + 1:
+                    current_sequence.append(frames[i])
+                else:
+                    if len(current_sequence) > 5:  # Require at least 5 consecutive frames
+                        sequences.append(current_sequence)
+                    current_sequence = [frames[i]]
+            
+            # Check the last sequence
+            if len(current_sequence) > 5:
+                sequences.append(current_sequence)
+                
+            return sequences
+        
+        # Find continuous sequences of ball detections
+        ball_detection_sequences = find_continuous_sequences(ball_frames)
+        
+        if self.verbose and ball_detection_sequences:
+            print("Continuous ball detection sequences:")
+            for seq in ball_detection_sequences:
+                print(f"Sequence: {seq[0]} to {seq[-1]} (length: {len(seq)})")
+        
+        # Search for ball-glove contact in the most significant detection sequences
+        # Sort sequences by length, prioritizing longer sequences
+        ball_detection_sequences.sort(key=len, reverse=True)
+        
         found_frame = None
         ball_center = None
-        frame_index = 0
         
-        pbar = tqdm(total=total_frames, desc="Ball Tracking", 
-                   disable=not self.verbose)
-        
-        while cap.isOpened() and frame_index < total_frames:
-            ret, frame = cap.read()
-            if not ret:
-                break
-                
-            if frame_index in glove_by_frame:
-                with io.StringIO() as buf, redirect_stdout(buf):
-                    results = self.ball_model.predict(frame, conf=0.5, device=self.device, verbose=False)
+        for sequence in ball_detection_sequences:
+            # Search through the sequence frames
+            for frame in sequence:
+                if frame not in glove_by_frame:
+                    continue
                     
-                for result in results:
-                    for box in result.boxes:
-                        cls = int(box.cls)
-                        if self.ball_model.names[cls].lower() == "baseball":
-                            ball_box = box.xyxy[0].tolist()
-                            ball_center_x = (ball_box[0] + ball_box[2]) / 2.0
-                            ball_center_y = (ball_box[1] + ball_box[3]) / 2.0
-                            
-                            for glove_det in glove_by_frame[frame_index]:
-                                margin_x = tolerance * (glove_det["x2"] - glove_det["x1"])
-                                margin_y = tolerance * (glove_det["y2"] - glove_det["y1"])
-                                extended_x1 = glove_det["x1"] - margin_x
-                                extended_y1 = glove_det["y1"] - margin_y
-                                extended_x2 = glove_det["x2"] + margin_x
-                                extended_y2 = glove_det["y2"] + margin_y
-                                
-                                if (ball_center_x >= extended_x1 and ball_center_x <= extended_x2 and
-                                    ball_center_y >= extended_y1 and ball_center_y <= extended_y2):
-                                    found_frame = frame_index
-                                    ball_center = (ball_center_x, ball_center_y)
-                                    break
-                            
-                            if found_frame is not None:
-                                break
+                for glove_det in glove_by_frame[frame]:
+                    # Add tolerance around glove box
+                    margin_x = tolerance * (glove_det["x2"] - glove_det["x1"])
+                    margin_y = tolerance * (glove_det["y2"] - glove_det["y1"])
+                    extended_x1 = glove_det["x1"] - margin_x
+                    extended_y1 = glove_det["y1"] - margin_y
+                    extended_x2 = glove_det["x2"] + margin_x
+                    extended_y2 = glove_det["y2"] + margin_y
+                    
+                    for ball_det in ball_by_frame[frame]:
+                        # Calculate ball center
+                        ball_cx = (ball_det["x1"] + ball_det["x2"]) / 2
+                        ball_cy = (ball_det["y1"] + ball_det["y2"]) / 2
+                        
+                        # Check if ball center is within extended glove box
+                        if (extended_x1 <= ball_cx <= extended_x2 and
+                            extended_y1 <= ball_cy <= extended_y2):
+                            found_frame = frame
+                            ball_center = (ball_cx, ball_cy)
+                            break
                     
                     if found_frame is not None:
                         break
+                
+                if found_frame is not None:
+                    break
             
             if found_frame is not None:
                 break
-                
-            frame_index += 1
-            pbar.update(1)
-        
-        pbar.close()
-        cap.release()
         
         if self.verbose:
             if found_frame is not None:
@@ -287,10 +315,131 @@ class DistanceToZone:
                 print("Could not detect when ball reaches glove")
         
         return found_frame, ball_center
+        
+    def _detect_homeplate(self, video_path: str, reference_frame: int = None) -> Tuple[Optional[Tuple[int, int, int, int]], float, int]:
+        """
+        Detect the home plate in the video using a consensus-based approach.
+        Returns the home plate bounding box, confidence score, and the frame used.
+        """
+        if self.verbose:
+            print("\nDetecting home plate using consensus-based approach...")
+        
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Define search frames around ball-glove contact (or use reference frame)
+        search_frame = reference_frame if reference_frame is not None else total_frames // 2
+        
+        search_frames = [
+            search_frame,             # The exact frame
+            search_frame + 2,         # Some offset frames to improve detection
+            search_frame - 2,
+            search_frame + 4,
+            search_frame - 4,
+            search_frame - 8,
+            search_frame - 16,
+            search_frame - 30,
+            search_frame - 45,
+        ]
+        # Filter out negative frames and frames beyond video length
+        search_frames = [max(0, min(frame, total_frames-1)) for frame in search_frames]
+        
+        # Dictionary to track all home plate detections
+        all_homeplate_detections = []
+        
+        # For visualization
+        best_frame = None
+        best_frame_idx = None
+        
+        # Try to detect home plate in search frames
+        for frame_idx in search_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            
+            # Try with PHC model first (might detect home plate)
+            results = self.catcher_model.predict(frame, conf=0.15, verbose=False)
+            
+            frame_detections = []
+            for result in results:
+                for box in result.boxes:
+                    cls = int(box.cls)
+                    conf = float(box.conf)
+                    
+                    # Check for home plate in class names
+                    if self.catcher_model.names[cls].lower() == "homeplate":
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                        detection = {
+                            "box": (x1, y1, x2, y2),
+                            "conf": conf,
+                            "frame": frame_idx
+                        }
+                        frame_detections.append(detection)
+                        all_homeplate_detections.append(detection)
+                        
+                        # Save best frame for visualization
+                        if best_frame is None or conf > max(det["conf"] for det in all_homeplate_detections if det != detection):
+                            best_frame = frame.copy()
+                            best_frame_idx = frame_idx
+        
+        if all_homeplate_detections:
+            if self.verbose:
+                print(f"Found {len(all_homeplate_detections)} home plate detections")
+            
+            # Calculate consensus box (using median to avoid outliers)
+            all_x1 = [det["box"][0] for det in all_homeplate_detections]
+            all_y1 = [det["box"][1] for det in all_homeplate_detections]
+            all_x2 = [det["box"][2] for det in all_homeplate_detections]
+            all_y2 = [det["box"][3] for det in all_homeplate_detections]
+            
+            # Use median for robustness
+            consensus_x1 = int(np.median(all_x1))
+            consensus_y1 = int(np.median(all_y1))
+            consensus_x2 = int(np.median(all_x2))
+            consensus_y2 = int(np.median(all_y2))
+            
+            consensus_homeplate_box = (consensus_x1, consensus_y1, consensus_x2, consensus_y2)
+            homeplate_confidence = np.mean([det["conf"] for det in all_homeplate_detections])
+            
+            # Save visualization of home plate detection
+            if best_frame is not None and self.verbose:
+                homeplate_debug = best_frame.copy()
+                cv2.rectangle(homeplate_debug, 
+                            (consensus_x1, consensus_y1), 
+                            (consensus_x2, consensus_y2), 
+                            (0, 255, 255), 2)
+                
+                center_x = (consensus_x1 + consensus_x2) // 2
+                cv2.line(homeplate_debug, 
+                       (center_x, consensus_y1 - 20), 
+                       (center_x, consensus_y2 + 20), 
+                       (0, 255, 255), 1)
+                
+                width_px = consensus_x2 - consensus_x1
+                cv2.putText(homeplate_debug, 
+                           f"Home Plate: {width_px} px = 17 inches", 
+                           (consensus_x1, consensus_y1 - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                
+                os.makedirs(os.path.join(self.results_dir, "debug"), exist_ok=True)
+                cv2.imwrite(os.path.join(self.results_dir, "debug", "homeplate_detection.jpg"), homeplate_debug)
+                print(f"Home plate detection visualization saved to {os.path.join(self.results_dir, 'debug', 'homeplate_detection.jpg')}")
+            
+            cap.release()
+            return consensus_homeplate_box, homeplate_confidence, best_frame_idx
+        
+        # If no home plate detection, return None
+        cap.release()
+        if self.verbose:
+            print("No home plate detections found")
+        return None, 0.0, None
     
     def _compute_strikezone(self, video_path: str, pitch_data: pd.Series, catcher_detections: List[Dict], reference_frame: Optional[int] = None) -> Tuple[int, Tuple[int, int, int, int]]:
         """
-        Compute the strike zone dimensions based on catcher position and Statcast data.
+        Compute strike zone dimensions based on home plate detection and Statcast data.
+        Uses a consensus-based approach for accurate home plate detection.
         
         Args:
             video_path (str): Path to the video file
@@ -302,8 +451,53 @@ class DistanceToZone:
             Tuple[int, Tuple[int, int, int, int]]: (frame used, strike zone coordinates (left, top, right, bottom))
         """
         if self.verbose:
-            print("\nComputing strike zone dimensions...")
+            print("\nComputing strike zone dimensions using enhanced method...")
         
+        # Try to detect the home plate first
+        homeplate_box, homeplate_confidence, homeplate_frame = self._detect_homeplate(video_path, reference_frame)
+        
+        # If home plate detection is successful
+        if homeplate_box is not None:
+            # Calibrate based on home plate width (17 inches)
+            plate_width_pixels = homeplate_box[2] - homeplate_box[0]
+            plate_width_inches = 17.0
+            pixels_per_inch = plate_width_pixels / plate_width_inches
+            pixels_per_foot = pixels_per_inch * 12
+            
+            # Center the strike zone on the home plate
+            plate_center_x = (homeplate_box[0] + homeplate_box[2]) / 2
+            
+            # Use Statcast data for vertical positioning
+            sz_top = float(pitch_data["sz_top"])
+            sz_bot = float(pitch_data["sz_bot"])
+            
+            # Calculate zone dimensions
+            zone_height_inches = (sz_top - sz_bot) * 12  # Convert feet to inches
+            zone_height_pixels = int(zone_height_inches * pixels_per_inch)
+            zone_width_pixels = int(17.0 * pixels_per_inch)  # MLB standard width
+            
+            # Estimate ground level from home plate
+            ground_y = homeplate_box[3]  # Bottom of home plate
+            
+            # Calculate vertical zone positions
+            zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
+            zone_top_y = int(ground_y - (sz_top * 12 * pixels_per_inch))
+            
+            # Center the zone horizontally
+            zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
+            zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
+            
+            strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
+            
+            if self.verbose:
+                print(f"Strike zone computed using home plate: {strike_zone}")
+                print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
+                print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
+                print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches ({sz_bot:.2f}-{sz_top:.2f} feet)")
+            
+            return homeplate_frame, strike_zone
+        
+        # Fallback to catcher detection if home plate detection fails
         catcher_by_frame = {}
         for det in catcher_detections:
             catcher_by_frame[det["frame"]] = det
@@ -318,41 +512,59 @@ class DistanceToZone:
             if nearby_frames:
                 _, frame_used, catcher_det = nearby_frames[0]
                 
-                catcher_center_x = (catcher_det["x1"] + catcher_det["x2"]) / 2
-                catcher_bottom_y = catcher_det["y2"]
+                # Estimate plate width and position from catcher (improved estimation)
+                catcher_width = catcher_det["x2"] - catcher_det["x1"]
+                # Typical catcher is about 1.5-2x the width of home plate 
+                plate_width_pixels = catcher_width / 1.8
                 
-                plate_width_pixels = (catcher_det["x2"] - catcher_det["x1"]) * 0.8
-                plate_center_x = catcher_center_x
-                plate_bottom_y = catcher_bottom_y + plate_width_pixels * 0.3
+                # Place the plate in front of catcher
+                plate_center_x = (catcher_det["x1"] + catcher_det["x2"]) / 2
+                # Plate is slightly in front of catcher
+                plate_bottom_y = catcher_det["y2"] + catcher_width * 0.1
                 
-                sz_top = float(pitch_data["sz_top"])
+                # Use Statcast data for vertical positioning
+                sz_top = float(pitch_data["sz_top"]) 
                 sz_bot = float(pitch_data["sz_bot"])
                 
-                plate_width_feet = 1.42
-                pixels_per_foot = plate_width_pixels / plate_width_feet
+                # Calibration based on home plate width (17 inches)
+                plate_width_inches = 17.0
+                pixels_per_inch = plate_width_pixels / plate_width_inches
+                pixels_per_foot = pixels_per_inch * 12
                 
-                zone_height = (sz_top - sz_bot) * pixels_per_foot
-                zone_width = plate_width_pixels
+                # Calculate zone dimensions
+                zone_height_inches = (sz_top - sz_bot) * 12  # Convert feet to inches
+                zone_height_pixels = int(zone_height_inches * pixels_per_inch)
+                zone_width_pixels = int(17.0 * pixels_per_inch)  # MLB standard width
                 
-                zone_bottom_y = int(plate_bottom_y - (sz_bot * pixels_per_foot))
-                zone_top_y = int(zone_bottom_y - zone_height)
-                zone_left_x = int(plate_center_x - (zone_width / 2))
-                zone_right_x = int(plate_center_x + (zone_width / 2))
+                # Estimate ground level
+                ground_y = plate_bottom_y
+                
+                # Calculate vertical zone positions
+                zone_bottom_y = int(ground_y - (sz_bot * 12 * pixels_per_inch))
+                zone_top_y = int(zone_bottom_y - zone_height_pixels)
+                
+                # Center the zone horizontally
+                zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
+                zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                 
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
                 if self.verbose:
-                    print(f"Strike zone computed at frame {frame_used}: {strike_zone}")
+                    print(f"Strike zone computed using catcher (fallback): {strike_zone}")
+                    print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
+                    print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
+                    print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches")
                 
                 return frame_used, strike_zone
-            
+        
+        # Last resort: use video dimensions for a rough estimate
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
         
         zone_width = width // 5
-        zone_height = height // 4
+        zone_height = int(zone_width * 1.5)  # Typical aspect ratio
         zone_left_x = (width - zone_width) // 2
         zone_right_x = zone_left_x + zone_width
         zone_bottom_y = height * 3 // 4
@@ -361,15 +573,17 @@ class DistanceToZone:
         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
         
         if self.verbose:
-            print(f"Using estimated strike zone at frame {reference_frame}: {strike_zone}")
+            print(f"Using estimated strike zone (last resort): {strike_zone}")
         
         return reference_frame or 0, strike_zone
     
     def _calculate_distance_to_zone(self, pitch_data: pd.Series, ball_center: Tuple[float, float], strike_zone: Tuple[int, int, int, int]) -> Tuple[float, str]:
         """
         Calculate the distance from the ball to the nearest point on the strike zone.
+        Using the MLB standard 17-inch strike zone width for calibration.
         
         Args:
+            pitch_data (pd.Series): Pitch data containing information about the throw
             ball_center (Tuple[float, float]): (x, y) coordinates of ball center
             strike_zone (Tuple[int, int, int, int]): Strike zone coordinates (left, top, right, bottom)
             
@@ -379,28 +593,43 @@ class DistanceToZone:
         ball_x, ball_y = ball_center
         zone_left, zone_top, zone_right, zone_bottom = strike_zone
         
-        inside_x = ball_x >= zone_left and ball_x <= zone_right
-        inside_y = ball_y >= zone_top and ball_y <= zone_bottom
-        
-        inside_zone = inside_x and inside_y
-        
-        if inside_zone:
-            return 0.0, "In Zone"
-        
+        # Find closest point on strike zone boundary
         closest_x = max(zone_left, min(ball_x, zone_right))
         closest_y = max(zone_top, min(ball_y, zone_bottom))
         
-        distance_pixels = np.sqrt((ball_x - closest_x)**2 + (ball_y - closest_y)**2)
+        # If ball is inside strike zone, distance is 0
+        if (zone_left <= ball_x <= zone_right and zone_top <= ball_y <= zone_bottom):
+            return 0.0, "In Zone"
         
+        # Calculate distance in pixels
+        dx = ball_x - closest_x
+        dy = ball_y - closest_y
+        distance_pixels = math.sqrt(dx**2 + dy**2)
+        
+        # Convert to inches based on strike zone width (17 inches)
         zone_width_pixels = zone_right - zone_left
         zone_width_inches = 17.0
         inches_per_pixel = zone_width_inches / zone_width_pixels
         
         distance_inches = distance_pixels * inches_per_pixel
         
+        # Determine position 
         vertical_position = "High" if ball_y < zone_top else "Low" if ball_y > zone_bottom else ""
-        positions = [p for p in [vertical_position, "Inside" if ball_x < zone_left and pitch_data['p_throws'] == 'R' else "Outside" if ball_x < zone_left else "Outside" if ball_x > zone_right and pitch_data['p_throws'] == 'R' else "Inside" if ball_x > zone_right else ""] if p]
+        positions = []
         
+        if vertical_position:
+            positions.append(vertical_position)
+            
+        # Determine horizontal position (accounting for pitcher handedness)
+        is_right_handed = pitch_data['p_throws'] == 'R'
+        
+        if ball_x < zone_left:
+            # For right-handed pitchers, inside is to the left of zone
+            positions.append("Inside" if is_right_handed else "Outside")
+        elif ball_x > zone_right:
+            # For right-handed pitchers, outside is to the right of zone
+            positions.append("Outside" if is_right_handed else "Inside")
+            
         position = " ".join(positions) or "Adjacent to Zone"
         
         return distance_inches, position
@@ -473,12 +702,18 @@ class DistanceToZone:
         zone_height = zone_bottom - zone_top
         
         homeplate_cache = {}
-        homeplate_model = self.glove_model
+        homeplate_model = self.catcher_model
         use_model = homeplate_model is not None
         
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
 
+        # Render and save a frame for home plate detection visualization (for debugging)
+        homeplate_box, _, _ = self._detect_homeplate(video_path, ball_glove_frame)
+        
+        # For saving the reference frame with ball crossing zone
+        crossing_frame_path = os.path.join(self.results_dir, f"ball_crosses_zone_{os.path.basename(video_path)}.jpg")
+        crossing_frame_saved = False
         
         frame_idx = 0
         while cap.isOpened():
@@ -563,6 +798,12 @@ class DistanceToZone:
                         (0, 255, 255), 1, cv2.LINE_AA)
                 
                 if frame_idx == ball_glove_frame and distance_inches is not None:
+                    # Save this frame as the key moment when ball crosses zone
+                    if not crossing_frame_saved:
+                        cv2.imwrite(crossing_frame_path, annotated_frame)
+                        crossing_frame_saved = True
+                    
+                    # Add info box with measurements
                     cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (0, 0, 0), -1)
                     cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (255, 255, 255), 2)
                     cv2.putText(annotated_frame, f"Distance: {distance_inches:.2f} inches", (width - 300, 50),
@@ -574,6 +815,7 @@ class DistanceToZone:
                     cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                     
+                    # Draw line from ball to closest point on strike zone
                     if frame_idx in ball_by_frame:
                         ball_det = ball_by_frame[frame_idx][0]
                         ball_cx = int((ball_det["x1"] + ball_det["x2"]) / 2)
@@ -608,3 +850,5 @@ class DistanceToZone:
         
         if self.verbose:
             print(f"Annotated video saved to {output_path}")
+            if crossing_frame_saved:
+                print(f"Ball crossing frame saved to {crossing_frame_path}")
