@@ -48,6 +48,23 @@ class DistanceToZone:
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
         self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
+        # DEBUG: Print model class names to identify available classes
+        print("\n--- DEBUG: Available Classes in Models ---")
+        print(f"Catcher model ({catcher_model}) classes: {self.catcher_model.names}")
+        print(f"Glove model ({glove_model}) classes: {self.glove_model.names}")
+        print(f"Ball model ({ball_model}) classes: {self.ball_model.names}")
+        print(f"Homeplate model ({homeplate_model}) classes: {self.homeplate_model.names}")
+        
+        # DEBUG: Check specifically for 'homeplate' or similar classes
+        homeplate_classes = []
+        for idx, cls_name in self.homeplate_model.names.items():
+            if 'plate' in cls_name.lower() or 'home' in cls_name.lower():
+                homeplate_classes.append((idx, cls_name))
+        if homeplate_classes:
+            print(f"Found potential homeplate classes: {homeplate_classes}")
+        else:
+            print("WARNING: No classes containing 'plate' or 'home' found in homeplate model!")
+        
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
         
@@ -281,6 +298,17 @@ class DistanceToZone:
         pbar = tqdm(total=total_frames, desc=f"{object_name.capitalize()} Detection", 
                    disable=not self.verbose)
         
+        # DEBUG: Check if the requested object is in the model's class list
+        object_found = False
+        for cls_idx, cls_name in model.names.items():
+            if cls_name.lower() == object_name.lower():
+                object_found = True
+                break
+        
+        if not object_found:
+            print(f"DEBUG WARNING: '{object_name}' not found in model classes: {model.names}")
+            print(f"Available classes: {list(model.names.values())}")
+        
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -292,7 +320,13 @@ class DistanceToZone:
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls)
-                    if model.names[cls].lower() == object_name.lower():
+                    cls_name = model.names[cls].lower()
+                    
+                    # DEBUG: Print all detected classes in first few frames
+                    if frame_number < 5:
+                        print(f"DEBUG: Frame {frame_number}, detected class '{cls_name}' with conf {float(box.conf):.2f}")
+                    
+                    if cls_name == object_name.lower():
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         conf = float(box.conf)
                         detections.append({
@@ -712,6 +746,24 @@ class DistanceToZone:
         detection_frames = {}
         all_homeplate_detections = []
 
+        # DEBUG: Print homeplate model class names again for reference
+        print("\n--- DEBUG: Homeplate Detection Class Check ---")
+        print(f"Homeplate model classes: {self.homeplate_model.names}")
+        
+        # Check for all relevant classes that could be "homeplate"
+        homeplate_class_candidates = []
+        for idx, name in self.homeplate_model.names.items():
+            if 'plate' in name.lower() or 'home' in name.lower():
+                homeplate_class_candidates.append((idx, name))
+        
+        if homeplate_class_candidates:
+            print(f"Found potential homeplate classes: {homeplate_class_candidates}")
+        else:
+            print("WARNING: No classes with 'plate' or 'home' found in model!")
+        
+        # Track all detected classes when processing frames
+        detected_classes = set()
+
         for frame_idx in search_frames:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
@@ -722,31 +774,59 @@ class DistanceToZone:
             with io.StringIO() as buf, redirect_stdout(buf):
                 results = self.homeplate_model.predict(frame, conf=0.2, verbose=False)
             
-            frame_detections = []
+            # DEBUG: Print all detected classes for diagnostic
+            print(f"\nDEBUG: Frame {frame_idx} detections:")
+            all_detections_in_frame = []
+            
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls)
                     conf = float(box.conf)
                     cls_name = self.homeplate_model.names[cls].lower()
+                    detected_classes.add(cls_name)
+                    
+                    all_detections_in_frame.append((cls_name, conf))
+                    
+                    # DEBUG: Print all detections with confidence
+                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                    print(f"  - Class: '{cls_name}', Conf: {conf:.2f}, Box: [{x1}, {y1}, {x2}, {y2}]")
 
                     # Check for home plate class
                     if "homeplate" == cls_name:
-                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
                             "model": "ball_trackingv4",
                             "frame": frame_idx
                         }
-                        frame_detections.append(detection)
+                        all_homeplate_detections.append(detection)
+                    
+                    # Additionally, try alternative class names that might be used
+                    elif "home_plate" == cls_name or "plate" == cls_name or "home" == cls_name:
+                        print(f"DEBUG: Found alternative homeplate class: {cls_name}")
+                        detection = {
+                            "box": (x1, y1, x2, y2),
+                            "conf": conf,
+                            "model": "ball_trackingv4",
+                            "frame": frame_idx
+                        }
                         all_homeplate_detections.append(detection)
 
+            if all_detections_in_frame:
+                print(f"  All detections in frame {frame_idx}: {all_detections_in_frame}")
+            else:
+                print(f"  No detections in frame {frame_idx}")
+
             # Store frame for visualization if detections were found
-            if frame_detections:
+            if all_homeplate_detections:
                 detection_frames[frame_idx] = {
                     "frame": frame.copy(),
-                    "detections": frame_detections
+                    "detections": all_homeplate_detections[-len(all_detections_in_frame):]
                 }
+
+        # Print summary of all detected classes for diagnostic
+        print("\nDEBUG: All detected classes during scan:", detected_classes)
+        print(f"DEBUG: Total homeplate detections found: {len(all_homeplate_detections)}")
 
         # Try a broader search if we didn't find enough detections
         if len(all_homeplate_detections) < 3:
@@ -769,28 +849,47 @@ class DistanceToZone:
                 with io.StringIO() as buf, redirect_stdout(buf):
                     results = self.homeplate_model.predict(frame, conf=0.15, verbose=False)
                 
-                frame_detections = []
+                # DEBUG: Track detections in extended search
+                extended_detections = []
+                
                 for result in results:
                     for box in result.boxes:
                         cls = int(box.cls)
                         conf = float(box.conf)
                         cls_name = self.homeplate_model.names[cls].lower()
+                        detected_classes.add(cls_name)
+                        
+                        extended_detections.append((cls_name, conf))
+                        
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
                         if cls_name == "homeplate":
-                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
                                 "model": "ball_trackingv4",
                                 "frame": frame_idx
                             }
-                            frame_detections.append(detection)
+                            all_homeplate_detections.append(detection)
+                        
+                        # Try alternative class names
+                        elif cls_name in ["home_plate", "plate", "home"]:
+                            print(f"DEBUG: Found alternative homeplate class in extended search: {cls_name}")
+                            detection = {
+                                "box": (x1, y1, x2, y2),
+                                "conf": conf,
+                                "model": "ball_trackingv4",
+                                "frame": frame_idx
+                            }
                             all_homeplate_detections.append(detection)
 
-                if frame_detections:
+                if extended_detections:
+                    print(f"DEBUG: Extended search frame {frame_idx} detections: {extended_detections}")
+
+                if all_homeplate_detections:
                     detection_frames[frame_idx] = {
                         "frame": frame.copy(),
-                        "detections": frame_detections
+                        "detections": all_homeplate_detections[-len(extended_detections):]
                     }
 
                 # Stop if we've found enough detections
@@ -913,31 +1012,54 @@ class DistanceToZone:
                 if not ret:
                     continue
 
+                # DEBUG: Print catcher model classes
+                print(f"\nDEBUG: Using catcher model as fallback, classes: {self.catcher_model.names}")
+                
                 with io.StringIO() as buf, redirect_stdout(buf):
                     results = self.catcher_model.predict(frame, conf=0.2, verbose=False)
                 
-                frame_detections = []
+                # DEBUG: Track all detections with catcher model
+                catcher_detections = []
+                
                 for result in results:
                     for box in result.boxes:
                         cls = int(box.cls)
                         conf = float(box.conf)
                         cls_name = self.catcher_model.names[cls].lower()
+                        
+                        catcher_detections.append((cls_name, conf))
+                        
+                        # DEBUG: Print all detections
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                        print(f"  - Fallback detection: '{cls_name}', Conf: {conf:.2f}, Box: [{x1}, {y1}, {x2}, {y2}]")
 
                         if "homeplate" == cls_name:
-                            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
                                 "model": "PHC",
                                 "frame": frame_idx
                             }
-                            frame_detections.append(detection)
                             all_homeplate_detections.append(detection)
                             
-                if frame_detections:
+                        # Try alternative names
+                        elif "home_plate" == cls_name or "plate" == cls_name or "home" == cls_name:
+                            print(f"DEBUG: Found alternative homeplate class in catcher model: {cls_name}")
+                            detection = {
+                                "box": (x1, y1, x2, y2),
+                                "conf": conf,
+                                "model": "PHC",
+                                "frame": frame_idx
+                            }
+                            all_homeplate_detections.append(detection)
+                            
+                if catcher_detections:
+                    print(f"  Catcher model detections in frame {frame_idx}: {catcher_detections}")
+                            
+                if all_homeplate_detections:
                     detection_frames[frame_idx] = {
                         "frame": frame.copy(),
-                        "detections": frame_detections
+                        "detections": all_homeplate_detections[-len(catcher_detections):]
                     }
                     
             # If we found fallback detections, process them as before
@@ -1675,3 +1797,43 @@ class DistanceToZone:
                 print(f"Hitter pose frame saved to {pose_frame_path}")
         
         return output_path
+
+# Helper method for debugging models - add this method to assist with checking class names
+def inspect_model_classes(self, model_name: str):
+    """
+    Debug utility method to inspect class names in a specified model.
+    
+    Args:
+        model_name (str): Name of the model to inspect
+    """
+    try:
+        print(f"\n--- DEBUG: Inspecting classes in {model_name} model ---")
+        model_path = self.load_tools.load_model(model_name)
+        model = YOLO(model_path)
+        
+        print(f"Total classes in {model_name}: {len(model.names)}")
+        print(f"Class mapping: {model.names}")
+        
+        # Check for potential homeplate classes
+        homeplate_candidates = []
+        for idx, name in model.names.items():
+            if 'plate' in name.lower() or 'home' in name.lower():
+                homeplate_candidates.append((idx, name))
+        
+        if homeplate_candidates:
+            print(f"Potential homeplate classes: {homeplate_candidates}")
+        else:
+            print(f"WARNING: No classes with 'plate' or 'home' found in {model_name} model")
+        
+        # Print all available classes for reference
+        print("All class names:")
+        for idx, name in model.names.items():
+            print(f"  {idx}: {name}")
+            
+        return model.names
+    except Exception as e:
+        print(f"Error inspecting model {model_name}: {str(e)}")
+        return {}
+
+# Add the debug method to the class
+DistanceToZone.inspect_model_classes = inspect_model_classes
