@@ -16,12 +16,12 @@ class BaseballTools:
         self.verbose = verbose
 
     def distance_to_zone(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None,
-                        max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
-                        catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
-                        ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
-                        save_csv: bool = True, csv_path: str = None, results_dir: str = "results") -> list:
+                         max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
+                         catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
+                         ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
+                         save_csv: bool = True, csv_path: str = None) -> list:
         """
-        The distance_to_zone function calculates the distance of a pitch to the strike zone in a video, as well as
+        The DistanceToZone function calculates the distance of a pitch to the strike zone in a video, as well as
         other information about the Play ID including the frame where the ball crosses, and the distance between the 
         target and the estimated strike zone.
         
@@ -37,10 +37,9 @@ class BaseballTools:
             glove_model (str): Path to the GloveTracking model, primarily used for glove detection (default is YOLO model 'glove_tracking')
             ball_model (str): Path to the BallTracking model, primarily used for ball detection (default is YOLO model 'ball_trackingv4')
             zone_vertical_adjustment (float): Factor to adjust strike zone vertically as percentage of elbow-to-hip distance.
-                                            Positive values move zone toward home plate, negative away from home plate. (default is 0.5)
+                                             Positive values move zone toward home plate, negative away from home plate. (default is 0.5)
             save_csv (bool): Whether to save analysis results to CSV (default is True)
             csv_path (str): Custom path for CSV file (default is results/distance_to_zone_results.csv)
-            results_dir (str): Directory to save results (default is "results")
             
         Returns:
             list: List of results from the DistanceToZone class for each video analyzed.
@@ -51,9 +50,7 @@ class BaseballTools:
             catcher_model=catcher_model, 
             glove_model=glove_model, 
             ball_model=ball_model,
-            homeplate_model=glove_model,
-            zone_vertical_adjustment=zone_vertical_adjustment,
-            results_dir=results_dir
+            zone_vertical_adjustment=zone_vertical_adjustment
         )
         
         results = dtoz.analyze(
