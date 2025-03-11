@@ -1,6 +1,6 @@
 # BaseballCV
 
-[![BaseballCV Scripts](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml)
+[![BaseballCV Core Functionality](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml)
 [![Package Build](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml)
 [![codecov](https://codecov.io/github/dylandru/BaseballCV/graph/badge.svg?token=86UGAREPSB)](https://codecov.io/github/dylandru/BaseballCV)
 [![PyPI version](https://badge.fury.io/py/baseballcv.svg)](https://pypi.org/project/baseballcv/)
@@ -44,6 +44,16 @@ pip install baseballcv
 - Imports vary from using package to using local files; every import from the package is prefixed with `baseballcv.`
 - The package is currently in development and may not be fully functional. 
 - While available on PyPI, the package is still not completely stable and may not work as expected. For reliable results, we recommend using the local files (for the time being).
+
+## Partnerships
+
+**To attempt to acheive our goal, we are open to partnerships with those interested in using / contributing to our datasets and models.**
+
+### *Prep Baseball*
+
+![BaseballCV Prep Baseball](assets/pbr_baseballcv.jpg)
+
+We are currently in the process of partnering with **[Prep Baseball](https://www.prepbaseball.com/)** to provide open-source amateur baseball datasets and models! **Prep Baseball** believes in the power of open-source software in advancing innovation in amateur baseball, and we are excited to work with them to achieve this goal.
 
 ## Available Assets
 
@@ -448,7 +458,7 @@ Our main need is for data annotation. With our new annotation app, you can help 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. **Note: Please double check the folder for any additional licenses.**
 
 ## Contact
 
