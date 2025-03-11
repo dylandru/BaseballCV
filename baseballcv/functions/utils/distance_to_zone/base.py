@@ -251,7 +251,7 @@ class DistanceToZone:
                     ball_detections=ball_detections,
                     strike_zone=strike_zone,
                     ball_glove_frame=ball_glove_frame,
-                    distance=distance,
+                    distance_inches=distance,
                     position=position,
                     hitter_keypoints=hitter_keypoints,
                     hitter_frame_idx=hitter_frame_idx,
