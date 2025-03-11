@@ -919,7 +919,7 @@ class DistanceToZone:
     
     def _detect_3d_pose(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> Optional[Dict]:
         """
-        Detect 3D pose using MediaPipe within a bounding box.
+        Detect 3D pose using MediaPipe strictly within the hitter's bounding box.
         
         Args:
             frame (np.ndarray): Frame containing the hitter
@@ -929,7 +929,7 @@ class DistanceToZone:
             Optional[Dict]: MediaPipe pose results or None if detection fails
         """
         if self.verbose:
-            print("Detecting 3D pose with MediaPipe...")
+            print("Detecting 3D pose with MediaPipe strictly within hitter box...")
         
         # Extract ROI with margin
         x1, y1, x2, y2 = box
@@ -957,39 +957,35 @@ class DistanceToZone:
             static_image_mode=True,
             model_complexity=1,  # Medium complexity for balance
             enable_segmentation=False,
-            min_detection_confidence=0.5
+            min_detection_confidence=0.4
         ) as pose:
-            # Process the image
+            # Process only the region of interest
             results = pose.process(cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB))
         
         if not results.pose_landmarks:
             if self.verbose:
                 print("MediaPipe couldn't detect 3D pose in hitter region")
             
-            # Try with full image
+            # Try with a lower detection threshold as fallback
             with self.mp_pose.Pose(
                 static_image_mode=True,
                 model_complexity=1,
                 enable_segmentation=False,
-                min_detection_confidence=0.5
+                min_detection_confidence=0.3
             ) as pose:
-                # Process the image
-                results = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                # Still only process the hitter region
+                results = pose.process(cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB))
             
             if not results.pose_landmarks:
                 if self.verbose:
-                    print("MediaPipe couldn't detect 3D pose in full image either")
+                    print("MediaPipe couldn't detect 3D pose even with lower threshold")
                 return None
             
             if self.verbose:
-                print("Successfully detected 3D pose from full image")
-            
-            # Store the offset to adjust the landmarks later
-            offset = (0, 0)
-            return {"results": results, "offset": offset}
-        
-        if self.verbose:
-            print("Successfully detected 3D pose for hitter with MediaPipe")
+                print("Successfully detected 3D pose with lower threshold")
+        else:
+            if self.verbose:
+                print("Successfully detected 3D pose for hitter with MediaPipe")
         
         # Store the ROI offset to adjust landmarks when drawing
         offset = (x1_margin, y1_margin)
@@ -2203,8 +2199,8 @@ class DistanceToZone:
                                int(hitter_keypoints[pair[1], 1].item()))
                         cv2.line(annotated_frame, pt1, pt2, (255, 0, 255), 2)
             
-            # Draw 3D pose overlay from MediaPipe
-            if hitter_pose_3d is not None:
+            # Draw 3D pose overlay from MediaPipe (only if hitter box is also available)
+            if hitter_pose_3d is not None and hitter_box is not None:
                 # Draw the 3D pose
                 mp_results = hitter_pose_3d["results"]
                 offset_x, offset_y = hitter_pose_3d["offset"]
@@ -2212,12 +2208,23 @@ class DistanceToZone:
                 # Create a copy for semi-transparent overlay
                 pose_overlay = annotated_frame.copy()
                 
-                # Draw the pose landmarks and connections
+                # Get hitter box coordinates to draw the pose only within the box
+                x1, y1, x2, y2 = hitter_box
+                
+                # Create a mask for the hitter region
+                mask = np.zeros_like(annotated_frame)
+                cv2.rectangle(mask, (x1, y1), (x2, y2), (255, 255, 255), -1)
+                
+                # Draw the pose landmarks and connections on a temporary image
+                temp_overlay = annotated_frame.copy()
                 self.mp_drawing.draw_landmarks(
-                    pose_overlay,
+                    temp_overlay,
                     mp_results.pose_landmarks,
                     self.mp_pose.POSE_CONNECTIONS,
                     landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style())
+                
+                # Apply the mask to limit drawing to hitter box region
+                pose_overlay = np.where(mask > 0, temp_overlay, pose_overlay)
                 
                 # Add overlay with transparency
                 cv2.addWeighted(pose_overlay, 0.7, annotated_frame, 0.3, 0, annotated_frame)
