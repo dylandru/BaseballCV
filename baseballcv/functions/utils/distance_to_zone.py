@@ -17,7 +17,7 @@ class DistanceToZone:
     Class for calculating and visualizing the distance of a pitch to the strike zone.
     
     This class uses computer vision models to detect the catcher, glove, ball, and 
-    strike zone in baseball videos, then calculates the distance of the pitch to the zone.
+    strike zone in baseball videos, then calculates the distance of the pitch relative to the zone.
     """
     
     def __init__(
