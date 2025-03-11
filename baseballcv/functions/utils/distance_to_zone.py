@@ -25,7 +25,7 @@ class DistanceToZone:
         catcher_model: str = 'phc_detector',
         glove_model: str = 'glove_tracking',
         ball_model: str = 'ball_trackingv4',
-        homeplate_model: str = 'ball_trackingv4',
+        homeplate_model: str = 'glove_tracking',
         results_dir: str = "results",
         verbose: bool = True,
         device: str = None
@@ -796,7 +796,7 @@ class DistanceToZone:
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
-                            "model": "ball_trackingv4",
+                            "model": "glove_tracking",
                             "frame": frame_idx
                         }
                         all_homeplate_detections.append(detection)
@@ -807,7 +807,7 @@ class DistanceToZone:
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
-                            "model": "ball_trackingv4",
+                            "model": "glove_tracking",
                             "frame": frame_idx
                         }
                         all_homeplate_detections.append(detection)
@@ -867,7 +867,7 @@ class DistanceToZone:
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
-                                "model": "ball_trackingv4",
+                                "model": "glove_tracking",
                                 "frame": frame_idx
                             }
                             all_homeplate_detections.append(detection)
@@ -878,7 +878,7 @@ class DistanceToZone:
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
-                                "model": "ball_trackingv4",
+                                "model": "glove_tracking",
                                 "frame": frame_idx
                             }
                             all_homeplate_detections.append(detection)
