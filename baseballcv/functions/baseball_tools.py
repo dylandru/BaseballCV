@@ -18,7 +18,7 @@ class BaseballTools:
     def distance_to_zone(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None,
                          max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
                          catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
-                         ball_model: str = 'ball_trackingv4') -> float:
+                         ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5) -> float:
         """
         The DistanceToZone function calculates the distance of a pitch to the strike zone in a video, as well as
         other information about the Play ID including the frame where the ball crosses, and the distance between the 
@@ -34,11 +34,28 @@ class BaseballTools:
             catcher_model (str): Path to the PHCDetector model, primarily used for catching (default is YOLO model 'phc_detector')
             glove_model (str): Path to the GloveTracking model, primarily used for glove detection (default is YOLO model 'glove_tracking')
             ball_model (str): Path to the BallTracking model, primarily used for ball detection (default is YOLO model 'ball_trackingv4')
+            zone_vertical_adjustment (float): Factor to adjust strike zone vertically as percentage of elbow-to-hip distance.
+                                             Positive values move zone toward home plate, negative away from home plate. (default is 0.5)
         Returns:
             results (list): List of results from the DistanceToZone class for each video analyzed.
         """
-        dtoz = DistanceToZone(device=self.device, verbose=self.verbose, catcher_model=catcher_model, glove_model=glove_model, ball_model=ball_model)
-        results = dtoz.analyze(start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call, max_videos=max_videos, 
-                     max_videos_per_game=max_videos_per_game, create_video=create_video)
+        dtoz = DistanceToZone(
+            device=self.device, 
+            verbose=self.verbose, 
+            catcher_model=catcher_model, 
+            glove_model=glove_model, 
+            ball_model=ball_model,
+            zone_vertical_adjustment=zone_vertical_adjustment  # Pass the new parameter
+        )
+        
+        results = dtoz.analyze(
+            start_date=start_date, 
+            end_date=end_date, 
+            team=team, 
+            pitch_call=pitch_call, 
+            max_videos=max_videos, 
+            max_videos_per_game=max_videos_per_game, 
+            create_video=create_video
+        )
         
         return results
