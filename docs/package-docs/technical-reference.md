@@ -3,7 +3,7 @@ layout: default
 title: API Reference
 nav_order: 2
 has_children: true
-permalink: /api-reference
+permalink: /technical-reference
 ---
 
 # API Reference
