@@ -48,6 +48,11 @@ class DistanceToZone:
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
         self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
+        # Initialize MediaPipe pose for 3D pose detection
+        self.mp_pose = mp.solutions.pose
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+        
         if verbose:
             print(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
         
@@ -124,26 +129,33 @@ class DistanceToZone:
             
             # Also get pitcher and hitter detections for better filtering
             pitcher_detections = self._detect_objects(video_path, self.catcher_model, "pitcher")
-            hitter_detections = self._detect_objects(video_path, self.catcher_model, "hitter")
+            hitter_detections = self._detect_objects(video_path, self.catcher_model, "hitter", conf_threshold=0.3)  # Lower threshold for hitter
             
             ball_glove_frame, ball_center, ball_detection = self._find_ball_reaches_glove(video_path, glove_detections, ball_detections)
             
             # Get catcher position to help distinguish hitter from umpire
             catcher_position = self._get_catcher_position(catcher_detections, ball_glove_frame)
             
-            # First detect the reliable bounding box for the hitter
+            # First detect the reliable bounding box for the hitter with improved detection
             hitter_box, hitter_frame, hitter_frame_idx = self._find_best_hitter_box(
                 video_path=video_path,
                 hitter_detections=hitter_detections,
                 catcher_position=catcher_position,
-                frame_idx_start=max(0, ball_glove_frame - 90) if ball_glove_frame else 0,
-                frame_search_range=90
+                frame_idx_start=max(0, ball_glove_frame - 120) if ball_glove_frame else 0,  # Search more frames
+                frame_search_range=120  # Expanded search range
             )
             
-            # Only detect pose WITHIN the hitter box to avoid getting the umpire
+            # Detect both standard YOLO pose and MediaPipe 3D pose
             hitter_keypoints = None
+            hitter_pose_3d = None
             if hitter_box is not None and hitter_frame is not None:
                 hitter_keypoints = self._detect_pose_in_box(
+                    frame=hitter_frame,
+                    box=hitter_box
+                )
+                
+                # Detect 3D pose with MediaPipe
+                hitter_pose_3d = self._detect_3d_pose(
                     frame=hitter_frame,
                     box=hitter_box
                 )
@@ -162,7 +174,8 @@ class DistanceToZone:
                 video_path, 
                 hitter_keypoints=hitter_keypoints,
                 hitter_box=hitter_box,
-                homeplate_box=homeplate_box
+                homeplate_box=homeplate_box,
+                hitter_pose_3d=hitter_pose_3d  # Added 3D pose for adjustment
             )
             
             distance = None
@@ -191,7 +204,8 @@ class DistanceToZone:
                     hitter_keypoints=hitter_keypoints,
                     hitter_frame_idx=hitter_frame_idx,
                     hitter_box=hitter_box,
-                    homeplate_box=homeplate_box
+                    homeplate_box=homeplate_box,
+                    hitter_pose_3d=hitter_pose_3d  # Added 3D pose for visualization
                 )
             
             results = {
@@ -261,7 +275,7 @@ class DistanceToZone:
         return (largest_detection["x1"], largest_detection["y1"], 
                 largest_detection["x2"], largest_detection["y2"])
     
-    def _detect_objects(self, video_path: str, model: YOLO, object_name: str) -> List[Dict]:
+    def _detect_objects(self, video_path: str, model: YOLO, object_name: str, conf_threshold: float = 0.5) -> List[Dict]:
         """
         Detect objects in every frame of the video.
         
@@ -269,6 +283,7 @@ class DistanceToZone:
             video_path (str): Path to the video file
             model (YOLO): YOLO model to use for detection
             object_name (str): Name of the object to detect
+            conf_threshold (float): Confidence threshold for detection
             
         Returns:
             List[Dict]: List of detection dictionaries
@@ -291,7 +306,7 @@ class DistanceToZone:
                 break
             
             with io.StringIO() as buf, redirect_stdout(buf):
-                results = model.predict(frame, conf=0.5, device=self.device, verbose=False)
+                results = model.predict(frame, conf=conf_threshold, device=self.device, verbose=False)
                 
             for result in results:
                 for box in result.boxes:
@@ -551,26 +566,25 @@ class DistanceToZone:
                     # Apply heuristics to identify the actual hitter (not umpire):
                     # 1. Must be reasonably sized (minimum dimensions)
                     # 2. Typically on opposite side from catcher
-                    # 3. Often higher in the frame than umpire
                     is_valid_hitter = True
                     
                     # Size check - must be substantial
                     area = (x2 - x1) * (y2 - y1)
-                    min_area = width * height * 0.02  # At least 2% of frame
-                    min_width = width * 0.05  # At least 5% of frame width
-                    min_height = height * 0.1  # At least 10% of frame height
+                    min_area = width * height * 0.015  # Reduced from 0.02 to 0.015
+                    min_width = width * 0.04  # Reduced from 0.05 to 0.04
+                    min_height = height * 0.08  # Reduced from 0.1 to 0.08
                     
                     if area < min_area or (x2 - x1) < min_width or (y2 - y1) < min_height:
                         is_valid_hitter = False
                     
-                    # Position check relative to catcher
+                    # Position check relative to catcher - less strict now
                     if catcher_position:
                         catcher_center_x = (catcher_position[0] + catcher_position[2]) / 2
                         hitter_center_x = (x1 + x2) / 2
                         
-                        # If catcher is on right, hitter should be on left (and vice versa)
-                        if ((catcher_center_x > width/2 and hitter_center_x > width/2) or
-                            (catcher_center_x < width/2 and hitter_center_x < width/2)):
+                        # If catcher is on extreme right, hitter should be on left (and vice versa)
+                        if ((catcher_center_x > width*0.75 and hitter_center_x > width*0.75) or
+                            (catcher_center_x < width*0.25 and hitter_center_x < width*0.25)):
                             is_valid_hitter = False
                     
                     # If detection is valid and better than current best
@@ -583,7 +597,7 @@ class DistanceToZone:
         # If we couldn't find a good hitter from existing detections, search with PHC model
         if best_hitter_box is None:
             if self.verbose:
-                print("Looking for hitter using PHC model...")
+                print("Looking for hitter using PHC model with reduced constraints...")
             
             for frame_idx in range(search_start, search_end, 5):  # Step by 5 frames for efficiency
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -593,7 +607,7 @@ class DistanceToZone:
                 
                 # Detect hitter with PHC model
                 with io.StringIO() as buf, redirect_stdout(buf):
-                    phc_results = self.catcher_model.predict(frame, conf=0.4, verbose=False)
+                    phc_results = self.catcher_model.predict(frame, conf=0.3, verbose=False)  # Lower threshold
                 
                 for result in phc_results:
                     for box in result.boxes:
@@ -604,26 +618,26 @@ class DistanceToZone:
                         if self.catcher_model.names[cls].lower() == "hitter" and conf > best_confidence:
                             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                             
-                            # Apply the same heuristics as above
+                            # Apply less strict heuristics
                             is_valid_hitter = True
                             
-                            # Size check
+                            # Size check with reduced thresholds
                             area = (x2 - x1) * (y2 - y1)
-                            min_area = width * height * 0.02  # At least 2% of frame
-                            min_width = width * 0.05  # At least 5% of frame width
-                            min_height = height * 0.1  # At least 10% of frame height
+                            min_area = width * height * 0.015  # Reduced from 0.02 to 0.015
+                            min_width = width * 0.04  # Reduced from 0.05 to 0.04
+                            min_height = height * 0.08  # Reduced from 0.1 to 0.08
                             
                             if area < min_area or (x2 - x1) < min_width or (y2 - y1) < min_height:
                                 is_valid_hitter = False
                             
-                            # Position check relative to catcher
+                            # Position check relative to catcher - less strict
                             if catcher_position:
                                 catcher_center_x = (catcher_position[0] + catcher_position[2]) / 2
                                 hitter_center_x = (x1 + x2) / 2
                                 
-                                # If catcher is on right, hitter should be on left (and vice versa)
-                                if ((catcher_center_x > width/2 and hitter_center_x > width/2) or
-                                    (catcher_center_x < width/2 and hitter_center_x < width/2)):
+                                # Only exclude if hitter and catcher are in same extreme corner
+                                if ((catcher_center_x > width*0.75 and hitter_center_x > width*0.75) or
+                                    (catcher_center_x < width*0.25 and hitter_center_x < width*0.25)):
                                     is_valid_hitter = False
                             
                             if is_valid_hitter:
@@ -631,6 +645,52 @@ class DistanceToZone:
                                 best_hitter_frame = frame.copy()
                                 best_frame_idx = frame_idx
                                 best_confidence = conf
+        
+        # FALLBACK: Use any detection that seems reasonable if we still don't have one
+        if best_hitter_box is None:
+            if self.verbose:
+                print("Trying fallback method for hitter detection...")
+            
+            # Reset the video to beginning
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            
+            # Try to find any large bounding box that could be a player
+            for frame_idx in range(0, min(total_frames, 200), 10):  # Check first 200 frames, step of 10
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                
+                # Convert to grayscale for motion detection
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                # Apply threshold to find potential player blobs
+                _, thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                for contour in contours:
+                    # Get bounding rectangle
+                    x, y, w, h = cv2.boundingRect(contour)
+                    
+                    # Check if it's large enough to be a player
+                    if w * h > width * height * 0.01 and w > width * 0.03 and h > height * 0.08:
+                        # Create a box with some margin
+                        x1 = max(0, x - int(w * 0.1))
+                        y1 = max(0, y - int(h * 0.1))
+                        x2 = min(width, x + w + int(w * 0.1))
+                        y2 = min(height, y + h + int(h * 0.1))
+                        
+                        # Check if it's in a reasonable position (not at the bottom of frame where umpire is)
+                        if y < height * 0.6:  # Not too low in the frame
+                            best_hitter_box = (x1, y1, x2, y2)
+                            best_hitter_frame = frame.copy()
+                            best_frame_idx = frame_idx
+                            # Use a minimum confidence
+                            best_confidence = 0.5
+                            break
+                
+                if best_hitter_box is not None:
+                    break
         
         cap.release()
         
@@ -668,9 +728,9 @@ class DistanceToZone:
         # Extract only the region of interest to force pose detection in that area
         x1, y1, x2, y2 = box
         
-        # Add a small margin (10%)
-        margin_x = int((x2 - x1) * 0.1)
-        margin_y = int((y2 - y1) * 0.1)
+        # Add a small margin (15%) - increased from 10%
+        margin_x = int((x2 - x1) * 0.15)
+        margin_y = int((y2 - y1) * 0.15)
         
         # Ensure the box stays within frame boundaries
         x1_margin = max(0, x1 - margin_x)
@@ -688,7 +748,7 @@ class DistanceToZone:
         
         # Run pose detection on hitter region only
         with io.StringIO() as buf, redirect_stdout(buf):
-            hitter_results = pose_model.predict(hitter_region, verbose=False)
+            hitter_results = pose_model.predict(hitter_region, verbose=False, conf=0.3)  # Lower confidence threshold
         
         # Check if we got any results
         if (len(hitter_results) == 0 or 
@@ -696,46 +756,155 @@ class DistanceToZone:
             hitter_results[0].keypoints.data.shape[1] < 17):
             if self.verbose:
                 print("No pose detected within hitter region")
+            
+            # Try on full image with the box as a guide
+            with io.StringIO() as buf, redirect_stdout(buf):
+                full_results = pose_model.predict(frame, verbose=False, conf=0.3)
+            
+            if (len(full_results) == 0 or 
+                len(full_results[0].keypoints) == 0 or 
+                full_results[0].keypoints.data.shape[1] < 17):
+                if self.verbose:
+                    print("No pose detected in full image either")
+                return None
+            
+            # Check if any pose has a significant overlap with our box
+            best_overlap = 0
+            best_keypoints = None
+            
+            for person_idx, keypoints in enumerate(full_results[0].keypoints.data):
+                # Count how many keypoints are inside the box
+                points_in_box = 0
+                valid_points = 0
+                
+                for i in range(keypoints.shape[0]):
+                    if keypoints[i, 2] > 0.3:  # If point is detected with reasonable confidence
+                        valid_points += 1
+                        if (x1 <= keypoints[i, 0] <= x2 and y1 <= keypoints[i, 1] <= y2):
+                            points_in_box += 1
+                
+                # Calculate overlap ratio
+                if valid_points > 0:
+                    overlap = points_in_box / valid_points
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_keypoints = keypoints
+            
+            if best_overlap > 0.3:  # If at least 30% of points are in box
+                return best_keypoints
+            
             return None
         
-        # Get keypoints
+        # Get keypoints from region
         keypoints = hitter_results[0].keypoints.data[0].clone()  # Clone to avoid modifying original
         
         # Check if we detected essential keypoints (knees and hips)
         has_essential_keypoints = False
         for knee_idx in [13, 14]:  # Left and right knee
             for hip_idx in [11, 12]:  # Left and right hip
-                if keypoints[knee_idx, 2] > 0.5 and keypoints[hip_idx, 2] > 0.5:
+                if keypoints[knee_idx, 2] > 0.3 and keypoints[hip_idx, 2] > 0.3:
                     has_essential_keypoints = True
                     break
         
         if not has_essential_keypoints:
             if self.verbose:
                 print("Essential keypoints (knees, hips) not detected with confidence")
+            
+            # If essential keypoints missing, we'll try with the full image
+            with io.StringIO() as buf, redirect_stdout(buf):
+                full_results = pose_model.predict(frame, verbose=False, conf=0.3)
+            
+            if (len(full_results) > 0 and 
+                len(full_results[0].keypoints) > 0 and 
+                full_results[0].keypoints.data.shape[1] >= 17):
+                
+                # Find the pose with the most overlap with our box
+                best_overlap = 0
+                best_keypoints = None
+                
+                for person_idx, person_keypoints in enumerate(full_results[0].keypoints.data):
+                    # Count how many keypoints are inside the box
+                    points_in_box = 0
+                    valid_points = 0
+                    
+                    for i in range(person_keypoints.shape[0]):
+                        if person_keypoints[i, 2] > 0.3:  # If point is detected with reasonable confidence
+                            valid_points += 1
+                            if (x1 <= person_keypoints[i, 0] <= x2 and y1 <= person_keypoints[i, 1] <= y2):
+                                points_in_box += 1
+                    
+                    # Calculate overlap ratio
+                    if valid_points > 0:
+                        overlap = points_in_box / valid_points
+                        if overlap > best_overlap:
+                            best_overlap = overlap
+                            best_keypoints = person_keypoints
+                
+                if best_overlap > 0.3:  # If at least 30% of points are in box
+                    if self.verbose:
+                        print(f"Using pose from full image with {best_overlap:.2f} overlap with hitter box")
+                    return best_keypoints
+            
             return None
         
-        # Validate pose is anatomically reasonable
+        # Validate pose is anatomically reasonable with relaxed constraints
         # Check knees are below hips
-        left_knee_y = keypoints[13, 1].item() if keypoints[13, 2] > 0.5 else None
-        right_knee_y = keypoints[14, 1].item() if keypoints[14, 2] > 0.5 else None
-        left_hip_y = keypoints[11, 1].item() if keypoints[11, 2] > 0.5 else None
-        right_hip_y = keypoints[12, 1].item() if keypoints[12, 2] > 0.5 else None
+        left_knee_y = keypoints[13, 1].item() if keypoints[13, 2] > 0.3 else None
+        right_knee_y = keypoints[14, 1].item() if keypoints[14, 2] > 0.3 else None
+        left_hip_y = keypoints[11, 1].item() if keypoints[11, 2] > 0.3 else None
+        right_hip_y = keypoints[12, 1].item() if keypoints[12, 2] > 0.3 else None
         
         valid_anatomy = True
         
-        # Check left side
+        # Check left side with more tolerance
         if left_knee_y is not None and left_hip_y is not None:
-            if left_knee_y <= left_hip_y:  # Knee should be below hip
+            if left_knee_y < left_hip_y - 20:  # Knee should be below hip with some tolerance
                 valid_anatomy = False
         
-        # Check right side
+        # Check right side with more tolerance
         if right_knee_y is not None and right_hip_y is not None:
-            if right_knee_y <= right_hip_y:  # Knee should be below hip
+            if right_knee_y < right_hip_y - 20:  # Knee should be below hip with some tolerance
                 valid_anatomy = False
         
         if not valid_anatomy:
             if self.verbose:
-                print("Detected pose is anatomically invalid (knees not below hips)")
+                print("Detected pose is anatomically invalid - will try with full image")
+            
+            # Try with full image if regional pose is invalid
+            with io.StringIO() as buf, redirect_stdout(buf):
+                full_results = pose_model.predict(frame, verbose=False, conf=0.3)
+            
+            if (len(full_results) > 0 and 
+                len(full_results[0].keypoints) > 0 and 
+                full_results[0].keypoints.data.shape[1] >= 17):
+                
+                # Find the pose with the most overlap with our box
+                best_overlap = 0
+                best_keypoints = None
+                
+                for person_idx, person_keypoints in enumerate(full_results[0].keypoints.data):
+                    # Count how many keypoints are inside the box
+                    points_in_box = 0
+                    valid_points = 0
+                    
+                    for i in range(person_keypoints.shape[0]):
+                        if person_keypoints[i, 2] > 0.3:  # If point is detected with reasonable confidence
+                            valid_points += 1
+                            if (x1 <= person_keypoints[i, 0] <= x2 and y1 <= person_keypoints[i, 1] <= y2):
+                                points_in_box += 1
+                    
+                    # Calculate overlap ratio
+                    if valid_points > 0:
+                        overlap = points_in_box / valid_points
+                        if overlap > best_overlap:
+                            best_overlap = overlap
+                            best_keypoints = person_keypoints
+                
+                if best_overlap > 0.3:  # If at least 30% of points are in box
+                    if self.verbose:
+                        print(f"Using pose from full image with {best_overlap:.2f} overlap with hitter box")
+                    return best_keypoints
+            
             return None
         
         # Shift keypoints back to full frame coordinates
@@ -746,7 +915,85 @@ class DistanceToZone:
         if self.verbose:
             print("Successfully detected valid pose for hitter")
         
-        return keypoints        
+        return keypoints
+    
+    def _detect_3d_pose(self, frame: np.ndarray, box: Tuple[int, int, int, int]) -> Optional[Dict]:
+        """
+        Detect 3D pose using MediaPipe within a bounding box.
+        
+        Args:
+            frame (np.ndarray): Frame containing the hitter
+            box (Tuple[int, int, int, int]): Bounding box for the hitter
+            
+        Returns:
+            Optional[Dict]: MediaPipe pose results or None if detection fails
+        """
+        if self.verbose:
+            print("Detecting 3D pose with MediaPipe...")
+        
+        # Extract ROI with margin
+        x1, y1, x2, y2 = box
+        
+        # Add margin (15%)
+        margin_x = int((x2 - x1) * 0.15)
+        margin_y = int((y2 - y1) * 0.15)
+        
+        # Ensure box stays within frame boundaries
+        x1_margin = max(0, x1 - margin_x)
+        y1_margin = max(0, y1 - margin_y)
+        x2_margin = min(frame.shape[1], x2 + margin_x)
+        y2_margin = min(frame.shape[0], y2 + margin_y)
+        
+        # Extract region
+        hitter_region = frame[y1_margin:y2_margin, x1_margin:x2_margin].copy()
+        
+        if hitter_region.size == 0:
+            if self.verbose:
+                print("Invalid hitter region for 3D pose (empty)")
+            return None
+        
+        # Configure MediaPipe Pose with higher detection confidence
+        with self.mp_pose.Pose(
+            static_image_mode=True,
+            model_complexity=1,  # Medium complexity for balance
+            enable_segmentation=False,
+            min_detection_confidence=0.5
+        ) as pose:
+            # Process the image
+            results = pose.process(cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB))
+        
+        if not results.pose_landmarks:
+            if self.verbose:
+                print("MediaPipe couldn't detect 3D pose in hitter region")
+            
+            # Try with full image
+            with self.mp_pose.Pose(
+                static_image_mode=True,
+                model_complexity=1,
+                enable_segmentation=False,
+                min_detection_confidence=0.5
+            ) as pose:
+                # Process the image
+                results = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            
+            if not results.pose_landmarks:
+                if self.verbose:
+                    print("MediaPipe couldn't detect 3D pose in full image either")
+                return None
+            
+            if self.verbose:
+                print("Successfully detected 3D pose from full image")
+            
+            # Store the offset to adjust the landmarks later
+            offset = (0, 0)
+            return {"results": results, "offset": offset}
+        
+        if self.verbose:
+            print("Successfully detected 3D pose for hitter with MediaPipe")
+        
+        # Store the ROI offset to adjust landmarks when drawing
+        offset = (x1_margin, y1_margin)
+        return {"results": results, "offset": offset}
         
     def _detect_homeplate(self, video_path: str, reference_frame: int = None) -> Tuple[Optional[Tuple[int, int, int, int]], float, int]:
         """
@@ -1074,7 +1321,8 @@ class DistanceToZone:
                              ball_glove_frame: int, video_path: str, 
                              hitter_keypoints: Optional[np.ndarray] = None,
                              hitter_box: Optional[Tuple[int, int, int, int]] = None,
-                             homeplate_box: Optional[Tuple[int, int, int, int]] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
+                             homeplate_box: Optional[Tuple[int, int, int, int]] = None,
+                             hitter_pose_3d: Optional[Dict] = None) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
         """
         Compute strike zone dimensions based on home plate detection and Statcast data.
         Uses a consensus-based approach for accurate home plate detection.
@@ -1087,6 +1335,7 @@ class DistanceToZone:
             hitter_keypoints (Optional[np.ndarray]): Optional keypoints for hitter pose
             hitter_box (Optional[Tuple[int, int, int, int]]): Optional bounding box for hitter
             homeplate_box (Optional[Tuple[int, int, int, int]]): Optional home plate detection
+            hitter_pose_3d (Optional[Dict]): Optional 3D pose landmarks
             
         Returns:
             Tuple[Optional[Tuple[int, int, int, int]], Optional[float]]:
@@ -1124,26 +1373,29 @@ class DistanceToZone:
             zone_height_pixels = int(zone_height_inches * pixels_per_inch)
             zone_width_pixels = int(17.0 * pixels_per_inch)  # MLB standard width
             
-            # Use hitter pose to refine strike zone if available
+            # Variables to store elbow and hip landmarks for adjustment
+            elbow_y = None
+            hip_y = None
+            
+            # Use hitter pose (YOLO) to refine strike zone if available
             if hitter_keypoints is not None:
                 # Check for knee landmarks (bottom of strike zone)
                 knee_y = None
                 for knee_idx in [13, 14]:  # Left and right knee
-                    if hitter_keypoints[knee_idx, 2] > 0.5:  # If detected with good confidence
+                    if hitter_keypoints[knee_idx, 2] > 0.3:  # If detected with good confidence
                         if knee_y is None or hitter_keypoints[knee_idx, 1].item() < knee_y:
                             knee_y = hitter_keypoints[knee_idx, 1].item()
                 
                 # Check for midpoint between shoulders and hips (top of strike zone)
                 top_y = None
                 shoulder_y = None
-                hip_y = None
                 
                 # Get shoulder position
                 shoulder_idxs = [5, 6]  # Left and right shoulder
                 shoulders_detected = 0
                 shoulder_y_sum = 0
                 for idx in shoulder_idxs:
-                    if hitter_keypoints[idx, 2] > 0.5:
+                    if hitter_keypoints[idx, 2] > 0.3:
                         shoulder_y_sum += hitter_keypoints[idx, 1].item()
                         shoulders_detected += 1
                 if shoulders_detected > 0:
@@ -1154,11 +1406,22 @@ class DistanceToZone:
                 hips_detected = 0
                 hip_y_sum = 0
                 for idx in hip_idxs:
-                    if hitter_keypoints[idx, 2] > 0.5:
+                    if hitter_keypoints[idx, 2] > 0.3:
                         hip_y_sum += hitter_keypoints[idx, 1].item()
                         hips_detected += 1
                 if hips_detected > 0:
                     hip_y = hip_y_sum / hips_detected
+                
+                # Get elbow position (for zone adjustment)
+                elbow_idxs = [7, 8]  # Left and right elbow
+                elbows_detected = 0
+                elbow_y_sum = 0
+                for idx in elbow_idxs:
+                    if hitter_keypoints[idx, 2] > 0.3:
+                        elbow_y_sum += hitter_keypoints[idx, 1].item()
+                        elbows_detected += 1
+                if elbows_detected > 0:
+                    elbow_y = elbow_y_sum / elbows_detected
                 
                 # Calculate midpoint for top of strike zone
                 if shoulder_y is not None and hip_y is not None:
@@ -1172,6 +1435,13 @@ class DistanceToZone:
                         zone_bottom_y = int(knee_y)
                         zone_height_pixels = zone_bottom_y - zone_top_y
                         
+                        # Calculate adjustment for vertical position (half distance from elbow to hip)
+                        adjustment = 0
+                        if elbow_y is not None and hip_y is not None:
+                            adjustment = int((hip_y - elbow_y) / 2)
+                            if self.verbose:
+                                print(f"Adjusting strike zone up by {adjustment} pixels (half elbow-to-hip distance)")
+                        
                         # Recalculate calibration based on zone height and Statcast data
                         if self.verbose:
                             print(f"Using hitter pose to refine strike zone height: {zone_height_pixels}px")
@@ -1180,12 +1450,119 @@ class DistanceToZone:
                         zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
                         zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                         
+                        # Apply the vertical adjustment - move zone up (closer to home plate)
+                        if adjustment > 0:
+                            zone_top_y -= adjustment
+                            zone_bottom_y -= adjustment
+                        
                         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                         
                         if self.verbose:
                             print(f"Strike zone from home plate and pose: {strike_zone}")
                         
                         return strike_zone, pixels_per_foot
+            
+            # Try using MediaPipe 3D pose for better adjustment if available
+            elif hitter_pose_3d is not None:
+                landmarks = hitter_pose_3d["results"].pose_landmarks
+                offset_x, offset_y = hitter_pose_3d["offset"]
+                
+                if landmarks:
+                    # Get key landmarks from MediaPipe
+                    # Knees (indices 25, 26 in MediaPipe)
+                    left_knee = landmarks.landmark[25]
+                    right_knee = landmarks.landmark[26]
+                    
+                    # Calculate knee position for bottom of zone
+                    knee_y = None
+                    if left_knee.visibility > 0.3 and right_knee.visibility > 0.3:
+                        left_knee_y = int(left_knee.y * frame.shape[0]) + offset_y
+                        right_knee_y = int(right_knee.y * frame.shape[0]) + offset_y
+                        knee_y = min(left_knee_y, right_knee_y)
+                    elif left_knee.visibility > 0.3:
+                        knee_y = int(left_knee.y * frame.shape[0]) + offset_y
+                    elif right_knee.visibility > 0.3:
+                        knee_y = int(right_knee.y * frame.shape[0]) + offset_y
+                    
+                    # Shoulders (indices 11, 12 in MediaPipe)
+                    left_shoulder = landmarks.landmark[11]
+                    right_shoulder = landmarks.landmark[12]
+                    
+                    # Hips (indices 23, 24 in MediaPipe)
+                    left_hip = landmarks.landmark[23]
+                    right_hip = landmarks.landmark[24]
+                    
+                    # Elbows (indices 13, 14 in MediaPipe)
+                    left_elbow = landmarks.landmark[13]
+                    right_elbow = landmarks.landmark[14]
+                    
+                    # Calculate positions for landmarks
+                    shoulder_y = None
+                    hip_y = None
+                    elbow_y = None
+                    
+                    if left_shoulder.visibility > 0.3 and right_shoulder.visibility > 0.3:
+                        left_shoulder_y = int(left_shoulder.y * frame.shape[0]) + offset_y
+                        right_shoulder_y = int(right_shoulder.y * frame.shape[0]) + offset_y
+                        shoulder_y = (left_shoulder_y + right_shoulder_y) / 2
+                    elif left_shoulder.visibility > 0.3:
+                        shoulder_y = int(left_shoulder.y * frame.shape[0]) + offset_y
+                    elif right_shoulder.visibility > 0.3:
+                        shoulder_y = int(right_shoulder.y * frame.shape[0]) + offset_y
+                    
+                    if left_hip.visibility > 0.3 and right_hip.visibility > 0.3:
+                        left_hip_y = int(left_hip.y * frame.shape[0]) + offset_y
+                        right_hip_y = int(right_hip.y * frame.shape[0]) + offset_y
+                        hip_y = (left_hip_y + right_hip_y) / 2
+                    elif left_hip.visibility > 0.3:
+                        hip_y = int(left_hip.y * frame.shape[0]) + offset_y
+                    elif right_hip.visibility > 0.3:
+                        hip_y = int(right_hip.y * frame.shape[0]) + offset_y
+                    
+                    if left_elbow.visibility > 0.3 and right_elbow.visibility > 0.3:
+                        left_elbow_y = int(left_elbow.y * frame.shape[0]) + offset_y
+                        right_elbow_y = int(right_elbow.y * frame.shape[0]) + offset_y
+                        elbow_y = (left_elbow_y + right_elbow_y) / 2
+                    elif left_elbow.visibility > 0.3:
+                        elbow_y = int(left_elbow.y * frame.shape[0]) + offset_y
+                    elif right_elbow.visibility > 0.3:
+                        elbow_y = int(right_elbow.y * frame.shape[0]) + offset_y
+                    
+                    # Calculate top of strike zone (midpoint between shoulders and hips)
+                    top_y = None
+                    if shoulder_y is not None and hip_y is not None:
+                        top_y = (shoulder_y + hip_y) / 2
+                    
+                    # If we have key landmarks, define the strike zone
+                    if knee_y is not None and top_y is not None:
+                        # Verify anatomically correct
+                        if top_y < knee_y - 50:
+                            zone_top_y = int(top_y)
+                            zone_bottom_y = int(knee_y)
+                            zone_height_pixels = zone_bottom_y - zone_top_y
+                            
+                            # Calculate adjustment for vertical position (half distance from elbow to hip)
+                            adjustment = 0
+                            if elbow_y is not None and hip_y is not None:
+                                adjustment = int((hip_y - elbow_y) / 2)
+                                if self.verbose:
+                                    print(f"Adjusting strike zone up by {adjustment} pixels (half elbow-to-hip distance)")
+                            
+                            # Center the zone horizontally
+                            zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
+                            zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
+                            
+                            # Apply the vertical adjustment - move zone up (closer to home plate)
+                            if adjustment > 0:
+                                zone_top_y -= adjustment
+                                zone_bottom_y -= adjustment
+                            
+                            strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
+                            
+                            if self.verbose:
+                                print(f"Strike zone from home plate and MediaPipe 3D pose: {strike_zone}")
+                            
+                            return strike_zone, pixels_per_foot
             
             # If pose detection wasn't available or reliable, use home plate and Statcast data
             # Get a reference to the video to read a frame for height estimation
@@ -1212,6 +1589,12 @@ class DistanceToZone:
             zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
             zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
             
+            # Apply a standard adjustment to move the zone up a bit (closer to home plate)
+            # This mimics the adjustment we would do with pose data
+            adjustment = int(zone_height_pixels * 0.15)  # Apply approximately 15% adjustment
+            zone_top_y -= adjustment
+            zone_bottom_y -= adjustment
+            
             strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
             
             if self.verbose:
@@ -1229,7 +1612,7 @@ class DistanceToZone:
             # Knees (bottom of zone)
             knee_y = None
             for knee_idx in [13, 14]:  # Left and right knee
-                if hitter_keypoints[knee_idx, 2] > 0.5:
+                if hitter_keypoints[knee_idx, 2] > 0.3:
                     if knee_y is None or hitter_keypoints[knee_idx, 1].item() < knee_y:
                         knee_y = hitter_keypoints[knee_idx, 1].item()
             
@@ -1237,13 +1620,14 @@ class DistanceToZone:
             top_y = None
             shoulder_y = None
             hip_y = None
+            elbow_y = None
             
             # Get shoulder position
             shoulder_idxs = [5, 6]  # Left and right shoulder
             shoulders_detected = 0
             shoulder_y_sum = 0
             for idx in shoulder_idxs:
-                if hitter_keypoints[idx, 2] > 0.5:
+                if hitter_keypoints[idx, 2] > 0.3:
                     shoulder_y_sum += hitter_keypoints[idx, 1].item()
                     shoulders_detected += 1
             if shoulders_detected > 0:
@@ -1254,11 +1638,22 @@ class DistanceToZone:
             hips_detected = 0
             hip_y_sum = 0
             for idx in hip_idxs:
-                if hitter_keypoints[idx, 2] > 0.5:
+                if hitter_keypoints[idx, 2] > 0.3:
                     hip_y_sum += hitter_keypoints[idx, 1].item()
                     hips_detected += 1
             if hips_detected > 0:
                 hip_y = hip_y_sum / hips_detected
+            
+            # Get elbow position
+            elbow_idxs = [7, 8]  # Left and right elbow
+            elbows_detected = 0
+            elbow_y_sum = 0
+            for idx in elbow_idxs:
+                if hitter_keypoints[idx, 2] > 0.3:
+                    elbow_y_sum += hitter_keypoints[idx, 1].item()
+                    elbows_detected += 1
+            if elbows_detected > 0:
+                elbow_y = elbow_y_sum / elbows_detected
             
             # Calculate midpoint for top of strike zone
             if shoulder_y is not None and hip_y is not None:
@@ -1280,11 +1675,23 @@ class DistanceToZone:
                 zone_width_pixels = int(17.0 * pixels_per_inch)
                 zone_height_pixels = int(knee_y - top_y)
                 
+                # Calculate adjustment (half distance from elbow to hip)
+                adjustment = 0
+                if elbow_y is not None and hip_y is not None:
+                    adjustment = int((hip_y - elbow_y) / 2)
+                    if self.verbose:
+                        print(f"Adjusting strike zone up by {adjustment} pixels (half elbow-to-hip distance)")
+                
                 # Construct the strike zone
                 zone_left_x = int(hitter_center_x - (zone_width_pixels / 2))
                 zone_right_x = int(hitter_center_x + (zone_width_pixels / 2))
                 zone_top_y = int(top_y)
                 zone_bottom_y = int(knee_y)
+                
+                # Apply the vertical adjustment
+                if adjustment > 0:
+                    zone_top_y -= adjustment
+                    zone_bottom_y -= adjustment
                 
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
@@ -1352,6 +1759,11 @@ class DistanceToZone:
                 zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
                 zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                 
+                # Apply a standard adjustment to move the zone up slightly
+                adjustment = int(zone_height_pixels * 0.15)
+                zone_top_y -= adjustment
+                zone_bottom_y -= adjustment
+                
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
                 if self.verbose:
@@ -1383,6 +1795,11 @@ class DistanceToZone:
         zone_right_x = zone_left_x + zone_width
         zone_bottom_y = height * 3 // 4
         zone_top_y = zone_bottom_y - zone_height
+        
+        # Apply a slight vertical adjustment
+        adjustment = int(zone_height * 0.15)
+        zone_top_y -= adjustment
+        zone_bottom_y -= adjustment
         
         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
         
@@ -1455,6 +1872,7 @@ class DistanceToZone:
         hitter_frame_idx: Optional[int] = None,
         hitter_box: Optional[Tuple[int, int, int, int]] = None,
         homeplate_box: Optional[Tuple[int, int, int, int]] = None,
+        hitter_pose_3d: Optional[Dict] = None,
         frames_before: int = 8,
         frames_after: int = 8
     ) -> str:
@@ -1476,6 +1894,7 @@ class DistanceToZone:
             hitter_frame_idx (Optional[int]): Frame where hitter was detected
             hitter_box (Optional[Tuple[int, int, int, int]]): Bounding box for hitter
             homeplate_box (Optional[Tuple[int, int, int, int]]): Home plate bounding box
+            hitter_pose_3d (Optional[Dict]): MediaPipe 3D pose results
             frames_before (int): Number of frames before glove contact to show zone
             frames_after (int): Number of frames after glove contact to show zone
             
@@ -1539,35 +1958,100 @@ class DistanceToZone:
         ]
         
         # Calculate strike zone landmarks from pose if available
-        strike_zone_lines = {}
+        strike_zone_landmarks = {}
+        
+        # Extract key landmarks for horizontal markers
+        elbow_y = None
+        knee_y = None
+        hip_y = None
+        
         if hitter_keypoints is not None:
             # Calculate knee line (bottom of strike zone)
             left_knee = hitter_keypoints[13]
             right_knee = hitter_keypoints[14]
-            if left_knee[2] > 0.5 and right_knee[2] > 0.5:
+            if left_knee[2] > 0.3 and right_knee[2] > 0.3:
                 knee_y = min(left_knee[1].item(), right_knee[1].item())
-                strike_zone_lines["knee_y"] = knee_y
-            elif left_knee[2] > 0.5:
-                strike_zone_lines["knee_y"] = left_knee[1].item()
-            elif right_knee[2] > 0.5:
-                strike_zone_lines["knee_y"] = right_knee[1].item()
+                strike_zone_landmarks["knee_y"] = knee_y
+            elif left_knee[2] > 0.3:
+                knee_y = left_knee[1].item()
+                strike_zone_landmarks["knee_y"] = knee_y
+            elif right_knee[2] > 0.3:
+                knee_y = right_knee[1].item()
+                strike_zone_landmarks["knee_y"] = knee_y
+            
+            # Calculate elbow position for horizontal marker
+            left_elbow = hitter_keypoints[7]
+            right_elbow = hitter_keypoints[8]
+            if left_elbow[2] > 0.3 and right_elbow[2] > 0.3:
+                elbow_y = min(left_elbow[1].item(), right_elbow[1].item())
+                strike_zone_landmarks["elbow_y"] = elbow_y
+            elif left_elbow[2] > 0.3:
+                elbow_y = left_elbow[1].item()
+                strike_zone_landmarks["elbow_y"] = elbow_y
+            elif right_elbow[2] > 0.3:
+                elbow_y = right_elbow[1].item()
+                strike_zone_landmarks["elbow_y"] = elbow_y
+            
+            # Calculate hip position for gap measurement
+            left_hip = hitter_keypoints[11]
+            right_hip = hitter_keypoints[12]
+            if left_hip[2] > 0.3 and right_hip[2] > 0.3:
+                hip_y = (left_hip[1].item() + right_hip[1].item()) / 2
+                strike_zone_landmarks["hip_y"] = hip_y
+            elif left_hip[2] > 0.3:
+                hip_y = left_hip[1].item()
+                strike_zone_landmarks["hip_y"] = hip_y
+            elif right_hip[2] > 0.3:
+                hip_y = right_hip[1].item()
+                strike_zone_landmarks["hip_y"] = hip_y
             
             # Calculate mid-torso line (top of strike zone)
-            shoulders_detected = (hitter_keypoints[5][2] > 0.5 or hitter_keypoints[6][2] > 0.5)
-            hips_detected = (hitter_keypoints[11][2] > 0.5 or hitter_keypoints[12][2] > 0.5)
+            shoulders_detected = (hitter_keypoints[5][2] > 0.3 or hitter_keypoints[6][2] > 0.3)
+            hips_detected = (hitter_keypoints[11][2] > 0.3 or hitter_keypoints[12][2] > 0.3)
             
             if shoulders_detected and hips_detected:
                 shoulders_y = (hitter_keypoints[5][1].item() + hitter_keypoints[6][1].item()) / 2 if (
-                    hitter_keypoints[5][2] > 0.5 and hitter_keypoints[6][2] > 0.5) else (
-                    hitter_keypoints[5][1].item() if hitter_keypoints[5][2] > 0.5 else hitter_keypoints[6][1].item()
+                    hitter_keypoints[5][2] > 0.3 and hitter_keypoints[6][2] > 0.3) else (
+                    hitter_keypoints[5][1].item() if hitter_keypoints[5][2] > 0.3 else hitter_keypoints[6][1].item()
                 )
                 
                 hips_y = (hitter_keypoints[11][1].item() + hitter_keypoints[12][1].item()) / 2 if (
-                    hitter_keypoints[11][2] > 0.5 and hitter_keypoints[12][2] > 0.5) else (
-                    hitter_keypoints[11][1].item() if hitter_keypoints[11][2] > 0.5 else hitter_keypoints[12][1].item()
+                    hitter_keypoints[11][2] > 0.3 and hitter_keypoints[12][2] > 0.3) else (
+                    hitter_keypoints[11][1].item() if hitter_keypoints[11][2] > 0.3 else hitter_keypoints[12][1].item()
                 )
                 
-                strike_zone_lines["top_y"] = (shoulders_y + hips_y) / 2
+                strike_zone_landmarks["top_y"] = (shoulders_y + hips_y) / 2
+        
+        # Get landmarks from MediaPipe 3D pose if available
+        if hitter_pose_3d is not None:
+            landmarks = hitter_pose_3d["results"].pose_landmarks
+            offset_x, offset_y = hitter_pose_3d["offset"]
+            
+            if landmarks:
+                # Knees
+                if landmarks.landmark[25].visibility > 0.3 or landmarks.landmark[26].visibility > 0.3:
+                    left_knee_y = int(landmarks.landmark[25].y * height) + offset_y if landmarks.landmark[25].visibility > 0.3 else float('inf')
+                    right_knee_y = int(landmarks.landmark[26].y * height) + offset_y if landmarks.landmark[26].visibility > 0.3 else float('inf')
+                    knee_y = min(left_knee_y, right_knee_y)
+                    if knee_y < float('inf'):
+                        strike_zone_landmarks["knee_y"] = knee_y
+                
+                # Elbows
+                if landmarks.landmark[13].visibility > 0.3 or landmarks.landmark[14].visibility > 0.3:
+                    left_elbow_y = int(landmarks.landmark[13].y * height) + offset_y if landmarks.landmark[13].visibility > 0.3 else float('inf')
+                    right_elbow_y = int(landmarks.landmark[14].y * height) + offset_y if landmarks.landmark[14].visibility > 0.3 else float('inf')
+                    elbow_y = min(left_elbow_y, right_elbow_y)
+                    if elbow_y < float('inf'):
+                        strike_zone_landmarks["elbow_y"] = elbow_y
+                
+                # Hips
+                if landmarks.landmark[23].visibility > 0.3 or landmarks.landmark[24].visibility > 0.3:
+                    left_hip_y = int(landmarks.landmark[23].y * height) + offset_y if landmarks.landmark[23].visibility > 0.3 else 0
+                    right_hip_y = int(landmarks.landmark[24].y * height) + offset_y if landmarks.landmark[24].visibility > 0.3 else 0
+                    total_visible = (1 if landmarks.landmark[23].visibility > 0.3 else 0) + (1 if landmarks.landmark[24].visibility > 0.3 else 0)
+                    if total_visible > 0:
+                        hip_y = (left_hip_y + right_hip_y) / total_visible
+                        strike_zone_landmarks["hip_y"] = hip_y
         
         # Process each frame
         pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
@@ -1580,7 +2064,7 @@ class DistanceToZone:
         # Fix for potential None issues with ball_glove_frame
         if ball_glove_frame is None:
             ball_glove_frame = total_frames // 2  # Use middle frame as a fallback
-        
+            
         for frame_idx in range(total_frames):
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
@@ -1589,6 +2073,20 @@ class DistanceToZone:
             
             # Create a copy for annotations
             annotated_frame = frame.copy()
+            
+            # Draw the distance info box for the ENTIRE video (not just at contact)
+            # First add a semi-transparent background for better visibility
+            if distance_inches is not None:
+                overlay = annotated_frame.copy()
+                cv2.rectangle(overlay, (width - 310, 20), (width - 10, 140), (0, 0, 0), -1)
+                cv2.addWeighted(overlay, 0.7, annotated_frame, 0.3, 0, annotated_frame)
+                cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Distance: {distance_inches:.2f} inches", (width - 300, 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Position: {position}", (width - 300, 80),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Frame: {frame_idx}", (width - 300, 110),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             
             # Draw catcher detections (green)
             if frame_idx in catcher_by_frame:
@@ -1628,98 +2126,105 @@ class DistanceToZone:
                 home_center_y = (homeplate_box[1] + homeplate_box[3]) // 2
                 cv2.circle(annotated_frame, (home_center_x, home_center_y), 5, (0, 128, 255), -1)
             
-            # Draw strike zone around ball-glove contact
-            if ball_glove_frame is not None and ball_glove_frame - frames_before <= frame_idx <= ball_glove_frame + frames_after:
-                # Draw strike zone (yellow)
-                cv2.rectangle(annotated_frame, (zone_left, zone_top), (zone_right, zone_bottom), (0, 255, 255), 2)
-                cv2.putText(annotated_frame, "Strike Zone", (zone_left, zone_top - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                cv2.putText(annotated_frame, f"Width: {zone_width}px (17in)", (zone_left, zone_bottom + 20),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-                cv2.putText(annotated_frame, f"Height: {zone_height}px", (zone_left, zone_bottom + 40),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            # Always draw strike zone (not just around ball-glove contact)
+            # Draw strike zone (yellow)
+            cv2.rectangle(annotated_frame, (zone_left, zone_top), (zone_right, zone_bottom), (0, 255, 255), 2)
+            cv2.putText(annotated_frame, "Strike Zone", (zone_left, zone_top - 10),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            
+            # Draw line from home plate center to strike zone center if available
+            if homeplate_box is not None:
+                home_center_x = (homeplate_box[0] + homeplate_box[2]) // 2
+                home_center_y = (homeplate_box[1] + homeplate_box[3]) // 2
+                zone_center_x = (zone_left + zone_right) // 2
+                zone_center_y = (zone_top + zone_bottom) // 2
+                cv2.line(annotated_frame, (home_center_x, home_center_y), 
+                        (zone_center_x, zone_center_y), (0, 255, 255), 1, cv2.LINE_AA)
+            
+            # Draw horizontal markers for key landmarks (elbow and knee)
+            if "elbow_y" in strike_zone_landmarks:
+                elbow_y = int(strike_zone_landmarks["elbow_y"])
+                cv2.line(annotated_frame, (0, elbow_y), (width, elbow_y),
+                        (255, 165, 0), 2, cv2.LINE_AA)  # Orange
+                cv2.putText(annotated_frame, "Elbow Level", (10, elbow_y - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 1)
+            
+            if "knee_y" in strike_zone_landmarks:
+                knee_y = int(strike_zone_landmarks["knee_y"])
+                cv2.line(annotated_frame, (0, knee_y), (width, knee_y),
+                        (255, 255, 0), 2, cv2.LINE_AA)  # Yellow
+                cv2.putText(annotated_frame, "Knee Level", (10, knee_y - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            
+            # Ball crosses zone info at ball-glove contact frame
+            if frame_idx == ball_glove_frame:
+                cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
-                # Draw line from home plate center to strike zone center
-                if homeplate_box is not None:
-                    home_center_x = (homeplate_box[0] + homeplate_box[2]) // 2
-                    home_center_y = (homeplate_box[1] + homeplate_box[3]) // 2
-                    zone_center_x = (zone_left + zone_right) // 2
-                    zone_center_y = (zone_top + zone_bottom) // 2
-                    cv2.line(annotated_frame, (home_center_x, home_center_y), 
-                            (zone_center_x, zone_center_y), (0, 255, 255), 1, cv2.LINE_AA)
-                
-                # Add distance info at ball-glove contact frame
-                if frame_idx == ball_glove_frame and distance_inches is not None:
-                    # Add background rectangle for better visibility
-                    cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (0, 0, 0), -1)
-                    cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (255, 255, 255), 2)
-                    cv2.putText(annotated_frame, f"Distance: {distance_inches:.2f} inches", (width - 300, 50),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    cv2.putText(annotated_frame, f"Position: {position}", (width - 300, 80),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    cv2.putText(annotated_frame, f"Frame: {frame_idx}", (width - 300, 110),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                    
-                    # If ball is in this frame, draw line to nearest point on strike zone
-                    if frame_idx in ball_by_frame:
-                        ball_det = ball_by_frame[frame_idx][0]
-                        ball_cx = int((ball_det["x1"] + ball_det["x2"]) / 2)
-                        ball_cy = int((ball_det["y1"] + ball_det["y2"]) / 2)
-                        closest_x = max(zone_left, min(ball_cx, zone_right))
-                        closest_y = max(zone_top, min(ball_cy, zone_bottom))
-                        cv2.line(annotated_frame, (ball_cx, ball_cy), (closest_x, closest_y),
-                                (0, 255, 0), 2, cv2.LINE_AA)
-                        cv2.putText(annotated_frame, f"{distance_inches:.1f}\"",
-                                  ((ball_cx + closest_x)//2, (ball_cy + closest_y)//2),
-                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                # If ball is in this frame, draw line to nearest point on strike zone
+                if frame_idx in ball_by_frame:
+                    ball_det = ball_by_frame[frame_idx][0]
+                    ball_cx = int((ball_det["x1"] + ball_det["x2"]) / 2)
+                    ball_cy = int((ball_det["y1"] + ball_det["y2"]) / 2)
+                    closest_x = max(zone_left, min(ball_cx, zone_right))
+                    closest_y = max(zone_top, min(ball_cy, zone_bottom))
+                    cv2.line(annotated_frame, (ball_cx, ball_cy), (closest_x, closest_y),
+                            (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.putText(annotated_frame, f"{distance_inches:.1f}\"",
+                              ((ball_cx + closest_x)//2, (ball_cy + closest_y)//2),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
             # Draw the hitter box and pose information when available
             if hitter_box is not None:
-                # Only draw within certain range of hitter_frame_idx to avoid clutter
-                if hitter_frame_idx is None or abs(frame_idx - hitter_frame_idx) <= 10:
-                    # Draw the hitter box
-                    cv2.rectangle(annotated_frame,
-                                (hitter_box[0], hitter_box[1]),
-                                (hitter_box[2], hitter_box[3]),
-                                (255, 192, 0), 2)  # Blue-green
-                    cv2.putText(annotated_frame, "Hitter",
-                              (hitter_box[0], hitter_box[1] - 10),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 192, 0), 2)
+                # Draw the hitter box
+                cv2.rectangle(annotated_frame,
+                            (hitter_box[0], hitter_box[1]),
+                            (hitter_box[2], hitter_box[3]),
+                            (255, 192, 0), 2)  # Blue-green
+                cv2.putText(annotated_frame, "Hitter",
+                          (hitter_box[0], hitter_box[1] - 10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 192, 0), 2)
             
-            # Draw pose skeleton
-            if hitter_keypoints is not None and (hitter_frame_idx is None or abs(frame_idx - hitter_frame_idx) <= 10):
+            # Draw 2D pose skeleton
+            if hitter_keypoints is not None:
                 # Draw keypoints for hitter
                 for k in range(hitter_keypoints.shape[0]):
-                    if hitter_keypoints[k, 2] > 0.5:  # Confidence threshold
+                    if hitter_keypoints[k, 2] > 0.3:  # Confidence threshold
                         x, y = int(hitter_keypoints[k, 0].item()), int(hitter_keypoints[k, 1].item())
                         cv2.circle(annotated_frame, (x, y), 4, (255, 0, 255), -1)  # Magenta
                 
                 # Draw skeleton connections
                 for pair in skeleton:
-                    if (hitter_keypoints[pair[0], 2] > 0.5 and
-                        hitter_keypoints[pair[1], 2] > 0.5):
+                    if (hitter_keypoints[pair[0], 2] > 0.3 and
+                        hitter_keypoints[pair[1], 2] > 0.3):
                         pt1 = (int(hitter_keypoints[pair[0], 0].item()),
                                int(hitter_keypoints[pair[0], 1].item()))
                         pt2 = (int(hitter_keypoints[pair[1], 0].item()),
                                int(hitter_keypoints[pair[1], 1].item()))
                         cv2.line(annotated_frame, pt1, pt2, (255, 0, 255), 2)
+            
+            # Draw 3D pose overlay from MediaPipe
+            if hitter_pose_3d is not None:
+                # Draw the 3D pose
+                mp_results = hitter_pose_3d["results"]
+                offset_x, offset_y = hitter_pose_3d["offset"]
                 
-                # Draw strike zone reference lines from pose if available
-                if "knee_y" in strike_zone_lines:
-                    knee_y = int(strike_zone_lines["knee_y"])
-                    cv2.line(annotated_frame, (0, knee_y), (width, knee_y),
-                            (255, 255, 0), 1, cv2.LINE_AA)  # Yellow
-                    cv2.putText(annotated_frame, "SZ Bottom (Knees)", (10, knee_y - 5),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                # Create a copy for semi-transparent overlay
+                pose_overlay = annotated_frame.copy()
                 
-                if "top_y" in strike_zone_lines:
-                    top_y = int(strike_zone_lines["top_y"])
-                    cv2.line(annotated_frame, (0, top_y), (width, top_y),
-                            (255, 255, 0), 1, cv2.LINE_AA)  # Yellow
-                    cv2.putText(annotated_frame, "SZ Top (Mid-Torso)", (10, top_y - 5),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                # Draw the pose landmarks and connections
+                self.mp_drawing.draw_landmarks(
+                    pose_overlay,
+                    mp_results.pose_landmarks,
+                    self.mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style())
+                
+                # Add overlay with transparency
+                cv2.addWeighted(pose_overlay, 0.7, annotated_frame, 0.3, 0, annotated_frame)
+                
+                # Add "3D Pose" label
+                cv2.putText(annotated_frame, "3D Pose Overlay", (10, 60),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
             
             # Add frame number and timing info
             cv2.putText(annotated_frame, f"Frame: {frame_idx}", (10, height - 10),
@@ -1730,14 +2235,6 @@ class DistanceToZone:
                 if frame_idx == ball_glove_frame:
                     cv2.putText(annotated_frame, "GLOVE CONTACT FRAME", (10, height - 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-                elif frame_idx == ball_glove_frame - 2:
-                    cv2.putText(annotated_frame, "ORIGINAL CONTACT FRAME", (10, height - 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-                        
-            # Add hitter frame indicator if available
-            if hitter_frame_idx is not None and frame_idx == hitter_frame_idx:
-                cv2.putText(annotated_frame, "HITTER POSE FRAME", (10, height - 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
             
             # Store frames for slow motion replay
             if slow_motion_start <= frame_idx <= slow_motion_end:
@@ -1746,11 +2243,11 @@ class DistanceToZone:
             out.write(annotated_frame)
             pbar.update(1)
         
-        # Add slow motion replay (at 1/4 speed)
+        # Add slow motion replay (at 1/8 speed)
         if slow_motion_frames:
             # Add a transition frame with text "SLOW MOTION REPLAY"
             transition_frame = np.zeros((height, width, 3), dtype=np.uint8)
-            cv2.putText(transition_frame, "SLOW MOTION REPLAY (1/4 SPEED)", 
+            cv2.putText(transition_frame, "SLOW MOTION REPLAY (1/8 SPEED)", 
                       (width // 2 - 200, height // 2),
                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             
@@ -1758,14 +2255,14 @@ class DistanceToZone:
             for _ in range(int(fps)):  # Pause for 1 second
                 out.write(transition_frame)
             
-            # Add the slow motion frames (each frame 4 times)
+            # Add the slow motion frames (each frame 8 times for 1/8 speed)
             for frame in slow_motion_frames:
                 # Add "SLOW MOTION" label
-                cv2.putText(frame, "SLOW MOTION", (width - 200, 30),
+                cv2.putText(frame, "SLOW MOTION (1/8x)", (width - 240, 30),
                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
                 
-                # Repeat each frame 4 times for quarter speed
-                for _ in range(4):
+                # Repeat each frame 8 times for 1/8 speed
+                for _ in range(8):
                     out.write(frame)
         
         # Close the writer and progress bar
