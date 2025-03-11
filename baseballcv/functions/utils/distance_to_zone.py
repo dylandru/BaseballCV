@@ -310,6 +310,9 @@ class DistanceToZone:
             if csv_path is None:
                 csv_path = os.path.join(self.results_dir, "distance_to_zone_results.csv")
             
+            # Create the directory if it doesn't exist
+            os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
+            
             # Create DataFrame from detailed results
             df = pd.DataFrame(detailed_results)
             
