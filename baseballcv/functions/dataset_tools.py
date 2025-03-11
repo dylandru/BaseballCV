@@ -38,7 +38,7 @@ class DataTools:
                            max_videos_per_game: int = 10,
                            start_date: str = "2024-05-22",
                            end_date: str = "2024-07-25",
-                           delete_savant_videos: bool = True) -> None:
+                           delete_savant_videos: bool = True) -> (str | None):
         """
         Extracts random frames from scraped Baseball Savant broadcast videos to create a photo dataset for a 
         Computer Vision model.
@@ -135,6 +135,8 @@ class DataTools:
         
         if delete_savant_videos:
             self.scraper.cleanup_savant_videos(video_download_folder)
+
+        return self.output_folder
     
     def automated_annotation(self, 
                              model_alias: str,
