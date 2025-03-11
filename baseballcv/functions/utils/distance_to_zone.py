@@ -75,7 +75,9 @@ class DistanceToZone:
         pitch_call: str = None,
         max_videos: int = None,
         max_videos_per_game: int = None,
-        create_video: bool = True
+        create_video: bool = True,
+        save_csv: bool = True,  # New parameter for CSV output
+        csv_path: str = None    # Path for the CSV file
     ) -> List[Dict]:
         """
         Analyze videos from a date range to calculate distances to strike zone.
@@ -88,6 +90,8 @@ class DistanceToZone:
             max_videos (int): Maximum number of videos to process
             max_videos_per_game (int): Maximum videos per game
             create_video (bool): Whether to create annotated videos
+            save_csv (bool): Whether to save analysis results to CSV
+            csv_path (str): Custom path for CSV file (default: results/distance_to_zone_results.csv)
             
         Returns:
             List[Dict]: List of analysis results per video
@@ -109,6 +113,10 @@ class DistanceToZone:
         video_files = [os.path.join(download_folder, f) for f in os.listdir(download_folder) if f.endswith('.mp4')]
         
         dtoz_results = []
+        
+        # Create a detailed data collection list for CSV
+        detailed_results = []
+        
         for video_path in video_files:
             video_name = os.path.splitext(os.path.basename(video_path))[0]
             play_id = video_name.split('_')[-1]
@@ -185,9 +193,10 @@ class DistanceToZone:
             
             distance = None
             position = None
+            closest_point = None  # Store closest point for visualization
             
             if ball_center is not None and strike_zone is not None and pixels_per_foot is not None:
-                distance_pixels, distance_inches, position = self._calculate_distance_to_zone(
+                distance_pixels, distance_inches, position, closest_point = self._calculate_distance_to_zone(
                     ball_center, strike_zone, pixels_per_foot)
                 distance = distance_inches
 
@@ -210,9 +219,11 @@ class DistanceToZone:
                     hitter_frame_idx=hitter_frame_idx,
                     hitter_box=hitter_box,
                     homeplate_box=homeplate_box,
-                    hitter_pose_3d=hitter_pose_3d  # Added 3D pose for visualization
+                    hitter_pose_3d=hitter_pose_3d,  # Added 3D pose for visualization
+                    closest_point=closest_point     # Added closest point for measurement visualization
                 )
             
+            # Collect all data for results
             results = {
                 "video_name": video_name,
                 "play_id": play_id,
@@ -222,11 +233,93 @@ class DistanceToZone:
                 "strike_zone": strike_zone,
                 "distance_to_zone": distance,
                 "position": position,
-                "annotated_video": output_path if create_video else None
+                "annotated_video": output_path if create_video else None,
+                "in_zone": position == "In Zone" if position else None
             }
             
-            dtoz_results.append(results)
+            # Add detailed data collection for CSV
+            detailed_data = {
+                # Basic identification
+                "video_name": video_name,
+                "play_id": play_id,
+                "game_pk": game_pk,
+                
+                # Ball and glove information
+                "ball_glove_frame": ball_glove_frame,
+                "ball_center_x": ball_center[0] if ball_center else None,
+                "ball_center_y": ball_center[1] if ball_center else None,
+                
+                # Strike zone information
+                "zone_left": strike_zone[0] if strike_zone else None,
+                "zone_top": strike_zone[1] if strike_zone else None,
+                "zone_right": strike_zone[2] if strike_zone else None,
+                "zone_bottom": strike_zone[3] if strike_zone else None,
+                "zone_width_px": (strike_zone[2] - strike_zone[0]) if strike_zone else None,
+                "zone_height_px": (strike_zone[3] - strike_zone[1]) if strike_zone else None,
+                
+                # Distance measurements
+                "distance_to_zone_inches": distance,
+                "position_description": position,
+                "in_zone": position == "In Zone" if position else None,
+                "pixels_per_foot": pixels_per_foot,
+                
+                # Closest point coordinates
+                "closest_point_x": closest_point[0] if closest_point else None,
+                "closest_point_y": closest_point[1] if closest_point else None,
+                
+                # Home plate information
+                "homeplate_detected": homeplate_box is not None,
+                "homeplate_confidence": homeplate_confidence if homeplate_box else None,
+                "homeplate_x1": homeplate_box[0] if homeplate_box else None,
+                "homeplate_y1": homeplate_box[1] if homeplate_box else None,
+                "homeplate_x2": homeplate_box[2] if homeplate_box else None,
+                "homeplate_y2": homeplate_box[3] if homeplate_box else None,
+                
+                # Hitter information
+                "hitter_detected": hitter_box is not None,
+                "hitter_frame": hitter_frame_idx,
+                "hitter_box_x1": hitter_box[0] if hitter_box else None,
+                "hitter_box_y1": hitter_box[1] if hitter_box else None,
+                "hitter_box_x2": hitter_box[2] if hitter_box else None,
+                "hitter_box_y2": hitter_box[3] if hitter_box else None,
+                "pose_detected": hitter_keypoints is not None,
+                "pose3d_detected": hitter_pose_3d is not None,
+                
+                # Detection counts
+                "num_ball_detections": len(ball_detections),
+                "num_glove_detections": len(glove_detections),
+                "num_catcher_detections": len(catcher_detections),
+                
+                # Video output
+                "video_output_path": output_path if create_video else None,
+                
+                # Vertical adjustment factor used
+                "zone_vertical_adjustment": self.zone_vertical_adjustment
+            }
             
+            # Add any Statcast data that might be available
+            if pitch_data_row is not None:
+                for key, value in pitch_data_row.items():
+                    detailed_data[f"statcast_{key}"] = value
+            
+            detailed_results.append(detailed_data)
+            dtoz_results.append(results)
+        
+        # Save detailed data to CSV if requested
+        if save_csv and detailed_results:
+            if csv_path is None:
+                csv_path = os.path.join(self.results_dir, "distance_to_zone_results.csv")
+            
+            # Create DataFrame from detailed results
+            df = pd.DataFrame(detailed_results)
+            
+            # Save to CSV
+            df.to_csv(csv_path, index=False)
+            
+            if self.verbose:
+                print(f"Saved detailed results to {csv_path}")
+                print(f"CSV contains {len(df)} rows with {len(df.columns)} columns of data")
+        
         return dtoz_results
     
     def _get_catcher_position(self, catcher_detections: List[Dict], reference_frame: int) -> Optional[Tuple[int, int, int, int]]:
@@ -1818,7 +1911,7 @@ class DistanceToZone:
 
     def _calculate_distance_to_zone(self, ball_center: Tuple[float, float], 
                                     strike_zone: Tuple[int, int, int, int],
-                                    pixels_per_foot: float) -> Tuple[float, float, str]:
+                                    pixels_per_foot: float) -> Tuple[float, float, str, Tuple[float, float]]:
         """
         Calculate the distance from the ball to the nearest point on the strike zone.
         Using the MLB standard 17-inch strike zone width for calibration.
@@ -1829,18 +1922,37 @@ class DistanceToZone:
             pixels_per_foot (float): Conversion factor from pixels to feet
             
         Returns:
-            Tuple[float, float, str]: (distance in pixels, distance in inches, position description)
+            Tuple[float, float, str, Tuple[float, float]]: 
+                (distance in pixels, distance in inches, position description, closest point coordinates)
         """
         ball_x, ball_y = ball_center
         zone_left, zone_top, zone_right, zone_bottom = strike_zone
+        
+        # Define a small tolerance (1.5 inches in pixels) to avoid false positives at the boundary
+        inches_per_pixel = 12 / pixels_per_foot
+        tolerance_pixels = 1.5 / inches_per_pixel
         
         # Find closest point on strike zone boundary
         closest_x = max(zone_left, min(ball_x, zone_right))
         closest_y = max(zone_top, min(ball_y, zone_bottom))
         
-        # If ball is inside strike zone, distance is 0
-        if (zone_left <= ball_x <= zone_right and zone_top <= ball_y <= zone_bottom):
-            return 0, 0, "In Zone"
+        # Calculate distance in pixels
+        dx = ball_x - closest_x
+        dy = ball_y - closest_y
+        distance_pixels = math.sqrt(dx**2 + dy**2)
+        
+        # If ball is inside strike zone or within tolerance distance, distance is 0
+        inside_zone = (zone_left <= ball_x <= zone_right and zone_top <= ball_y <= zone_bottom)
+        
+        # Even if the coordinates suggest it's inside, double-check with distance calculation
+        # This will catch edge cases where the ball is very close to the boundary
+        if inside_zone and distance_pixels > tolerance_pixels:
+            # Double verify since we're getting conflicting results
+            if self.verbose:
+                print(f"Ball coordinates suggest inside zone but distance ({distance_pixels:.2f}px) > tolerance. Re-checking...")
+            
+            # If it's on the edge, force it to be outside
+            inside_zone = False
         
         # Calculate position description
         position = ""
@@ -1854,16 +1966,20 @@ class DistanceToZone:
         elif ball_x > zone_right:
             position += " Outside" if position else "Outside"
         
-        # Calculate distance in pixels
-        dx = ball_x - closest_x
-        dy = ball_y - closest_y
-        distance_pixels = math.sqrt(dx**2 + dy**2)
+        # If we're very close to being inside but distance > 0, make it explicit
+        if distance_pixels <= tolerance_pixels and not inside_zone:
+            position = "Borderline " + (position if position else "Edge")
         
+        # If truly inside, set distance to 0 and position to "In Zone"
+        if inside_zone:
+            distance_pixels = 0
+            position = "In Zone"
+            
         # Convert to inches
-        inches_per_pixel = 12 / pixels_per_foot
         distance_inches = distance_pixels * inches_per_pixel
         
-        return distance_pixels, distance_inches, position
+        # Return distance and the closest point coordinates for visualization
+        return distance_pixels, distance_inches, position, (closest_x, closest_y)
     
     def _create_annotated_video(
         self, 
@@ -1882,7 +1998,8 @@ class DistanceToZone:
         homeplate_box: Optional[Tuple[int, int, int, int]] = None,
         hitter_pose_3d: Optional[Dict] = None,
         frames_before: int = 8,
-        frames_after: int = 8
+        frames_after: int = 8,
+        closest_point: Optional[Tuple[float, float]] = None
     ) -> str:
         """
         Create an annotated video showing detections and strike zone.
@@ -1905,6 +2022,7 @@ class DistanceToZone:
             hitter_pose_3d (Optional[Dict]): MediaPipe 3D pose results
             frames_before (int): Number of frames before glove contact to show zone
             frames_after (int): Number of frames after glove contact to show zone
+            closest_point (Optional[Tuple[float, float]]): Coordinates of closest point on strike zone
             
         Returns:
             str: Path to the output video
@@ -1965,6 +2083,9 @@ class DistanceToZone:
             (12, 14), (14, 16)  # right leg
         ]
         
+        # For storing ball trajectory for visualization
+        ball_trajectory = []
+        
         # Process each frame
         pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
         
@@ -1990,31 +2111,35 @@ class DistanceToZone:
             # First add a semi-transparent background for better visibility
             if distance_inches is not None:
                 overlay = annotated_frame.copy()
-                cv2.rectangle(overlay, (width - 310, 20), (width - 10, 140), (0, 0, 0), -1)
+                cv2.rectangle(overlay, (width - 310, 20), (width - 10, 160), (0, 0, 0), -1)
                 cv2.addWeighted(overlay, 0.7, annotated_frame, 0.3, 0, annotated_frame)
-                cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (255, 255, 255), 2)
+                cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 160), (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"Distance: {distance_inches:.2f} inches", (width - 300, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"Position: {position}", (width - 300, 80),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"Frame: {frame_idx}", (width - 300, 110),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                # Add whether the pitch is inside/outside the zone
+                inside_zone = position == "In Zone"
+                cv2.putText(annotated_frame, f"In Zone: {'Yes' if inside_zone else 'No'}", (width - 300, 140),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             
             # Draw catcher detections (green)
             if frame_idx in catcher_by_frame:
                 for det in catcher_by_frame[frame_idx]:
                     cv2.rectangle(annotated_frame, (det["x1"], det["y1"]), (det["x2"], det["y2"]), (0, 255, 0), 2)
                     cv2.putText(annotated_frame, "Catcher", (det["x1"], det["y1"] - 10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
             # Draw glove detections (blue)
             if frame_idx in glove_by_frame:
                 for det in glove_by_frame[frame_idx]:
                     cv2.rectangle(annotated_frame, (det["x1"], det["y1"]), (det["x2"], det["y2"]), (255, 0, 0), 2)
                     cv2.putText(annotated_frame, "Glove", (det["x1"], det["y1"] - 10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
             
-            # Draw ball detections (red)
+            # Draw ball detections (red) and track trajectory
             if frame_idx in ball_by_frame:
                 for det in ball_by_frame[frame_idx]:
                     cv2.rectangle(annotated_frame, (det["x1"], det["y1"]), (det["x2"], det["y2"]), (0, 0, 255), 2)
@@ -2022,16 +2147,19 @@ class DistanceToZone:
                     ball_cy = int((det["y1"] + det["y2"]) / 2)
                     cv2.circle(annotated_frame, (ball_cx, ball_cy), 3, (0, 0, 255), -1)
                     cv2.putText(annotated_frame, "Ball", (det["x1"], det["y1"] - 10),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                    
+                    # Add to trajectory for visualization
+                    ball_trajectory.append((frame_idx, ball_cx, ball_cy))
             
             # Draw home plate if detected (orange)
             if homeplate_box is not None:
                 cv2.rectangle(annotated_frame, 
-                             (homeplate_box[0], homeplate_box[1]), 
-                             (homeplate_box[2], homeplate_box[3]), 
-                             (0, 128, 255), 2)
+                            (homeplate_box[0], homeplate_box[1]), 
+                            (homeplate_box[2], homeplate_box[3]), 
+                            (0, 128, 255), 2)
                 cv2.putText(annotated_frame, "Home Plate", (homeplate_box[0], homeplate_box[1] - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 128, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 128, 255), 2)
                 
                 # Draw center of home plate
                 home_center_x = (homeplate_box[0] + homeplate_box[2]) // 2
@@ -2042,7 +2170,7 @@ class DistanceToZone:
             # Draw strike zone (yellow)
             cv2.rectangle(annotated_frame, (zone_left, zone_top), (zone_right, zone_bottom), (0, 255, 255), 2)
             cv2.putText(annotated_frame, "Strike Zone", (zone_left, zone_top - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             
             # Draw line from home plate center to strike zone center if available
             if homeplate_box is not None:
@@ -2056,20 +2184,41 @@ class DistanceToZone:
             # Ball crosses zone info at ball-glove contact frame
             if frame_idx == ball_glove_frame:
                 cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 
-                # If ball is in this frame, draw line to nearest point on strike zone
-                if frame_idx in ball_by_frame:
+                # If ball is in this frame and closest_point is provided, draw the measurement
+                if frame_idx in ball_by_frame and closest_point is not None:
                     ball_det = ball_by_frame[frame_idx][0]
                     ball_cx = int((ball_det["x1"] + ball_det["x2"]) / 2)
                     ball_cy = int((ball_det["y1"] + ball_det["y2"]) / 2)
-                    closest_x = max(zone_left, min(ball_cx, zone_right))
-                    closest_y = max(zone_top, min(ball_cy, zone_bottom))
-                    cv2.line(annotated_frame, (ball_cx, ball_cy), (closest_x, closest_y),
-                            (0, 255, 0), 2, cv2.LINE_AA)
-                    cv2.putText(annotated_frame, f"{distance_inches:.1f}\"",
-                              ((ball_cx + closest_x)//2, (ball_cy + closest_y)//2),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    # Draw a larger, more visible marker at the ball position
+                    cv2.circle(annotated_frame, (ball_cx, ball_cy), 8, (0, 0, 255), -1)
+                    cv2.circle(annotated_frame, (ball_cx, ball_cy), 10, (255, 255, 255), 2)
+                    
+                    # Draw a marker at the closest point on the strike zone
+                    closest_x, closest_y = closest_point
+                    cv2.circle(annotated_frame, (int(closest_x), int(closest_y)), 8, (0, 255, 255), -1)
+                    cv2.circle(annotated_frame, (int(closest_x), int(closest_y)), 10, (255, 255, 255), 2)
+                    
+                    # Draw line between ball and closest point
+                    cv2.line(annotated_frame, (ball_cx, ball_cy), (int(closest_x), int(closest_y)),
+                            (255, 255, 0), 3, cv2.LINE_AA)
+                    
+                    # Add distance text
+                    midpoint_x = (ball_cx + int(closest_x)) // 2
+                    midpoint_y = (ball_cy + int(closest_y)) // 2
+                    text_position = (midpoint_x + 5, midpoint_y - 5)
+                    
+                    # Draw text with contrasting background
+                    text = f"{distance_inches:.1f}\""
+                    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+                    cv2.rectangle(annotated_frame, 
+                                (text_position[0] - 5, text_position[1] - text_size[1] - 5),
+                                (text_position[0] + text_size[0] + 5, text_position[1] + 5),
+                                (0, 0, 0), -1)
+                    cv2.putText(annotated_frame, text, text_position,
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             
             # Draw the hitter box and pose information when available
             if hitter_box is not None:
@@ -2079,8 +2228,8 @@ class DistanceToZone:
                             (hitter_box[2], hitter_box[3]),
                             (255, 192, 0), 2)  # Blue-green
                 cv2.putText(annotated_frame, "Hitter",
-                          (hitter_box[0], hitter_box[1] - 10),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 192, 0), 2)
+                        (hitter_box[0], hitter_box[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 192, 0), 2)
             
             # Draw 2D pose skeleton
             if hitter_keypoints is not None:
@@ -2095,9 +2244,9 @@ class DistanceToZone:
                     if (hitter_keypoints[pair[0], 2] > 0.3 and
                         hitter_keypoints[pair[1], 2] > 0.3):
                         pt1 = (int(hitter_keypoints[pair[0], 0].item()),
-                               int(hitter_keypoints[pair[0], 1].item()))
+                            int(hitter_keypoints[pair[0], 1].item()))
                         pt2 = (int(hitter_keypoints[pair[1], 0].item()),
-                               int(hitter_keypoints[pair[1], 1].item()))
+                            int(hitter_keypoints[pair[1], 1].item()))
                         cv2.line(annotated_frame, pt1, pt2, (255, 0, 255), 2)
             
             # Draw 3D pose overlay from MediaPipe (only if hitter box is also available)
@@ -2132,11 +2281,24 @@ class DistanceToZone:
                 
                 # Add "3D Pose" label
                 cv2.putText(annotated_frame, "3D Pose Overlay", (10, 60),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # Draw ball trajectory (last 10 positions)
+            trajectory_to_draw = [point for point in ball_trajectory if point[0] <= frame_idx]
+            if len(trajectory_to_draw) > 1:
+                # Only show last 10 points
+                trajectory_to_draw = trajectory_to_draw[-10:]
+                # Draw trajectory line
+                for i in range(1, len(trajectory_to_draw)):
+                    prev_frame, prev_x, prev_y = trajectory_to_draw[i-1]
+                    curr_frame, curr_x, curr_y = trajectory_to_draw[i]
+                    # Only connect consecutive frames or frames that are close
+                    if curr_frame - prev_frame < 5:  # Connect only if frames are close
+                        cv2.line(annotated_frame, (prev_x, prev_y), (curr_x, curr_y), (255, 165, 0), 2)
             
             # Add frame number and timing info
             cv2.putText(annotated_frame, f"Frame: {frame_idx}", (10, height - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
             # Safely check if ball_glove_frame is not None before comparison
             if ball_glove_frame is not None:
@@ -2156,8 +2318,8 @@ class DistanceToZone:
             # Add a transition frame with text "SLOW MOTION REPLAY"
             transition_frame = np.zeros((height, width, 3), dtype=np.uint8)
             cv2.putText(transition_frame, "SLOW MOTION REPLAY (1/8 SPEED)", 
-                      (width // 2 - 200, height // 2),
-                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    (width // 2 - 200, height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             
             # Add transition frame multiple times to create a pause
             for _ in range(int(fps)):  # Pause for 1 second
@@ -2167,7 +2329,7 @@ class DistanceToZone:
             for frame in slow_motion_frames:
                 # Add "SLOW MOTION" label
                 cv2.putText(frame, "SLOW MOTION (1/8x)", (width - 240, 30),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
                 
                 # Repeat each frame 8 times for 1/8 speed
                 for _ in range(8):
