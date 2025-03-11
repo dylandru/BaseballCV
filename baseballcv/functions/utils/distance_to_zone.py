@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import os
 from tqdm import tqdm
@@ -28,7 +29,7 @@ class DistanceToZone:
         results_dir: str = "results",
         verbose: bool = True,
         device: str = None,
-        zone_adjustment_factor: float = 0.5  # Positive = toward homeplate, negative = away
+        zone_vertical_adjustment: float = 0.5  # New parameter to control vertical adjustment
     ):
         """
         Initialize the DistanceToZone class.
@@ -41,8 +42,9 @@ class DistanceToZone:
             results_dir (str): Directory to save results
             verbose (bool): Whether to print detailed progress information
             device (str): Device to run models on (cpu, cuda, etc.)
-            zone_adjustment_factor (float): Percentage of elbow-to-hip distance to adjust zone vertically
-                                          Positive = toward homeplate, negative = away from homeplate
+            zone_vertical_adjustment (float): Factor to adjust strike zone vertically as percentage 
+                                             of elbow-to-hip distance. Positive values move zone 
+                                             toward home plate, negative away from home plate.
         """
         self.load_tools = LoadTools()
         self.catcher_model = YOLO(self.load_tools.load_model(catcher_model))
@@ -55,18 +57,15 @@ class DistanceToZone:
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
         
-        # Store the zone adjustment factor
-        self.zone_adjustment_factor = zone_adjustment_factor
-        
         if verbose:
             print(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
-            print(f"Strike zone adjustment factor: {zone_adjustment_factor:.2f}")
         
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
         
         self.verbose = verbose
         self.device = device
+        self.zone_vertical_adjustment = zone_vertical_adjustment  # Store the adjustment factor
     
     def analyze(
         self, 
@@ -1437,16 +1436,14 @@ class DistanceToZone:
                         zone_bottom_y = int(knee_y)
                         zone_height_pixels = zone_bottom_y - zone_top_y
                         
-                        # Calculate adjustment for vertical position based on adjustment factor
+                        # Calculate adjustment for vertical position using configurable factor
+                        # Positive values move zone toward home plate (up in the image)
                         adjustment = 0
                         if elbow_y is not None and hip_y is not None:
-                            # Use configured adjustment factor (percentage of elbow-to-hip distance)
-                            # Positive = toward homeplate (upward), negative = away from homeplate (downward)
-                            elbow_hip_distance = hip_y - elbow_y
-                            adjustment = int(elbow_hip_distance * self.zone_adjustment_factor)
+                            # Use the configurable factor instead of fixed 0.5
+                            adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                             if self.verbose:
-                                print(f"Elbow-to-hip distance: {elbow_hip_distance} pixels")
-                                print(f"Adjusting strike zone by {adjustment} pixels (factor: {self.zone_adjustment_factor:.2f})")
+                                print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                         
                         # Recalculate calibration based on zone height and Statcast data
                         if self.verbose:
@@ -1456,10 +1453,10 @@ class DistanceToZone:
                         zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
                         zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                         
-                        # Apply the vertical adjustment - move zone based on adjustment factor
-                        # Negative adjustment moves down (away from plate), positive moves up (toward plate)
-                        zone_top_y -= adjustment
-                        zone_bottom_y -= adjustment
+                        # Apply the vertical adjustment - move zone up (closer to home plate) if positive factor
+                        if adjustment != 0:
+                            zone_top_y -= adjustment
+                            zone_bottom_y -= adjustment
                         
                         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                         
@@ -1547,22 +1544,22 @@ class DistanceToZone:
                             zone_bottom_y = int(knee_y)
                             zone_height_pixels = zone_bottom_y - zone_top_y
                             
-                            # Calculate adjustment based on adjustment factor
+                            # Calculate adjustment for vertical position using configurable factor
                             adjustment = 0
                             if elbow_y is not None and hip_y is not None:
-                                elbow_hip_distance = hip_y - elbow_y
-                                adjustment = int(elbow_hip_distance * self.zone_adjustment_factor)
+                                # Use the configurable factor instead of fixed 0.5
+                                adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                                 if self.verbose:
-                                    direction = "toward" if adjustment > 0 else "away from"
-                                    print(f"Adjusting strike zone {direction} home plate by {abs(adjustment)} pixels")
+                                    print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                             
                             # Center the zone horizontally
                             zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
                             zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                             
                             # Apply the vertical adjustment
-                            zone_top_y -= adjustment
-                            zone_bottom_y -= adjustment
+                            if adjustment != 0:
+                                zone_top_y -= adjustment
+                                zone_bottom_y -= adjustment
                             
                             strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                             
@@ -1597,10 +1594,12 @@ class DistanceToZone:
             zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
             
             # Apply a standard adjustment to move the zone up a bit (closer to home plate)
-            # This mimics the adjustment we would do with pose data
-            adjustment = int(zone_height_pixels * 0.15)  # Apply approximately 15% adjustment
-            zone_top_y -= adjustment
-            zone_bottom_y -= adjustment
+            # Use the configurable adjustment factor
+            zone_height_pixels = zone_bottom_y - zone_top_y
+            adjustment = int(zone_height_pixels * 0.15 * self.zone_vertical_adjustment)
+            if adjustment != 0:
+                zone_top_y -= adjustment
+                zone_bottom_y -= adjustment
             
             strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
             
@@ -1682,12 +1681,12 @@ class DistanceToZone:
                 zone_width_pixels = int(17.0 * pixels_per_inch)
                 zone_height_pixels = int(knee_y - top_y)
                 
-                # Calculate adjustment (half distance from elbow to hip)
+                # Calculate adjustment using configurable factor
                 adjustment = 0
                 if elbow_y is not None and hip_y is not None:
-                    adjustment = int((hip_y - elbow_y) / 2)
+                    adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                     if self.verbose:
-                        print(f"Adjusting strike zone up by {adjustment} pixels (half elbow-to-hip distance)")
+                        print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                 
                 # Construct the strike zone
                 zone_left_x = int(hitter_center_x - (zone_width_pixels / 2))
@@ -1696,7 +1695,7 @@ class DistanceToZone:
                 zone_bottom_y = int(knee_y)
                 
                 # Apply the vertical adjustment
-                if adjustment > 0:
+                if adjustment != 0:
                     zone_top_y -= adjustment
                     zone_bottom_y -= adjustment
                 
@@ -1766,10 +1765,11 @@ class DistanceToZone:
                 zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
                 zone_right_x = int(plate_center_x + (zone_width_pixels / 2))
                 
-                # Calculate adjustment using adjustment factor
-                adjustment = int(zone_height_pixels * self.zone_adjustment_factor * 0.3)
-                zone_top_y -= adjustment
-                zone_bottom_y -= adjustment
+                # Apply adjustment based on configurable factor
+                adjustment = int(zone_height_pixels * 0.15 * self.zone_vertical_adjustment)
+                if adjustment != 0:
+                    zone_top_y -= adjustment
+                    zone_bottom_y -= adjustment
                 
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
@@ -1803,10 +1803,11 @@ class DistanceToZone:
         zone_bottom_y = height * 3 // 4
         zone_top_y = zone_bottom_y - zone_height
         
-        # Apply a slight vertical adjustment
-        adjustment = int(zone_height * 0.15)
-        zone_top_y -= adjustment
-        zone_bottom_y -= adjustment
+        # Apply adjustment based on configurable factor
+        adjustment = int(zone_height * 0.15 * self.zone_vertical_adjustment)
+        if adjustment != 0:
+            zone_top_y -= adjustment
+            zone_bottom_y -= adjustment
         
         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
         
@@ -1964,102 +1965,6 @@ class DistanceToZone:
             (12, 14), (14, 16)  # right leg
         ]
         
-        # Calculate strike zone landmarks from pose if available
-        strike_zone_landmarks = {}
-        
-        # Extract key landmarks for horizontal markers
-        elbow_y = None
-        knee_y = None
-        hip_y = None
-        
-        if hitter_keypoints is not None:
-            # Calculate knee line (bottom of strike zone)
-            left_knee = hitter_keypoints[13]
-            right_knee = hitter_keypoints[14]
-            if left_knee[2] > 0.3 and right_knee[2] > 0.3:
-                knee_y = min(left_knee[1].item(), right_knee[1].item())
-                strike_zone_landmarks["knee_y"] = knee_y
-            elif left_knee[2] > 0.3:
-                knee_y = left_knee[1].item()
-                strike_zone_landmarks["knee_y"] = knee_y
-            elif right_knee[2] > 0.3:
-                knee_y = right_knee[1].item()
-                strike_zone_landmarks["knee_y"] = knee_y
-            
-            # Calculate elbow position for horizontal marker
-            left_elbow = hitter_keypoints[7]
-            right_elbow = hitter_keypoints[8]
-            if left_elbow[2] > 0.3 and right_elbow[2] > 0.3:
-                elbow_y = min(left_elbow[1].item(), right_elbow[1].item())
-                strike_zone_landmarks["elbow_y"] = elbow_y
-            elif left_elbow[2] > 0.3:
-                elbow_y = left_elbow[1].item()
-                strike_zone_landmarks["elbow_y"] = elbow_y
-            elif right_elbow[2] > 0.3:
-                elbow_y = right_elbow[1].item()
-                strike_zone_landmarks["elbow_y"] = elbow_y
-            
-            # Calculate hip position for gap measurement
-            left_hip = hitter_keypoints[11]
-            right_hip = hitter_keypoints[12]
-            if left_hip[2] > 0.3 and right_hip[2] > 0.3:
-                hip_y = (left_hip[1].item() + right_hip[1].item()) / 2
-                strike_zone_landmarks["hip_y"] = hip_y
-            elif left_hip[2] > 0.3:
-                hip_y = left_hip[1].item()
-                strike_zone_landmarks["hip_y"] = hip_y
-            elif right_hip[2] > 0.3:
-                hip_y = right_hip[1].item()
-                strike_zone_landmarks["hip_y"] = hip_y
-            
-            # Calculate mid-torso line (top of strike zone)
-            shoulders_detected = (hitter_keypoints[5][2] > 0.3 or hitter_keypoints[6][2] > 0.3)
-            hips_detected = (hitter_keypoints[11][2] > 0.3 or hitter_keypoints[12][2] > 0.3)
-            
-            if shoulders_detected and hips_detected:
-                shoulders_y = (hitter_keypoints[5][1].item() + hitter_keypoints[6][1].item()) / 2 if (
-                    hitter_keypoints[5][2] > 0.3 and hitter_keypoints[6][2] > 0.3) else (
-                    hitter_keypoints[5][1].item() if hitter_keypoints[5][2] > 0.3 else hitter_keypoints[6][1].item()
-                )
-                
-                hips_y = (hitter_keypoints[11][1].item() + hitter_keypoints[12][1].item()) / 2 if (
-                    hitter_keypoints[11][2] > 0.3 and hitter_keypoints[12][2] > 0.3) else (
-                    hitter_keypoints[11][1].item() if hitter_keypoints[11][2] > 0.3 else hitter_keypoints[12][1].item()
-                )
-                
-                strike_zone_landmarks["top_y"] = (shoulders_y + hips_y) / 2
-        
-        # Get landmarks from MediaPipe 3D pose if available
-        if hitter_pose_3d is not None:
-            landmarks = hitter_pose_3d["results"].pose_landmarks
-            offset_x, offset_y = hitter_pose_3d["offset"]
-            
-            if landmarks:
-                # Knees
-                if landmarks.landmark[25].visibility > 0.3 or landmarks.landmark[26].visibility > 0.3:
-                    left_knee_y = int(landmarks.landmark[25].y * height) + offset_y if landmarks.landmark[25].visibility > 0.3 else float('inf')
-                    right_knee_y = int(landmarks.landmark[26].y * height) + offset_y if landmarks.landmark[26].visibility > 0.3 else float('inf')
-                    knee_y = min(left_knee_y, right_knee_y)
-                    if knee_y < float('inf'):
-                        strike_zone_landmarks["knee_y"] = knee_y
-                
-                # Elbows
-                if landmarks.landmark[13].visibility > 0.3 or landmarks.landmark[14].visibility > 0.3:
-                    left_elbow_y = int(landmarks.landmark[13].y * height) + offset_y if landmarks.landmark[13].visibility > 0.3 else float('inf')
-                    right_elbow_y = int(landmarks.landmark[14].y * height) + offset_y if landmarks.landmark[14].visibility > 0.3 else float('inf')
-                    elbow_y = min(left_elbow_y, right_elbow_y)
-                    if elbow_y < float('inf'):
-                        strike_zone_landmarks["elbow_y"] = elbow_y
-                
-                # Hips
-                if landmarks.landmark[23].visibility > 0.3 or landmarks.landmark[24].visibility > 0.3:
-                    left_hip_y = int(landmarks.landmark[23].y * height) + offset_y if landmarks.landmark[23].visibility > 0.3 else 0
-                    right_hip_y = int(landmarks.landmark[24].y * height) + offset_y if landmarks.landmark[24].visibility > 0.3 else 0
-                    total_visible = (1 if landmarks.landmark[23].visibility > 0.3 else 0) + (1 if landmarks.landmark[24].visibility > 0.3 else 0)
-                    if total_visible > 0:
-                        hip_y = (left_hip_y + right_hip_y) / total_visible
-                        strike_zone_landmarks["hip_y"] = hip_y
-        
         # Process each frame
         pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
         
@@ -2147,6 +2052,24 @@ class DistanceToZone:
                 zone_center_y = (zone_top + zone_bottom) // 2
                 cv2.line(annotated_frame, (home_center_x, home_center_y), 
                         (zone_center_x, zone_center_y), (0, 255, 255), 1, cv2.LINE_AA)
+            
+            # Ball crosses zone info at ball-glove contact frame
+            if frame_idx == ball_glove_frame:
+                cv2.putText(annotated_frame, "BALL CROSSES ZONE", (width // 2 - 150, 30),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                
+                # If ball is in this frame, draw line to nearest point on strike zone
+                if frame_idx in ball_by_frame:
+                    ball_det = ball_by_frame[frame_idx][0]
+                    ball_cx = int((ball_det["x1"] + ball_det["x2"]) / 2)
+                    ball_cy = int((ball_det["y1"] + ball_det["y2"]) / 2)
+                    closest_x = max(zone_left, min(ball_cx, zone_right))
+                    closest_y = max(zone_top, min(ball_cy, zone_bottom))
+                    cv2.line(annotated_frame, (ball_cx, ball_cy), (closest_x, closest_y),
+                            (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.putText(annotated_frame, f"{distance_inches:.1f}\"",
+                              ((ball_cx + closest_x)//2, (ball_cy + closest_y)//2),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
             # Draw the hitter box and pose information when available
             if hitter_box is not None:
