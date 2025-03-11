@@ -1,6 +1,6 @@
 def test_imports():
-    from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper
-    from baseballcv.model import DETR, PaliGemma2, Florence2
+    from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper, BaseballTools
+    from baseballcv.model import DETR, PaliGemma2, Florence2, YOLOv9
     from baseballcv.datasets import CocoDetectionDataset, JSONLDetection, DataProcessor
 
     assert DataTools is not None
@@ -9,6 +9,8 @@ def test_imports():
     assert DETR is not None
     assert PaliGemma2 is not None
     assert Florence2 is not None
+    assert YOLOv9 is not None
     assert CocoDetectionDataset is not None
     assert JSONLDetection is not None
     assert DataProcessor is not None
+    assert BaseballTools is not None

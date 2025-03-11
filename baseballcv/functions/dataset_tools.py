@@ -65,7 +65,7 @@ class DataTools:
                                 download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game, max_workers=1)
                 
         os.makedirs(self.output_folder, exist_ok=True)
-        video_files = [f for f in os.listdir(video_download_folder) if f.endswith(('.mp4', '.mov'))]
+        video_files = [f for f in os.listdir(video_download_folder) if f.endswith(('.mp4', '.mov', '.mts'))]
         
         if not video_files:
             print("No video files found in the specified folder.") 

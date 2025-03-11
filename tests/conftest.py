@@ -2,7 +2,7 @@ import pytest
 import multiprocessing as mp
 from unittest.mock import Mock
 import requests
-from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper
+from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper, BaseballTools
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_multiprocessing() -> None:
@@ -43,6 +43,16 @@ def scraper() -> BaseballSavVideoScraper:
         BaseballSavVideoScraper: An instance of BaseballSavVideoScraper.
     """
     return BaseballSavVideoScraper()
+
+@pytest.fixture
+def baseball_tools() -> BaseballTools:
+    """
+    Provides a BaseballTools instance for testing.
+
+    Returns:
+        BaseballTools: An instance of BaseballTools.
+    """
+    return BaseballTools()
 
 @pytest.fixture
 def mock_responses() -> tuple:

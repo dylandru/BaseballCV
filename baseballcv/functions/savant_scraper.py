@@ -153,8 +153,6 @@ class BaseballSavVideoScraper:
         """
         start_date, end_date = pd.Timestamp(start_date) if isinstance(start_date, str) else start_date, pd.Timestamp(end_date) if isinstance(end_date, str) else end_date
 
-        print(f"start_date: {start_date}")
-        print(f"end_date: {end_date}")
         statcast_df = (statcast_pitches.load()
                        .filter(
             (pl.col("game_date").dt.date() >= start_date.date()) &
