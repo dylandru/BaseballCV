@@ -48,22 +48,8 @@ class DistanceToZone:
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
         self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
-        # DEBUG: Print model class names to identify available classes
-        print("\n--- DEBUG: Available Classes in Models ---")
-        print(f"Catcher model ({catcher_model}) classes: {self.catcher_model.names}")
-        print(f"Glove model ({glove_model}) classes: {self.glove_model.names}")
-        print(f"Ball model ({ball_model}) classes: {self.ball_model.names}")
-        print(f"Homeplate model ({homeplate_model}) classes: {self.homeplate_model.names}")
-        
-        # DEBUG: Check specifically for 'homeplate' or similar classes
-        homeplate_classes = []
-        for idx, cls_name in self.homeplate_model.names.items():
-            if 'plate' in cls_name.lower() or 'home' in cls_name.lower():
-                homeplate_classes.append((idx, cls_name))
-        if homeplate_classes:
-            print(f"Found potential homeplate classes: {homeplate_classes}")
-        else:
-            print("WARNING: No classes containing 'plate' or 'home' found in homeplate model!")
+        if verbose:
+            print(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
         
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
@@ -126,7 +112,8 @@ class DistanceToZone:
                     break
             
             if pitch_data_row is None:
-                print(f"No pitch data found for play_id {play_id}, skipping...")
+                if self.verbose:
+                    print(f"No pitch data found for play_id {play_id}, skipping...")
                 continue
                 
             output_path = os.path.join(self.results_dir, f"distance_to_zone_{play_id}.mp4")
@@ -287,7 +274,7 @@ class DistanceToZone:
             List[Dict]: List of detection dictionaries
         """
         if self.verbose:
-            print(f"\nDetecting {object_name} in video: {os.path.basename(video_path)}")
+            print(f"Detecting {object_name} in video: {os.path.basename(video_path)}")
         
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -297,17 +284,6 @@ class DistanceToZone:
         
         pbar = tqdm(total=total_frames, desc=f"{object_name.capitalize()} Detection", 
                    disable=not self.verbose)
-        
-        # DEBUG: Check if the requested object is in the model's class list
-        object_found = False
-        for cls_idx, cls_name in model.names.items():
-            if cls_name.lower() == object_name.lower():
-                object_found = True
-                break
-        
-        if not object_found:
-            print(f"DEBUG WARNING: '{object_name}' not found in model classes: {model.names}")
-            print(f"Available classes: {list(model.names.values())}")
         
         while cap.isOpened():
             ret, frame = cap.read()
@@ -321,10 +297,6 @@ class DistanceToZone:
                 for box in result.boxes:
                     cls = int(box.cls)
                     cls_name = model.names[cls].lower()
-                    
-                    # DEBUG: Print all detected classes in first few frames
-                    if frame_number < 5:
-                        print(f"DEBUG: Frame {frame_number}, detected class '{cls_name}' with conf {float(box.conf):.2f}")
                     
                     if cls_name == object_name.lower():
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
@@ -365,7 +337,7 @@ class DistanceToZone:
                 (frame index, ball center coordinates, ball detection dictionary)
         """
         if self.verbose:
-            print("\nDetecting when ball reaches glove...")
+            print("Detecting when ball reaches glove...")
 
         # Group detections by frame for easier processing
         glove_by_frame = {}
@@ -402,9 +374,7 @@ class DistanceToZone:
         ball_detection_sequences = find_continuous_sequences(ball_frames)
 
         if self.verbose:
-            print("Continuous ball detection sequences:")
-            for seq in ball_detection_sequences:
-                print(f"Sequence: {seq[0]} to {seq[-1]} (length: {len(seq)})")
+            print(f"Found {len(ball_detection_sequences)} continuous ball detection sequences")
 
         # Search for ball-glove contact in the most significant detection sequences
         # Sort sequences by length, prioritizing longer sequences
@@ -437,6 +407,85 @@ class DistanceToZone:
                                 print(f"Ball reached glove at frame {frame}")
                             return frame, (ball_center_x, ball_center_y), ball_det
 
+        # FALLBACK 1: Try with larger tolerance
+        if self.verbose:
+            print("Standard detection failed, trying with larger tolerance...")
+            
+        larger_tolerance = 0.3  # 30% margin
+        for sequence in ball_detection_sequences:
+            for frame in sequence:
+                if frame not in glove_by_frame:
+                    continue
+
+                for glove_det in glove_by_frame[frame]:
+                    margin_x = larger_tolerance * (glove_det["x2"] - glove_det["x1"])
+                    margin_y = larger_tolerance * (glove_det["y2"] - glove_det["y1"])
+                    extended_x1 = glove_det["x1"] - margin_x
+                    extended_y1 = glove_det["y1"] - margin_y
+                    extended_x2 = glove_det["x2"] + margin_x
+                    extended_y2 = glove_det["y2"] + margin_y
+
+                    for ball_det in ball_by_frame[frame]:
+                        ball_center_x = (ball_det["x1"] + ball_det["x2"]) / 2
+                        ball_center_y = (ball_det["y1"] + ball_det["y2"]) / 2
+
+                        if (extended_x1 <= ball_center_x <= extended_x2 and
+                            extended_y1 <= ball_center_y <= extended_y2):
+                            if self.verbose:
+                                print(f"Ball reached glove at frame {frame} (with larger tolerance)")
+                            return frame, (ball_center_x, ball_center_y), ball_det
+
+        # FALLBACK 2: Look for closest ball to any glove
+        if self.verbose:
+            print("Expanded tolerance failed, trying closest approach method...")
+            
+        best_distance = float('inf')
+        best_frame = None
+        best_ball_center = None
+        best_ball_det = None
+        
+        # Check each ball against each glove in the same frame
+        for frame in ball_frames:
+            if frame not in glove_by_frame:
+                continue
+                
+            for glove_det in glove_by_frame[frame]:
+                glove_center_x = (glove_det["x1"] + glove_det["x2"]) / 2
+                glove_center_y = (glove_det["y1"] + glove_det["y2"]) / 2
+                
+                for ball_det in ball_by_frame[frame]:
+                    ball_center_x = (ball_det["x1"] + ball_det["x2"]) / 2
+                    ball_center_y = (ball_det["y1"] + ball_det["y2"]) / 2
+                    
+                    # Calculate Euclidean distance
+                    distance = math.sqrt(
+                        (ball_center_x - glove_center_x)**2 + 
+                        (ball_center_y - glove_center_y)**2
+                    )
+                    
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_frame = frame
+                        best_ball_center = (ball_center_x, ball_center_y)
+                        best_ball_det = ball_det
+        
+        if best_frame is not None:
+            if self.verbose:
+                print(f"Found closest ball approach at frame {best_frame} (distance: {best_distance:.2f} pixels)")
+            return best_frame, best_ball_center, best_ball_det
+            
+        # FALLBACK 3: Just use the middle frame with a ball detection
+        if ball_frames:
+            middle_idx = len(ball_frames) // 2
+            middle_frame = ball_frames[middle_idx]
+            middle_ball_det = ball_by_frame[middle_frame][0]
+            middle_ball_center_x = (middle_ball_det["x1"] + middle_ball_det["x2"]) / 2
+            middle_ball_center_y = (middle_ball_det["y1"] + middle_ball_det["y2"]) / 2
+            
+            if self.verbose:
+                print(f"Using middle ball frame {middle_frame} as fallback")
+            return middle_frame, (middle_ball_center_x, middle_ball_center_y), middle_ball_det
+
         if self.verbose:
             print("Could not detect when ball reaches glove")
         return None, None, None
@@ -459,7 +508,7 @@ class DistanceToZone:
                 (hitter box, frame containing the hitter, frame index)
         """
         if self.verbose:
-            print("\nFinding best hitter bounding box...")
+            print("Finding best hitter bounding box...")
         
         # Capture video
         cap = cv2.VideoCapture(video_path)
@@ -606,7 +655,7 @@ class DistanceToZone:
             Optional[np.ndarray]: Keypoints for the hitter's pose, or None if detection fails
         """
         if self.verbose:
-            print("\nDetecting hitter's pose strictly within bounding box...")
+            print("Detecting hitter's pose within bounding box...")
         
         # Load YOLO pose model
         try:
@@ -713,7 +762,7 @@ class DistanceToZone:
                 (home plate box, confidence, frame used)
         """
         if self.verbose:
-            print("\nDetecting home plate using specialized model...")
+            print("Detecting home plate...")
         
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -740,29 +789,11 @@ class DistanceToZone:
         search_frames = [max(0, frame) for frame in search_frames]
 
         if self.verbose:
-            print(f"Searching for home plate around ball-glove contact frame {search_frame}...")
+            print(f"Searching for home plate around reference frame {search_frame}...")
 
         # Dictionary to store all frames with home plate detections (for visualization)
         detection_frames = {}
         all_homeplate_detections = []
-
-        # DEBUG: Print homeplate model class names again for reference
-        print("\n--- DEBUG: Homeplate Detection Class Check ---")
-        print(f"Homeplate model classes: {self.homeplate_model.names}")
-        
-        # Check for all relevant classes that could be "homeplate"
-        homeplate_class_candidates = []
-        for idx, name in self.homeplate_model.names.items():
-            if 'plate' in name.lower() or 'home' in name.lower():
-                homeplate_class_candidates.append((idx, name))
-        
-        if homeplate_class_candidates:
-            print(f"Found potential homeplate classes: {homeplate_class_candidates}")
-        else:
-            print("WARNING: No classes with 'plate' or 'home' found in model!")
-        
-        # Track all detected classes when processing frames
-        detected_classes = set()
 
         for frame_idx in search_frames:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -774,25 +805,15 @@ class DistanceToZone:
             with io.StringIO() as buf, redirect_stdout(buf):
                 results = self.homeplate_model.predict(frame, conf=0.2, verbose=False)
             
-            # DEBUG: Print all detected classes for diagnostic
-            print(f"\nDEBUG: Frame {frame_idx} detections:")
-            all_detections_in_frame = []
-            
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls)
                     conf = float(box.conf)
                     cls_name = self.homeplate_model.names[cls].lower()
-                    detected_classes.add(cls_name)
                     
-                    all_detections_in_frame.append((cls_name, conf))
-                    
-                    # DEBUG: Print all detections with confidence
-                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                    print(f"  - Class: '{cls_name}', Conf: {conf:.2f}, Box: [{x1}, {y1}, {x2}, {y2}]")
-
                     # Check for home plate class
                     if "homeplate" == cls_name:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
@@ -803,7 +824,7 @@ class DistanceToZone:
                     
                     # Additionally, try alternative class names that might be used
                     elif "home_plate" == cls_name or "plate" == cls_name or "home" == cls_name:
-                        print(f"DEBUG: Found alternative homeplate class: {cls_name}")
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                         detection = {
                             "box": (x1, y1, x2, y2),
                             "conf": conf,
@@ -812,21 +833,12 @@ class DistanceToZone:
                         }
                         all_homeplate_detections.append(detection)
 
-            if all_detections_in_frame:
-                print(f"  All detections in frame {frame_idx}: {all_detections_in_frame}")
-            else:
-                print(f"  No detections in frame {frame_idx}")
-
             # Store frame for visualization if detections were found
             if all_homeplate_detections:
                 detection_frames[frame_idx] = {
                     "frame": frame.copy(),
-                    "detections": all_homeplate_detections[-len(all_detections_in_frame):]
+                    "detections": all_homeplate_detections
                 }
-
-        # Print summary of all detected classes for diagnostic
-        print("\nDEBUG: All detected classes during scan:", detected_classes)
-        print(f"DEBUG: Total homeplate detections found: {len(all_homeplate_detections)}")
 
         # Try a broader search if we didn't find enough detections
         if len(all_homeplate_detections) < 3:
@@ -849,17 +861,11 @@ class DistanceToZone:
                 with io.StringIO() as buf, redirect_stdout(buf):
                     results = self.homeplate_model.predict(frame, conf=0.15, verbose=False)
                 
-                # DEBUG: Track detections in extended search
-                extended_detections = []
-                
                 for result in results:
                     for box in result.boxes:
                         cls = int(box.cls)
                         conf = float(box.conf)
                         cls_name = self.homeplate_model.names[cls].lower()
-                        detected_classes.add(cls_name)
-                        
-                        extended_detections.append((cls_name, conf))
                         
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
@@ -874,7 +880,6 @@ class DistanceToZone:
                         
                         # Try alternative class names
                         elif cls_name in ["home_plate", "plate", "home"]:
-                            print(f"DEBUG: Found alternative homeplate class in extended search: {cls_name}")
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
@@ -883,13 +888,10 @@ class DistanceToZone:
                             }
                             all_homeplate_detections.append(detection)
 
-                if extended_detections:
-                    print(f"DEBUG: Extended search frame {frame_idx} detections: {extended_detections}")
-
                 if all_homeplate_detections:
                     detection_frames[frame_idx] = {
                         "frame": frame.copy(),
-                        "detections": all_homeplate_detections[-len(extended_detections):]
+                        "detections": all_homeplate_detections
                     }
 
                 # Stop if we've found enough detections
@@ -1011,15 +1013,9 @@ class DistanceToZone:
                 ret, frame = cap.read()
                 if not ret:
                     continue
-
-                # DEBUG: Print catcher model classes
-                print(f"\nDEBUG: Using catcher model as fallback, classes: {self.catcher_model.names}")
                 
                 with io.StringIO() as buf, redirect_stdout(buf):
                     results = self.catcher_model.predict(frame, conf=0.2, verbose=False)
-                
-                # DEBUG: Track all detections with catcher model
-                catcher_detections = []
                 
                 for result in results:
                     for box in result.boxes:
@@ -1027,11 +1023,7 @@ class DistanceToZone:
                         conf = float(box.conf)
                         cls_name = self.catcher_model.names[cls].lower()
                         
-                        catcher_detections.append((cls_name, conf))
-                        
-                        # DEBUG: Print all detections
                         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                        print(f"  - Fallback detection: '{cls_name}', Conf: {conf:.2f}, Box: [{x1}, {y1}, {x2}, {y2}]")
 
                         if "homeplate" == cls_name:
                             detection = {
@@ -1044,7 +1036,6 @@ class DistanceToZone:
                             
                         # Try alternative names
                         elif "home_plate" == cls_name or "plate" == cls_name or "home" == cls_name:
-                            print(f"DEBUG: Found alternative homeplate class in catcher model: {cls_name}")
                             detection = {
                                 "box": (x1, y1, x2, y2),
                                 "conf": conf,
@@ -1053,13 +1044,10 @@ class DistanceToZone:
                             }
                             all_homeplate_detections.append(detection)
                             
-                if catcher_detections:
-                    print(f"  Catcher model detections in frame {frame_idx}: {catcher_detections}")
-                            
                 if all_homeplate_detections:
                     detection_frames[frame_idx] = {
                         "frame": frame.copy(),
-                        "detections": all_homeplate_detections[-len(catcher_detections):]
+                        "detections": all_homeplate_detections
                     }
                     
             # If we found fallback detections, process them as before
@@ -1105,7 +1093,7 @@ class DistanceToZone:
                 (strike zone coordinates (left, top, right, bottom), pixels per foot)
         """
         if self.verbose:
-            print("\nComputing strike zone using MLB official dimensions...")
+            print("Computing strike zone using MLB official dimensions...")
 
         # Use provided home plate detection if available, otherwise detect it
         if homeplate_box is None:
@@ -1196,10 +1184,6 @@ class DistanceToZone:
                         
                         if self.verbose:
                             print(f"Strike zone from home plate and pose: {strike_zone}")
-                            print(f"Home plate center: ({plate_center_x}, {plate_center_y})")
-                            print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
-                            print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
-                            print(f"Zone height: {zone_height_pixels} pixels")
                         
                         return strike_zone, pixels_per_foot
             
@@ -1215,14 +1199,6 @@ class DistanceToZone:
             # Estimate ground level
             # In baseball, home plate is on the ground, so use its bottom edge
             ground_y = plate_bottom_y
-            
-            # MLB strike zone is from hollow of knee to midpoint between shoulders and belt
-            # Standard heights: knee (aprx 18-22" from ground), belt/midpoint(aprx 36-42" from ground)
-            
-            # We need to position the zone ABOVE the home plate, not directly on it
-            # Calculate vertical distance from home plate to strike zone bottom
-            # Use Statcast data for sz_bot (measured in feet from ground)
-            # Typical sz_bot value is around 1.5-1.7 feet (18-20 inches)
             
             # Calculate vertical positions relative to estimated ground level
             sz_bot_pixels = int(sz_bot * pixels_per_foot)  # Convert feet to pixels
@@ -1240,14 +1216,6 @@ class DistanceToZone:
             
             if self.verbose:
                 print(f"Strike zone computed using home plate: {strike_zone}")
-                print(f"Home plate: {homeplate_box}")
-                print(f"Home plate center: ({plate_center_x}, {plate_center_y})")
-                print(f"Ground level estimate: {ground_y}")
-                print(f"sz_bot: {sz_bot} feet = {sz_bot_pixels} pixels from ground")
-                print(f"sz_top: {sz_top} feet = {sz_top_pixels} pixels from ground")
-                print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
-                print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
-                print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches")
             
             return strike_zone, pixels_per_foot
         
@@ -1322,9 +1290,6 @@ class DistanceToZone:
                 
                 if self.verbose:
                     print(f"Strike zone computed using hitter's pose: {strike_zone}")
-                    print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
-                    print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
-                    print(f"Zone height: {zone_height_pixels} pixels")
                 
                 return strike_zone, pixels_per_foot
             
@@ -1391,10 +1356,6 @@ class DistanceToZone:
                 
                 if self.verbose:
                     print(f"Strike zone computed using catcher (fallback): {strike_zone}")
-                    print(f"Estimated ground level: {ground_y}")
-                    print(f"Calibration: {pixels_per_inch:.2f} pixels/inch, {pixels_per_foot:.2f} pixels/foot")
-                    print(f"Zone width: {zone_width_pixels} pixels = 17 inches (MLB standard)")
-                    print(f"Zone height: {zone_height_pixels} pixels = {zone_height_inches:.1f} inches")
                 
                 return strike_zone, pixels_per_foot
         
@@ -1427,7 +1388,6 @@ class DistanceToZone:
         
         if self.verbose:
             print(f"Using estimated strike zone (last resort): {strike_zone}")
-            print(f"Estimated calibration: {pixels_per_inch:.2f} pixels/inch")
         
         return strike_zone, pixels_per_foot
 
@@ -1500,6 +1460,7 @@ class DistanceToZone:
     ) -> str:
         """
         Create an annotated video showing detections and strike zone.
+        Includes slow motion replay at the end.
         
         Args:
             video_path (str): Path to input video
@@ -1522,7 +1483,7 @@ class DistanceToZone:
             str: Path to the output video
         """
         if self.verbose:
-            print(f"\nCreating annotated video: {output_path}")
+            print(f"Creating annotated video: {output_path}")
         
         # Convert detections to frame-indexed dictionaries
         catcher_by_frame = {}
@@ -1551,25 +1512,20 @@ class DistanceToZone:
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Create a temp file for the normal-speed video
+        temp_output_path = output_path.replace('.mp4', '_temp.mp4')
         
         # Create output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
         
         # Extract strike zone dimensions
         zone_left, zone_top, zone_right, zone_bottom = strike_zone
         zone_width = zone_right - zone_left
         zone_height = zone_bottom - zone_top
         zone_center_x = (zone_left + zone_right) // 2
-        
-        # Cache for home plate detections
-        homeplate_cache = {}
-        
-        # For saving the reference frame with ball crossing zone
-        crossing_frame_path = os.path.join(self.results_dir, f"ball_crosses_zone_{os.path.basename(video_path)}.jpg")
-        pose_frame_path = os.path.join(self.results_dir, f"hitter_pose_{os.path.basename(video_path)}.jpg")
-        crossing_frame_saved = False
-        saved_pose_frame = False
         
         # Define the pose skeleton connections
         skeleton = [
@@ -1614,8 +1570,16 @@ class DistanceToZone:
                 strike_zone_lines["top_y"] = (shoulders_y + hips_y) / 2
         
         # Process each frame
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
+        
+        # Store key frames for slow motion
+        slow_motion_frames = []
+        slow_motion_start = max(0, ball_glove_frame - 15) if ball_glove_frame is not None else 0
+        slow_motion_end = min(total_frames, ball_glove_frame + 15) if ball_glove_frame is not None else min(30, total_frames)
+        
+        # Fix for potential None issues with ball_glove_frame
+        if ball_glove_frame is None:
+            ball_glove_frame = total_frames // 2  # Use middle frame as a fallback
         
         for frame_idx in range(total_frames):
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -1686,11 +1650,6 @@ class DistanceToZone:
                 
                 # Add distance info at ball-glove contact frame
                 if frame_idx == ball_glove_frame and distance_inches is not None:
-                    # Save this frame as the key moment when ball crosses zone
-                    if not crossing_frame_saved:
-                        cv2.imwrite(crossing_frame_path, annotated_frame)
-                        crossing_frame_saved = True
-                    
                     # Add background rectangle for better visibility
                     cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (0, 0, 0), -1)
                     cv2.rectangle(annotated_frame, (width - 310, 20), (width - 10, 140), (255, 255, 255), 2)
@@ -1761,79 +1720,68 @@ class DistanceToZone:
                             (255, 255, 0), 1, cv2.LINE_AA)  # Yellow
                     cv2.putText(annotated_frame, "SZ Top (Mid-Torso)", (10, top_y - 5),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                
-                # Save one instance of the pose frame
-                if frame_idx == hitter_frame_idx and not saved_pose_frame:
-                    cv2.putText(annotated_frame, "HITTER POSE DETECTION", (width // 2 - 150, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
-                    cv2.imwrite(pose_frame_path, annotated_frame)
-                    saved_pose_frame = True
             
             # Add frame number and timing info
             cv2.putText(annotated_frame, f"Frame: {frame_idx}", (10, height - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            if frame_idx == ball_glove_frame:
-                cv2.putText(annotated_frame, "GLOVE CONTACT FRAME", (10, height - 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-            elif frame_idx == ball_glove_frame - 2:
-                cv2.putText(annotated_frame, "ORIGINAL CONTACT FRAME", (10, height - 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-            elif frame_idx == hitter_frame_idx:
+            
+            # Safely check if ball_glove_frame is not None before comparison
+            if ball_glove_frame is not None:
+                if frame_idx == ball_glove_frame:
+                    cv2.putText(annotated_frame, "GLOVE CONTACT FRAME", (10, height - 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                elif frame_idx == ball_glove_frame - 2:
+                    cv2.putText(annotated_frame, "ORIGINAL CONTACT FRAME", (10, height - 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                        
+            # Add hitter frame indicator if available
+            if hitter_frame_idx is not None and frame_idx == hitter_frame_idx:
                 cv2.putText(annotated_frame, "HITTER POSE FRAME", (10, height - 30),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+            
+            # Store frames for slow motion replay
+            if slow_motion_start <= frame_idx <= slow_motion_end:
+                slow_motion_frames.append(annotated_frame.copy())
             
             out.write(annotated_frame)
             pbar.update(1)
         
+        # Add slow motion replay (at 1/4 speed)
+        if slow_motion_frames:
+            # Add a transition frame with text "SLOW MOTION REPLAY"
+            transition_frame = np.zeros((height, width, 3), dtype=np.uint8)
+            cv2.putText(transition_frame, "SLOW MOTION REPLAY (1/4 SPEED)", 
+                      (width // 2 - 200, height // 2),
+                      cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            # Add transition frame multiple times to create a pause
+            for _ in range(int(fps)):  # Pause for 1 second
+                out.write(transition_frame)
+            
+            # Add the slow motion frames (each frame 4 times)
+            for frame in slow_motion_frames:
+                # Add "SLOW MOTION" label
+                cv2.putText(frame, "SLOW MOTION", (width - 200, 30),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+                
+                # Repeat each frame 4 times for quarter speed
+                for _ in range(4):
+                    out.write(frame)
+        
+        # Close the writer and progress bar
         pbar.close()
-        cap.release()
         out.release()
+        
+        # Now we need to convert the temp file with ffmpeg to ensure compatibility
+        # Some versions of OpenCV create videos that aren't widely compatible
+        final_command = f"ffmpeg -y -i {temp_output_path} -c:v libx264 -preset medium -crf 23 {output_path}"
+        os.system(final_command)
+        
+        # Remove the temporary file
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
         
         if self.verbose:
             print(f"Video saved to {output_path}")
-            if crossing_frame_saved:
-                print(f"Ball crossing frame saved to {crossing_frame_path}")
-            if saved_pose_frame:
-                print(f"Hitter pose frame saved to {pose_frame_path}")
         
         return output_path
-
-# Helper method for debugging models - add this method to assist with checking class names
-def inspect_model_classes(self, model_name: str):
-    """
-    Debug utility method to inspect class names in a specified model.
-    
-    Args:
-        model_name (str): Name of the model to inspect
-    """
-    try:
-        print(f"\n--- DEBUG: Inspecting classes in {model_name} model ---")
-        model_path = self.load_tools.load_model(model_name)
-        model = YOLO(model_path)
-        
-        print(f"Total classes in {model_name}: {len(model.names)}")
-        print(f"Class mapping: {model.names}")
-        
-        # Check for potential homeplate classes
-        homeplate_candidates = []
-        for idx, name in model.names.items():
-            if 'plate' in name.lower() or 'home' in name.lower():
-                homeplate_candidates.append((idx, name))
-        
-        if homeplate_candidates:
-            print(f"Potential homeplate classes: {homeplate_candidates}")
-        else:
-            print(f"WARNING: No classes with 'plate' or 'home' found in {model_name} model")
-        
-        # Print all available classes for reference
-        print("All class names:")
-        for idx, name in model.names.items():
-            print(f"  {idx}: {name}")
-            
-        return model.names
-    except Exception as e:
-        print(f"Error inspecting model {model_name}: {str(e)}")
-        return {}
-
-# Add the debug method to the class
-DistanceToZone.inspect_model_classes = inspect_model_classes
