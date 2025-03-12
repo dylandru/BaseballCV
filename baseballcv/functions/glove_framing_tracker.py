@@ -28,7 +28,7 @@ class GloveFramingTracker:
         self, 
         glove_model: str = 'glove_tracking',
         ball_model: str = 'ball_trackingv4',
-        homeplate_model: str = 'phc_detector',
+        homeplate_model: str = 'glove_tracking',
         results_dir: str = "results/glove_framing",
         verbose: bool = True,
         device: str = None
