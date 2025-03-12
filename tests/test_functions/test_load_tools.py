@@ -1,5 +1,6 @@
 import os
 import shutil
+import pytest
 
 def test_load_model(load_tools):
     """
@@ -24,8 +25,7 @@ def test_load_dataset(load_tools):
     """
     Tests loading a dataset using LoadTools with example call.
     Verifies that the dataset is downloaded and extracted correctly.
-    """ 
-    os.makedirs('datasets/baseball', exist_ok=True)
+    """
     # Test loading baseball dataset
     dataset_path = load_tools.load_dataset(
         dataset_alias="baseball",
@@ -39,3 +39,22 @@ def test_load_dataset(load_tools):
     
     if os.path.exists(dataset_path):
         shutil.rmtree(dataset_path)
+
+test_param_data = [
+    (1, {'dataset_alias': 'gogoguardians'}, ValueError),
+    (2, {'model_alias': 'gogoguardians'}, ValueError),
+    (3, {'model_alias': 'phc_detector', 'model_type': 'XGBoost'}, ValueError)
+]
+@pytest.mark.parametrize("order, params, expectation", test_param_data)
+def test_load_tools_fail_params(order, params, expectation, load_tools):
+    """
+    Tests to make sure inputting the wrong parameter results in an error.
+    This is iteratively checking for both the model and dataset parameters.
+    """
+    if order == 1:
+        with pytest.raises(expectation):
+            load_tools.load_dataset(**params)
+    
+    else:
+        with pytest.raises(expectation):
+            load_tools.load_model(**params)

@@ -55,7 +55,8 @@ class DataTools:
             delete_savant_videos (bool): Whether or not to delete scraped savant videos after frames are extracted. Default is True.
 
         Returns:
-            None: Creates a folder of photos from the video frames to use.
+            output folder (str): Creates a folder of photos from the video frames to use. Outputs the directory where the photos or stored. 
+            If there are no video filed found in the specific folder, None is returned.
         """
 
         self.output_folder = output_frames_folder
