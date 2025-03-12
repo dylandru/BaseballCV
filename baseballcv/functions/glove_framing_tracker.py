@@ -652,11 +652,11 @@ class GloveFramingTracker:
             # Draw home plate if detected
             if homeplate_box:
                 cv2.rectangle(annotated_frame, 
-                              (homeplate_box[0], homeplate_box[1]), 
-                              (homeplate_box[2], homeplate_box[3]), 
-                              (0, 128, 255), 2)
+                            (homeplate_box[0], homeplate_box[1]), 
+                            (homeplate_box[2], homeplate_box[3]), 
+                            (0, 128, 255), 2)
                 cv2.putText(annotated_frame, "Home Plate", (homeplate_box[0], homeplate_box[1] - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 128, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 128, 255), 2)
             
             # Draw glove detections
             if frame_num in glove_by_frame:
@@ -679,12 +679,12 @@ class GloveFramingTracker:
             
             # Add frame number
             cv2.putText(annotated_frame, f"Frame: {frame_num}", (10, frame_height - 20),
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
             # Ball-glove contact frame indicator
             if frame_num == ball_glove_frame:
                 cv2.putText(annotated_frame, "BALL CONTACT", (frame_width // 2 - 80, 30),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
             # Copy to combined frame
             combined_frame[0:frame_height, 0:frame_width] = annotated_frame
@@ -720,8 +720,16 @@ class GloveFramingTracker:
             # Convert plot to image
             canvas = FigureCanvasAgg(fig)
             canvas.draw()
-            plot_image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
-            plot_image = plot_image.reshape(canvas.get_width_height()[::-1] + (3,))
+            # Use BytesIO for compatibility with all Matplotlib versions
+            from io import BytesIO
+            buf = BytesIO()
+            fig.savefig(buf, format='png', dpi=100)
+            buf.seek(0)
+            plot_image = plt.imread(buf)
+            buf.close()
+            # Convert RGBA to RGB if needed
+            if plot_image.shape[2] == 4:
+                plot_image = plot_image[:, :, :3]
             plt.close(fig)
             
             # Resize to match dst dimensions
