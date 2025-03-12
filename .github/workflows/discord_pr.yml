@@ -3,6 +3,7 @@ name: Discord PR Notification
 on:
   pull_request:
     types: [closed]
+  workflow_dispatch:
 
 jobs:
   discord_notification:
