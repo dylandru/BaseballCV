@@ -1,8 +1,9 @@
 name: Discord Package Notification
 
 on:
-    release:
-        types: [created]
+  release:
+    types: [created]
+  workflow_dispatch:
 
 jobs:
   discord_notification:
