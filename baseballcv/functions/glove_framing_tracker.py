@@ -727,21 +727,90 @@ class GloveFramingTracker:
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        # Find the extents of the trajectory
+        # Find the extents of the trajectory for visualization
         if glove_positions_transformed:
-            min_x = min(pos[0] for pos in glove_positions_transformed)
-            max_x = max(pos[0] for pos in glove_positions_transformed)
-            min_y = min(pos[1] for pos in glove_positions_transformed)
-            max_y = max(pos[1] for pos in glove_positions_transformed)
-            
             # Add padding to ensure nothing is clipped
-            padding = 100
-            min_x = max(0, min_x - padding)
-            min_y = max(0, min_y - padding)
-            max_x = min(dst_width, max_x + padding)
-            max_y = min(dst_height, max_y + padding)
+            padding_factor = 0.3  # 30% padding on each side
             
-            # Ensure we maintain a 1:1 aspect ratio
+            # First collect all key points for proper boundary calculation:
+            all_viz_points = []
+            
+            # 1. Add glove trajectory points
+            all_viz_points.extend(glove_positions_transformed)
+            
+            # 2. If we have home plate, add its center
+            if homeplate_box:
+                homeplate_center_x = (homeplate_box[0] + homeplate_box[2]) / 2
+                homeplate_center_y = homeplate_box[3]  # Bottom of the home plate box
+                
+                # Transform home plate center
+                hp_center_transformed = cv2.perspectiveTransform(
+                    np.array([[[homeplate_center_x, homeplate_center_y]]]), 
+                    transformation_matrix
+                )[0][0]
+                all_viz_points.append(hp_center_transformed)
+            
+            # 3. Create and add strike zone corners
+            # Calculate home plate width in pixels
+            if homeplate_box:
+                homeplate_width_px = homeplate_box[2] - homeplate_box[0]
+                # 17 inches is standard width of home plate and strike zone
+                pixels_per_inch = homeplate_width_px / 17
+            else:
+                pixels_per_inch = plate_width / 17
+                
+            pixels_per_foot = pixels_per_inch * 12
+            
+            # In original image space, define strike zone
+            # Start with a 17-inch wide rectangle centered on home plate
+            sz_half_width_px = (17 * pixels_per_inch) / 2
+            
+            # Calculate height based on sz_top and sz_bot in feet
+            sz_height_px = (sz_top - sz_bot) * pixels_per_foot
+            
+            # Position strike zone relative to home plate
+            if homeplate_box:
+                sz_center_x = homeplate_center_x
+                # Bottom of strike zone is above home plate by sz_bot feet
+                sz_bottom_y = homeplate_center_y - (sz_bot * pixels_per_foot)
+            else:
+                sz_center_x = frame_width / 2
+                sz_bottom_y = frame_height * 0.6
+            
+            # Top is above bottom by height of zone
+            sz_top_y = sz_bottom_y - sz_height_px
+            
+            # Define the 4 corners of the strike zone in original image space
+            sz_corners_orig = np.array([
+                # Make the strike zone significantly larger to match the scale of glove movement
+                [[sz_center_x - sz_half_width_px, sz_bottom_y]],               # Bottom left
+                [[sz_center_x + sz_half_width_px, sz_bottom_y]],               # Bottom right
+                [[sz_center_x + sz_half_width_px, sz_top_y]],                  # Top right
+                [[sz_center_x - sz_half_width_px, sz_top_y]]                   # Top left
+            ], dtype=np.float32)
+            
+            # Apply the same transformation matrix used for the glove
+            sz_corners_transformed = cv2.perspectiveTransform(sz_corners_orig, transformation_matrix)
+            
+            # Add these points to our collection for boundary calculation
+            for corner in sz_corners_transformed:
+                all_viz_points.append(corner[0])
+                
+            # Now calculate the boundaries based on all points
+            min_x = min(p[0] for p in all_viz_points)
+            max_x = max(p[0] for p in all_viz_points)
+            min_y = min(p[1] for p in all_viz_points)
+            max_y = max(p[1] for p in all_viz_points)
+            
+            # Apply padding
+            x_range = max_x - min_x
+            y_range = max_y - min_y
+            min_x -= x_range * padding_factor
+            max_x += x_range * padding_factor
+            min_y -= y_range * padding_factor
+            max_y += y_range * padding_factor
+            
+            # Ensure we maintain square aspect ratio for visual clarity
             width_range = max_x - min_x
             height_range = max_y - min_y
             max_range = max(width_range, height_range)
@@ -795,14 +864,37 @@ class GloveFramingTracker:
             strike_zone_top = strike_zone_bottom - strike_zone_height_px  # Higher = smaller y value
         else:
             # Fallback if home plate not detected
-            strike_zone_left = dst_width / 2 - 8.5 * pixels_per_inch
-            strike_zone_right = dst_width / 2 + 8.5 * pixels_per_inch
+            # Use the same perspective transformation to create the strike zone
+            # Define approximate strike zone in original image space first
+            # Using roughly the same position as home plate but elevated
+            sz_center_x = frame_width / 2
+            sz_bottom_y = dst_height * 0.6  # Position above where home plate would be
             
-            # Assume a standard positioning from pitcher's perspective
-            # where the strike zone is above home plate
-            strike_zone_height_px = (sz_top - sz_bot) * pixels_per_foot
-            strike_zone_bottom = dst_height * 0.65  # Position above where home plate would be
-            strike_zone_top = strike_zone_bottom - strike_zone_height_px  # Higher = smaller y in pitcher's view
+            # Calculate zone dimensions based on standard sizing
+            sz_width_px = 17 * pixels_per_inch
+            sz_height_px = (sz_top - sz_bot) * pixels_per_foot
+            
+            # Define the 4 corners of the strike zone in original image space
+            sz_corners_orig = np.array([
+                [[sz_center_x - sz_width_px/2, sz_bottom_y]],               # Bottom left
+                [[sz_center_x + sz_width_px/2, sz_bottom_y]],               # Bottom right
+                [[sz_center_x + sz_width_px/2, sz_bottom_y - sz_height_px]],  # Top right
+                [[sz_center_x - sz_width_px/2, sz_bottom_y - sz_height_px]]   # Top left
+            ], dtype=np.float32)
+            
+            # Apply the same transformation matrix used for the glove
+            sz_corners_transformed = cv2.perspectiveTransform(
+                sz_corners_orig, 
+                transformation_matrix
+            )
+            
+            # Extract the coordinates from the transformed corners
+            strike_zone = {
+                "left": min(corner[0][0] for corner in sz_corners_transformed),
+                "right": max(corner[0][0] for corner in sz_corners_transformed),
+                "top": min(corner[0][1] for corner in sz_corners_transformed),
+                "bottom": max(corner[0][1] for corner in sz_corners_transformed)
+            }
         
         # Update min_x, max_x, min_y, max_y to include the strike zone
         min_x = min(min_x, strike_zone_left - 20)
@@ -810,14 +902,12 @@ class GloveFramingTracker:
         min_y = min(min_y, strike_zone_bottom - 20)
         max_y = max(max_y, strike_zone_top + 20)
         
-        # Calculate scaling factor for visualization
+        # Calculate scaling factor for visualization - use most of the frame height
         vis_width = 400  # Width of visualization panel
-        vis_height = int(vis_width * (max_y - min_y) / (max_x - min_x)) if max_x > min_x else vis_width
+        vis_height = frame_height  # Use full frame height
         
-        # Ensure visualization height doesn't exceed frame height
-        if vis_height > frame_height:
-            vis_height = frame_height
-            vis_width = int(vis_height * (max_x - min_x) / (max_y - min_y)) if max_y > min_y else vis_height
+        # Position the visualization in the center of the right panel
+        vis_start_x = frame_width + 20 + ((combined_width - frame_width - 20 - vis_width) // 2)
         
         # Create output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -902,44 +992,84 @@ class GloveFramingTracker:
             combined_frame[0:frame_height, 0:frame_width] = annotated_frame
             
             # Create the right-side visualization
-            right_side = np.zeros((frame_height, vis_width, 3), dtype=np.uint8)
+            right_side = np.zeros((frame_height, combined_width - frame_width - 20, 3), dtype=np.uint8)
             right_side[:, :] = (0, 0, 0)  # Black background
+            
+            # Calculate where to position the visualization to center it
+            x_offset = (right_side.shape[1] - vis_width) // 2
+            y_offset = (frame_height - vis_height) // 2
             
             # Draw the glove path on the right side
             if processed_positions:
                 # Draw title
+                # Draw the visualization title at the top center of the right side panel
+                title_x = right_side.shape[1] // 2 - 150
                 cv2.putText(
                     right_side,
                     "Glove Movement (Pitcher's Perspective)",
-                    (vis_width // 2 - 150, 30),
+                    (title_x, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (255, 255, 255),  # White
                     2
                 )
                 
-                # Function to map from world to visualization coordinates
+                # Function to map from world to visualization coordinates with centering offsets
                 def world_to_vis(x, y):
                     # Map from world coordinates to visualization panel
                     # Since we're using the pitcher's perspective, y increases downward
-                    vis_x = int((x - min_x) / (max_x - min_x) * vis_width)
-                    vis_y = int((y - min_y) / (max_y - min_y) * vis_height)
+                    vis_x = int((x - min_x) / (max_x - min_x) * vis_width) + x_offset
+                    vis_y = int((y - min_y) / (max_y - min_y) * vis_height) + y_offset
                     return vis_x, vis_y
                 
-                # Draw axes
-                axis_color = (100, 100, 100)  # Gray
-                origin_x, origin_y = world_to_vis(min_x, min_y)
+                # Draw multiple reference lines with measurements
+                axis_color = (50, 50, 150)  # Light blue
                 
-                # X-axis
-                cv2.line(right_side, (0, origin_y), (vis_width, origin_y), axis_color, 1)
-                # Y-axis
-                cv2.line(right_side, (origin_x, 0), (origin_x, frame_height), axis_color, 1)
+                # Draw reference grid every 6 inches (half a foot)
+                grid_spacing_inches = 6
+                grid_spacing_px = int(grid_spacing_inches * pixels_per_inch / (max_x - min_x) * vis_width)
+                
+                # Draw vertical grid lines
+                center_x, _ = world_to_vis((min_x + max_x)/2, 0)
+                for i in range(-10, 11):  # Draw lines from -5 feet to +5 feet from center
+                    grid_x = center_x + i * grid_spacing_px
+                    if 0 <= grid_x < vis_width:
+                        cv2.line(right_side, (grid_x, 0), (grid_x, frame_height), axis_color, 1)
+                        # Label every foot (every 2 grid lines)
+                        if i % 2 == 0 and i != 0:
+                            cv2.putText(
+                                right_side,
+                                f"{i * grid_spacing_inches/12:.1f}ft",
+                                (grid_x + 2, 20),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.4,
+                                (200, 200, 200),
+                                1
+                            )
+                
+                # Draw horizontal grid lines
+                _, center_y = world_to_vis(0, (min_y + max_y)/2)
+                for i in range(-10, 11):
+                    grid_y = center_y + i * grid_spacing_px
+                    if 0 <= grid_y < frame_height:
+                        cv2.line(right_side, (0, grid_y), (vis_width, grid_y), axis_color, 1)
+                        # Label every foot
+                        if i % 2 == 0 and i != 0:
+                            cv2.putText(
+                                right_side,
+                                f"{i * grid_spacing_inches/12:.1f}ft",
+                                (5, grid_y + 15),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.4,
+                                (200, 200, 200),
+                                1
+                            )
                 
                 # Draw strike zone
-                sz_left, sz_bottom = world_to_vis(strike_zone_left, strike_zone_bottom)
-                sz_right, sz_top = world_to_vis(strike_zone_right, strike_zone_top)
+                sz_left, sz_bottom = world_to_vis(strike_zone["left"], strike_zone["bottom"])
+                sz_right, sz_top = world_to_vis(strike_zone["right"], strike_zone["top"])
                 
-                # Draw strike zone rectangle
+                # Draw thicker strike zone rectangle
                 cv2.rectangle(
                     right_side,
                     (sz_left, sz_top),
@@ -1019,11 +1149,11 @@ class GloveFramingTracker:
                         -1  # Filled circle
                     )
                     
-                    # Display coordinates for reference
+                    # Display coordinates for reference - position at bottom of visualization
                     cv2.putText(
                         right_side,
                         f"X: {last_pos[0]:.1f}, Y: {last_pos[1]:.1f}",
-                        (10, frame_height - 10),
+                        (x_offset + 10, frame_height - 10),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5,
                         (255, 255, 255),
