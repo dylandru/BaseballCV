@@ -527,108 +527,108 @@ class GloveFramingTracker(DistanceToZone):
                 
             return output_path
         
-        def analyze_glove_framing(self, video_path: str, pitch_data: pd.Series) -> Dict:
-            """
-            Analyze glove framing metrics from the tracked positions.
+    def analyze_glove_framing(self, video_path: str, pitch_data: pd.Series) -> Dict:
+        """
+        Analyze glove framing metrics from the tracked positions.
+        
+        Args:
+            video_path: Path to the input video
+            pitch_data: Pitch data containing strike zone information
             
-            Args:
-                video_path: Path to the input video
-                pitch_data: Pitch data containing strike zone information
-                
-            Returns:
-                Dictionary with framing metrics
-            """
-            if not self.glove_positions:
-                self.track_glove_movement(video_path)
+        Returns:
+            Dictionary with framing metrics
+        """
+        if not self.glove_positions:
+            self.track_glove_movement(video_path)
+        
+        # Detect homeplate
+        homeplate_box, _, _ = self._detect_homeplate(video_path)
+        
+        if homeplate_box is None:
+            raise ValueError("Could not detect home plate for framing analysis.")
             
-            # Detect homeplate
-            homeplate_box, _, _ = self._detect_homeplate(video_path)
+        # Convert to physical coordinates
+        if not self.glove_physical_positions:
+            self.convert_to_physical_coordinates(pitch_data, homeplate_box)
+        
+        # Get ball location
+        ball_x, ball_y = None, None
+        if 'plate_x' in pitch_data and 'plate_z' in pitch_data:
+            ball_x = float(pitch_data["plate_x"]) * 12  # Convert to inches
+            ball_y = float(pitch_data["plate_z"]) * 12  # Convert to inches
+        else:
+            return {"error": "Ball location not available in pitch data"}
+        
+        # Get strike zone dimensions
+        sz_top = float(pitch_data["sz_top"]) * 12  # Convert to inches
+        sz_bot = float(pitch_data["sz_bot"]) * 12  # Convert to inches
+        sz_width_inches = 17.0  # Standard strike zone width
+        sz_left = -sz_width_inches / 2
+        sz_right = sz_width_inches / 2
+        
+        # Check if ball is in strike zone
+        ball_in_zone = (sz_left <= ball_x <= sz_right and sz_bot <= ball_y <= sz_top)
+        
+        # Get final glove position
+        if not self.glove_physical_positions:
+            return {"error": "No glove positions tracked"}
             
-            if homeplate_box is None:
-                raise ValueError("Could not detect home plate for framing analysis.")
-                
-            # Convert to physical coordinates
-            if not self.glove_physical_positions:
-                self.convert_to_physical_coordinates(pitch_data, homeplate_box)
+        final_pos = self.glove_physical_positions[-1]
+        final_x, final_y = final_pos["physical_x"], final_pos["physical_y"]
+        
+        # Calculate distance from glove to ball
+        distance_to_ball = math.sqrt((final_x - ball_x)**2 + (final_y - ball_y)**2)
+        
+        # Calculate distance from ball to nearest edge of strike zone
+        if ball_in_zone:
+            distance_to_zone_edge = min(
+                ball_x - sz_left,
+                sz_right - ball_x,
+                ball_y - sz_bot,
+                sz_top - ball_y
+            )
+        else:
+            # Ball outside zone, find closest point on zone boundary
+            closest_x = max(sz_left, min(ball_x, sz_right))
+            closest_y = max(sz_bot, min(ball_y, sz_top))
             
-            # Get ball location
-            ball_x, ball_y = None, None
-            if 'plate_x' in pitch_data and 'plate_z' in pitch_data:
-                ball_x = float(pitch_data["plate_x"]) * 12  # Convert to inches
-                ball_y = float(pitch_data["plate_z"]) * 12  # Convert to inches
-            else:
-                return {"error": "Ball location not available in pitch data"}
-            
-            # Get strike zone dimensions
-            sz_top = float(pitch_data["sz_top"]) * 12  # Convert to inches
-            sz_bot = float(pitch_data["sz_bot"]) * 12  # Convert to inches
-            sz_width_inches = 17.0  # Standard strike zone width
-            sz_left = -sz_width_inches / 2
-            sz_right = sz_width_inches / 2
-            
-            # Check if ball is in strike zone
-            ball_in_zone = (sz_left <= ball_x <= sz_right and sz_bot <= ball_y <= sz_top)
-            
-            # Get final glove position
-            if not self.glove_physical_positions:
-                return {"error": "No glove positions tracked"}
-                
-            final_pos = self.glove_physical_positions[-1]
-            final_x, final_y = final_pos["physical_x"], final_pos["physical_y"]
-            
-            # Calculate distance from glove to ball
-            distance_to_ball = math.sqrt((final_x - ball_x)**2 + (final_y - ball_y)**2)
-            
-            # Calculate distance from ball to nearest edge of strike zone
-            if ball_in_zone:
-                distance_to_zone_edge = min(
-                    ball_x - sz_left,
-                    sz_right - ball_x,
-                    ball_y - sz_bot,
-                    sz_top - ball_y
+            # If ball is already on the boundary in one dimension
+            if closest_x == ball_x or closest_y == ball_y:
+                distance_to_zone_edge = math.sqrt(
+                    (closest_x - ball_x)**2 + (closest_y - ball_y)**2
                 )
             else:
-                # Ball outside zone, find closest point on zone boundary
-                closest_x = max(sz_left, min(ball_x, sz_right))
-                closest_y = max(sz_bot, min(ball_y, sz_top))
+                distance_to_zone_edge = -math.sqrt(
+                    (closest_x - ball_x)**2 + (closest_y - ball_y)**2
+                )
+        
+        # Calculate total glove movement distance
+        movement_distance = 0
+        prev_x, prev_y = None, None
+        
+        for pos in self.glove_physical_positions:
+            x, y = pos["physical_x"], pos["physical_y"]
+            
+            if prev_x is not None and prev_y is not None:
+                segment_distance = math.sqrt((x - prev_x)**2 + (y - prev_y)**2)
+                movement_distance += segment_distance
                 
-                # If ball is already on the boundary in one dimension
-                if closest_x == ball_x or closest_y == ball_y:
-                    distance_to_zone_edge = math.sqrt(
-                        (closest_x - ball_x)**2 + (closest_y - ball_y)**2
-                    )
-                else:
-                    distance_to_zone_edge = -math.sqrt(
-                        (closest_x - ball_x)**2 + (closest_y - ball_y)**2
-                    )
-            
-            # Calculate total glove movement distance
-            movement_distance = 0
-            prev_x, prev_y = None, None
-            
-            for pos in self.glove_physical_positions:
-                x, y = pos["physical_x"], pos["physical_y"]
-                
-                if prev_x is not None and prev_y is not None:
-                    segment_distance = math.sqrt((x - prev_x)**2 + (y - prev_y)**2)
-                    movement_distance += segment_distance
-                    
-                prev_x, prev_y = x, y
-            
-            # Calculate average movement speed (inches per frame)
-            num_frames = len(self.glove_physical_positions)
-            avg_speed = movement_distance / num_frames if num_frames > 1 else 0
-            
-            # Return metrics
-            return {
-                "ball_location_x": ball_x,
-                "ball_location_y": ball_y,
-                "ball_in_strike_zone": ball_in_zone,
-                "distance_to_zone_edge": distance_to_zone_edge,
-                "final_glove_x": final_x,
-                "final_glove_y": final_y,
-                "glove_to_ball_distance": distance_to_ball,
-                "total_movement_distance": movement_distance,
-                "average_movement_speed": avg_speed,
-                "num_frames_tracked": num_frames
-            }
+            prev_x, prev_y = x, y
+        
+        # Calculate average movement speed (inches per frame)
+        num_frames = len(self.glove_physical_positions)
+        avg_speed = movement_distance / num_frames if num_frames > 1 else 0
+        
+        # Return metrics
+        return {
+            "ball_location_x": ball_x,
+            "ball_location_y": ball_y,
+            "ball_in_strike_zone": ball_in_zone,
+            "distance_to_zone_edge": distance_to_zone_edge,
+            "final_glove_x": final_x,
+            "final_glove_y": final_y,
+            "glove_to_ball_distance": distance_to_ball,
+            "total_movement_distance": movement_distance,
+            "average_movement_speed": avg_speed,
+            "num_frames_tracked": num_frames
+        }
