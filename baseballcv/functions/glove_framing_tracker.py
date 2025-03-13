@@ -523,19 +523,22 @@ class GloveFramingTracker:
                 [frame_width * 0.3, frame_height * 0.2]
             ], dtype=np.float32)
 
-        # Define destination points with a 1:1 aspect ratio
-        # We know the home plate is 17 inches wide, which is also the width of strike zone
-        # Let's create a 2D plane that represents the field in a consistent scale
-        dst_size = max(frame_width, frame_height)  # Use larger dimension for base size
-        dst_width = dst_size  # Width of the transformed view
-        dst_height = dst_size  # Height of the transformed view
+        # Define destination points preserving the pitcher's perspective
+        # We're not trying to create a bird's eye view, but rather normalize the pitcher's view
+        # while maintaining the correct scale based on the home plate width (17 inches)
+        dst_width = frame_width  # Keep same width
+        dst_height = frame_height  # Keep same height
             
-        # Transformation should place home plate at the bottom center of the transformed view
+        # Calculate destination points that normalize the home plate to be horizontal
+        # and centered, but maintain the pitcher's perspective (not bird's eye)
+        plate_width = 100  # Standardized width in pixels for home plate (will be calibrated to 17 inches)
+        plate_height = plate_width * 0.4  # Approximate height ratio of home plate as seen from pitcher's view
+        
         dst_points = np.array([
-            [dst_width/2 - 50, dst_height * 0.8],  # Bottom left (slightly left of center)
-            [dst_width/2 + 50, dst_height * 0.8],  # Bottom right (slightly right of center)
-            [dst_width/2 + 50, dst_height * 0.2],  # Top right
-            [dst_width/2 - 50, dst_height * 0.2]   # Top left
+            [dst_width/2 - plate_width/2, dst_height * 0.7],  # Bottom left of home plate
+            [dst_width/2 + plate_width/2, dst_height * 0.7],  # Bottom right of home plate
+            [dst_width/2 + plate_width/2, dst_height * 0.7 - plate_height],  # Top right of home plate
+            [dst_width/2 - plate_width/2, dst_height * 0.7 - plate_height]   # Top left of home plate
         ], dtype=np.float32)
 
         # Compute transformation matrix
@@ -569,8 +572,9 @@ class GloveFramingTracker:
                     flat_glove_point = cv2.perspectiveTransform(np.array([[glove_center]]), M)[0][0]
                     
                     # In the transformed view, y should increase upward (opposite of image coordinates)
-                    # Reverse the y-coordinate direction
-                    flat_glove_point = (flat_glove_point[0], dst_height - flat_glove_point[1])
+                    # No need to reverse Y coordinate - we want to keep the pitcher's perspective
+                    # where Y increases downward from the top of the frame
+                    flat_glove_point = (flat_glove_point[0], flat_glove_point[1])
                     
                     glove_positions_transformed.append(flat_glove_point)
                     glove_boxes.append((x1, y1, x2, y2))
@@ -781,18 +785,23 @@ class GloveFramingTracker:
             strike_zone_right = hp_center_transformed[0] + strike_zone_width_px / 2
             
             # Strike zone height based on sz_top and sz_bot
+            # From pitcher's perspective, sz_top is higher (smaller y value) than sz_bot
             strike_zone_height_px = (sz_top - sz_bot) * pixels_per_foot
-            strike_zone_bottom = hp_center_transformed[1] + sz_bot * pixels_per_foot
-            strike_zone_top = strike_zone_bottom + strike_zone_height_px
+            
+            # Position the strike zone above home plate, with the bottom of zone at sz_bot height
+            # In the pitcher's perspective, lower y values are higher in the frame
+            strike_zone_bottom = hp_center_transformed[1] - 50  # Just above home plate
+            strike_zone_top = strike_zone_bottom - strike_zone_height_px  # Higher = smaller y value
         else:
             # Fallback if home plate not detected
             strike_zone_left = dst_width / 2 - 8.5 * pixels_per_inch
             strike_zone_right = dst_width / 2 + 8.5 * pixels_per_inch
             
-            # Assume a standard positioning
+            # Assume a standard positioning from pitcher's perspective
+            # where the strike zone is above home plate
             strike_zone_height_px = (sz_top - sz_bot) * pixels_per_foot
-            strike_zone_bottom = dst_height * 0.6
-            strike_zone_top = strike_zone_bottom + strike_zone_height_px
+            strike_zone_bottom = dst_height * 0.65  # Position above where home plate would be
+            strike_zone_top = strike_zone_bottom - strike_zone_height_px  # Higher = smaller y in pitcher's view
         
         # Update min_x, max_x, min_y, max_y to include the strike zone
         min_x = min(min_x, strike_zone_left - 20)
@@ -900,8 +909,8 @@ class GloveFramingTracker:
                 # Draw title
                 cv2.putText(
                     right_side,
-                    "Glove Movement (Bird's Eye View)",
-                    (vis_width // 2 - 120, 30),
+                    "Glove Movement (Pitcher's Perspective)",
+                    (vis_width // 2 - 150, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (255, 255, 255),  # White
@@ -911,8 +920,9 @@ class GloveFramingTracker:
                 # Function to map from world to visualization coordinates
                 def world_to_vis(x, y):
                     # Map from world coordinates to visualization panel
+                    # Since we're using the pitcher's perspective, y increases downward
                     vis_x = int((x - min_x) / (max_x - min_x) * vis_width)
-                    vis_y = int(frame_height - (y - min_y) / (max_y - min_y) * vis_height)
+                    vis_y = int((y - min_y) / (max_y - min_y) * vis_height)
                     return vis_x, vis_y
                 
                 # Draw axes
