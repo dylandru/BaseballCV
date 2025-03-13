@@ -173,6 +173,7 @@ class GloveFramingTracker:
                 "video_name": video_name,
                 "play_id": play_id,
                 "game_pk": game_pk,
+                "game_date": game_date,
                 "ball_glove_frame": ball_glove_frame,
                 "glove_positions_raw": glove_positions_raw,
                 "glove_positions_transformed": glove_positions_transformed,
@@ -181,7 +182,9 @@ class GloveFramingTracker:
                 "glove_distance_traveled": distance_traveled,
                 "fps": fps,
                 "annotated_video": output_path if create_video else None,
-                "catcher_id": catcher_id  # Include catcher ID in results
+                "catcher_id": catcher_id,  # Include catcher ID
+                "pitcher_id": pitcher_id,
+                "batter_id": batter_id
             }
             
             glove_tracking_results.append(results)
@@ -219,7 +222,7 @@ class GloveFramingTracker:
                     "homeplate_x1": homeplate_box[0] if homeplate_box else None,
                     "homeplate_y1": homeplate_box[1] if homeplate_box else None,
                     "homeplate_x2": homeplate_box[2] if homeplate_box else None,
-                    "homeplate_y2": homeplate_box[3] if homeplate_box else None,
+                    "homeplate_y2": homeplate_box[3] if homeplate_box else None
                 }
                 
                 all_frame_rows.append(row)
@@ -477,7 +480,7 @@ class GloveFramingTracker:
                 [homeplate_box[0], homeplate_box[1]]   # Top left
             ], dtype=np.float32)
         else:
-            # Use default source points based on broadcast view
+            # Use exact source points from example
             src_points = np.array([
                 [frame_width * 0.3, frame_height * 0.8],
                 [frame_width * 0.7, frame_height * 0.8],
@@ -485,7 +488,7 @@ class GloveFramingTracker:
                 [frame_width * 0.3, frame_height * 0.2]
             ], dtype=np.float32)
 
-        # Define destination points for a standard plane
+        # Define destination points exactly as in example
         dst_height = frame_height
         dst_width = int(dst_height * 0.4)
         dst_points = np.array([
@@ -522,6 +525,7 @@ class GloveFramingTracker:
                 
                 # Transform to standardized coordinates
                 try:
+                    # Use exact same transformation method as example
                     flat_glove_point = cv2.perspectiveTransform(np.array([[glove_center]]), M)[0][0]
                     glove_positions_transformed.append(flat_glove_point)
                     glove_boxes.append((x1, y1, x2, y2))
@@ -645,7 +649,8 @@ class GloveFramingTracker:
             homeplate_box (Tuple): Homeplate box coordinates
         """
         # Always use CPU for video creation to avoid GPU memory issues
-        print("Creating visualization video...")
+        if self.verbose:
+            print("Creating visualization video...")
         
         cap = cv2.VideoCapture(input_path)
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -735,69 +740,47 @@ class GloveFramingTracker:
             # Copy to combined frame
             combined_frame[0:frame_height, 0:frame_width] = annotated_frame
             
-            # Create the right-side visualization - ensure we always draw something
-            # Create a blue background as minimum
+            # Create the right-side visualization
+            # Use a simple matplotlib-free approach for better reliability
             right_side = np.zeros((frame_height, dst_width, 3), dtype=np.uint8)
-            right_side[:, :] = (255, 0, 0)  # Blue in BGR
+            right_side[:, :] = (255, 0, 0)  # Blue background in BGR
             
-            # If we have processed positions, draw them on a matplotlib figure
+            # Draw the glove path on the right side
             if processed_positions:
-                try:
-                    # Make sure matplotlib works properly
-                    plt.switch_backend('Agg')
+                for i in range(1, len(processed_positions)):
+                    # Get current and previous positions
+                    prev_pos = processed_positions[i-1]
+                    curr_pos = processed_positions[i]
                     
-                    # Ensuring figure size proportions match destination size
-                    dpi = 100
-                    figsize = (dst_width/dpi, frame_height/dpi)
-                    
-                    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor='blue')
-                    ax = fig.add_subplot(111)
-                    
-                    # Setup the transformed plane view
-                    ax.set_facecolor('blue')
-                    ax.set_xlim(0, dst_width)
-                    ax.set_ylim(dst_height, 0)  # Invert y-axis
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-                    ax.set_title("Glove Movement throughout Play", fontsize=10, color='white')
-                    
-                    # Plot glove path
-                    x = [pos[0] for pos in processed_positions]
-                    y = [pos[1] for pos in processed_positions]
-                    ax.plot(x, y, 'r-', linewidth=2)
-                    
-                    # Add glove image at current position
-                    try:
-                        im = OffsetImage(glove_img, zoom=0.04)
-                        ab = AnnotationBbox(im, (x[-1], y[-1]), xycoords='data', frameon=False)
-                        ax.add_artist(ab)
-                    except:
-                        # If placing the glove image fails, just use a red dot
-                        ax.plot(x[-1], y[-1], 'ro', markersize=10)
-                    
-                    # Ensure tight layout
-                    plt.tight_layout(pad=0)
-                    
-                    # Use BytesIO for more reliable handling
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='png', dpi=dpi, 
-                                facecolor='blue', bbox_inches='tight')
-                    plt.close(fig)
-                    
-                    buf.seek(0)
-                    img_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
-                    right_side = cv2.imdecode(img_arr, 1)
-                    
-                    # Resize to match exact dimensions
-                    right_side = cv2.resize(right_side, (dst_width, frame_height))
-                    
-                    buf.close()
-                    
-                except Exception as e:
-                    print(f"Error creating right visualization: {e}")
-                    # Don't stop the video creation - just use a blank blue frame
-                    right_side = np.zeros((frame_height, dst_width, 3), dtype=np.uint8)
-                    right_side[:, :] = (255, 0, 0)  # Blue in BGR
+                    # Draw line segment
+                    cv2.line(
+                        right_side,
+                        (int(prev_pos[0]), int(prev_pos[1])),
+                        (int(curr_pos[0]), int(curr_pos[1])),
+                        (0, 0, 255),  # Red in BGR
+                        2
+                    )
+                
+                # Draw the current glove position
+                last_pos = processed_positions[-1]
+                cv2.circle(
+                    right_side,
+                    (int(last_pos[0]), int(last_pos[1])),
+                    10,  # Radius
+                    (0, 255, 255),  # Yellow in BGR
+                    -1  # Filled circle
+                )
+                
+                # Add title
+                cv2.putText(
+                    right_side,
+                    "Glove Movement throughout Play",
+                    (dst_width // 2 - 120, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),  # White in BGR
+                    2
+                )
             
             # Copy right side visualization to combined frame
             combined_frame[0:frame_height, frame_width+20:] = right_side
@@ -819,4 +802,5 @@ class GloveFramingTracker:
         
         # Force garbage collection
         gc.collect()
-        print(f"Video saved to {output_path}")
+        if self.verbose:
+            print(f"Video saved to {output_path}")
