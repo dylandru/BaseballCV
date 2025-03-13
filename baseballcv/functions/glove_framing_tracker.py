@@ -596,10 +596,11 @@ class GloveFramingTracker:
             # 17 inches is standard width of home plate and strike zone
             pixels_per_inch = homeplate_width_px / 17
         else:
-            # Fallback if home plate not detected
-            pixels_per_inch = 10  # Rough estimate
+            # Fallback if home plate not detected - use the fixed plate_width we set in the transform
+            pixels_per_inch = plate_width / 17  # We defined plate_width = 100 earlier
         
-        # Create visualization video if requested
+        # Calculate pixels per foot from pixels per inch
+        pixels_per_foot = pixels_per_inch * 12
         if output_path:
             self._create_visualization_video(
                 video_path, 
