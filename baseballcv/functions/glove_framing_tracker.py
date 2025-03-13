@@ -82,7 +82,9 @@ class GloveFramingTracker:
         max_videos_per_game: int = None,
         create_video: bool = True,
         save_csv: bool = True,
-        csv_path: str = None
+        csv_path: str = None,
+        delete_savant_videos: bool = True,  # New parameter to control deletion of downloaded videos
+        delete_output_videos: bool = False  # New parameter to control deletion of output videos
     ) -> List[Dict]:
         """
         Analyze videos from a date range to track glove framing.
@@ -97,6 +99,8 @@ class GloveFramingTracker:
             create_video (bool): Whether to create annotated videos
             save_csv (bool): Whether to save analysis results to CSV
             csv_path (str): Custom path for CSV file
+            delete_savant_videos (bool): Whether to delete downloaded videos after processing
+            delete_output_videos (bool): Whether to delete created output videos after processing
             
         Returns:
             List[Dict]: List of analysis results per video
@@ -244,6 +248,22 @@ class GloveFramingTracker:
             if self.verbose:
                 print(f"Saved detailed results to {csv_path}")
                 print(f"CSV contains {len(df)} rows with {len(df.columns)} columns of data")
+        
+        # Clean up downloaded and output videos if requested
+        if delete_savant_videos:
+            if self.verbose:
+                print(f"Cleaning up downloaded videos from {download_folder}")
+            savant_scraper.cleanup_savant_videos(download_folder)
+        
+        if delete_output_videos and create_video:
+            if self.verbose:
+                print("Cleaning up created output videos")
+            for result in glove_tracking_results:
+                output_video = result.get("annotated_video")
+                if output_video and os.path.exists(output_video):
+                    os.remove(output_video)
+                    if self.verbose:
+                        print(f"Deleted {output_video}")
         
         return glove_tracking_results
         
@@ -539,6 +559,23 @@ class GloveFramingTracker:
                         glove_positions_transformed.append((dst_width/2, dst_height/2))
                 
                 break  # Take only the first glove per frame
+
+        # Normalize transformed coordinates to be in visible range for visualization
+        # (This fixes the negative y-coordinates issue)
+        transformed_y_values = [pos[1] for pos in glove_positions_transformed]
+        min_y = min(transformed_y_values) if transformed_y_values else 0
+        max_y = max(transformed_y_values) if transformed_y_values else dst_height
+        y_range = max_y - min_y
+        
+        # Create adjusted coordinates for visualization
+        normalized_positions = []
+        for x, y in glove_positions_transformed:
+            # Keep x values as is (they should be within dst_width)
+            # Normalize y values to be between 0 and dst_height
+            normalized_x = min(max(0, x), dst_width - 1)
+            normalized_y = ((y - min_y) / (y_range + 1e-6)) * (dst_height * 0.8)
+            normalized_y = min(max(0, normalized_y), dst_height - 1)
+            normalized_positions.append((normalized_x, normalized_y))
         
         # Create visualization video if requested
         if output_path:
@@ -548,7 +585,7 @@ class GloveFramingTracker:
                 glove_by_frame,
                 ball_by_frame,
                 glove_positions_raw,
-                glove_positions_transformed,
+                normalized_positions,  # Use normalized positions for visualization
                 M,
                 dst_width,
                 dst_height,
@@ -641,7 +678,7 @@ class GloveFramingTracker:
             glove_by_frame (Dict): Glove detections by frame
             ball_by_frame (Dict): Ball detections by frame
             glove_positions_raw (List): Raw glove positions
-            glove_positions_transformed (List): Transformed glove positions
+            glove_positions_transformed (List): Transformed glove positions (normalized for visualization)
             transformation_matrix (np.ndarray): Perspective transformation matrix
             dst_width (int): Width of transformed view
             dst_height (int): Height of transformed view
@@ -741,46 +778,74 @@ class GloveFramingTracker:
             combined_frame[0:frame_height, 0:frame_width] = annotated_frame
             
             # Create the right-side visualization
-            # Use a simple matplotlib-free approach for better reliability
             right_side = np.zeros((frame_height, dst_width, 3), dtype=np.uint8)
             right_side[:, :] = (255, 0, 0)  # Blue background in BGR
             
             # Draw the glove path on the right side
             if processed_positions:
-                for i in range(1, len(processed_positions)):
-                    # Get current and previous positions
-                    prev_pos = processed_positions[i-1]
-                    curr_pos = processed_positions[i]
-                    
-                    # Draw line segment
-                    cv2.line(
-                        right_side,
-                        (int(prev_pos[0]), int(prev_pos[1])),
-                        (int(curr_pos[0]), int(curr_pos[1])),
-                        (0, 0, 255),  # Red in BGR
-                        2
-                    )
-                
-                # Draw the current glove position
-                last_pos = processed_positions[-1]
-                cv2.circle(
-                    right_side,
-                    (int(last_pos[0]), int(last_pos[1])),
-                    10,  # Radius
-                    (0, 255, 255),  # Yellow in BGR
-                    -1  # Filled circle
-                )
-                
-                # Add title
+                # Draw title
                 cv2.putText(
                     right_side,
-                    "Glove Movement throughout Play",
-                    (dst_width // 2 - 120, 30),
+                    "Glove Movement",
+                    (dst_width // 2 - 80, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (255, 255, 255),  # White in BGR
                     2
                 )
+                
+                # Draw grid lines for better visualization
+                for i in range(0, dst_width, 50):
+                    cv2.line(right_side, (i, 0), (i, dst_height), (200, 0, 0), 1)
+                for i in range(0, dst_height, 50):
+                    cv2.line(right_side, (0, i), (dst_width, i), (200, 0, 0), 1)
+                
+                # Draw tracking trail
+                for i in range(1, len(processed_positions)):
+                    # Get current and previous positions
+                    prev_pos = processed_positions[i-1]
+                    curr_pos = processed_positions[i]
+                    
+                    # Ensure points are within bounds
+                    prev_x = min(max(0, int(prev_pos[0])), dst_width - 1)
+                    prev_y = min(max(0, int(prev_pos[1])), dst_height - 1)
+                    curr_x = min(max(0, int(curr_pos[0])), dst_width - 1)
+                    curr_y = min(max(0, int(curr_pos[1])), dst_height - 1)
+                    
+                    # Draw line segment
+                    cv2.line(
+                        right_side,
+                        (prev_x, prev_y),
+                        (curr_x, curr_y),
+                        (0, 0, 255),  # Red in BGR
+                        2
+                    )
+                
+                # Get the current glove position
+                if len(processed_positions) > 0:
+                    last_pos = processed_positions[-1]
+                    last_x = min(max(0, int(last_pos[0])), dst_width - 1)
+                    last_y = min(max(0, int(last_pos[1])), dst_height - 1)
+                    
+                    # Draw current glove position
+                    cv2.circle(
+                        right_side,
+                        (last_x, last_y),
+                        10,  # Radius
+                        (0, 255, 255),  # Yellow in BGR
+                        -1  # Filled circle
+                    )
+                    
+                    # Display coordinates for debugging
+                    cv2.putText(
+                        right_side,
+                        f"X: {last_x}, Y: {last_y}",
+                        (10, dst_height - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1
+                    )
             
             # Copy right side visualization to combined frame
             combined_frame[0:frame_height, frame_width+20:] = right_side
