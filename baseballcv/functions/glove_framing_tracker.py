@@ -1041,73 +1041,21 @@ class GloveFramingTracker:
                     vis_y = int((y - min_y) / (max_y - min_y) * vis_height) + y_offset
                     return vis_x, vis_y
                 
-                # Draw multiple reference lines with measurements
-                axis_color = (50, 50, 150)  # Light blue
+                # Draw a simple reference grid without measurements
+                axis_color = (40, 40, 80)  # Darker blue, less distracting
                 
-                # Draw reference grid every 6 inches (half a foot)
-                grid_spacing_inches = 6
-                grid_spacing_px = int(grid_spacing_inches * pixels_per_inch / (max_x - min_x) * vis_width)
+                # Draw vertical grid lines every 50 pixels
+                grid_spacing_px = 50
+                for i in range(0, right_side.shape[1], grid_spacing_px):
+                    if 0 <= i < right_side.shape[1]:
+                        cv2.line(right_side, (i, 0), (i, frame_height), axis_color, 1)
                 
-                # Draw vertical grid lines
-                center_x, _ = world_to_vis((min_x + max_x)/2, 0)
-                for i in range(-10, 11):  # Draw lines from -5 feet to +5 feet from center
-                    grid_x = center_x + i * grid_spacing_px
-                    if 0 <= grid_x < vis_width:
-                        cv2.line(right_side, (grid_x, 0), (grid_x, frame_height), axis_color, 1)
-                        # Label every foot (every 2 grid lines)
-                        if i % 2 == 0 and i != 0:
-                            cv2.putText(
-                                right_side,
-                                f"{i * grid_spacing_inches/12:.1f}ft",
-                                (grid_x + 2, 20),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.4,
-                                (200, 200, 200),
-                                1
-                            )
+                # Draw horizontal grid lines every 50 pixels
+                for i in range(0, frame_height, grid_spacing_px):
+                    if 0 <= i < frame_height:
+                        cv2.line(right_side, (0, i), (right_side.shape[1], i), axis_color, 1)
                 
-                # Draw horizontal grid lines
-                _, center_y = world_to_vis(0, (min_y + max_y)/2)
-                for i in range(-10, 11):
-                    grid_y = center_y + i * grid_spacing_px
-                    if 0 <= grid_y < frame_height:
-                        cv2.line(right_side, (0, grid_y), (vis_width, grid_y), axis_color, 1)
-                        # Label every foot
-                        if i % 2 == 0 and i != 0:
-                            cv2.putText(
-                                right_side,
-                                f"{i * grid_spacing_inches/12:.1f}ft",
-                                (5, grid_y + 15),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.4,
-                                (200, 200, 200),
-                                1
-                            )
-                
-                # Draw strike zone
-                sz_left, sz_bottom = world_to_vis(strike_zone["left"], strike_zone["bottom"])
-                sz_right, sz_top = world_to_vis(strike_zone["right"], strike_zone["top"])
-                
-                # Draw thicker strike zone rectangle
-                cv2.rectangle(
-                    right_side,
-                    (sz_left, sz_top),
-                    (sz_right, sz_bottom),
-                    (0, 255, 255),  # Yellow
-                    2
-                )
-                
-                # Label strike zone
-                cv2.putText(
-                    right_side,
-                    "Strike Zone",
-                    (sz_left, sz_top - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 255),  # Yellow
-                    1
-                )
-                
+                # We're removing the strike zone drawing as requested
                 # Draw home plate at the bottom
                 if homeplate_box:
                     hp_x, hp_y = world_to_vis(hp_center_transformed[0], hp_center_transformed[1])
@@ -1117,15 +1065,6 @@ class GloveFramingTracker:
                         5,
                         (0, 128, 255),  # Orange
                         -1
-                    )
-                    cv2.putText(
-                        right_side,
-                        "Home Plate",
-                        (hp_x - 40, hp_y + 15),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 128, 255),  # Orange
-                        1
                     )
                 
                 # Draw tracking trail
