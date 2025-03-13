@@ -799,6 +799,14 @@ class GloveFramingTracker:
             # Add these points to our collection for boundary calculation
             for corner in sz_corners_transformed:
                 all_viz_points.append(corner[0])
+            
+            # Extract the coordinates from the transformed corners
+            strike_zone = {
+                "left": min(corner[0][0] for corner in sz_corners_transformed),
+                "right": max(corner[0][0] for corner in sz_corners_transformed),
+                "top": min(corner[0][1] for corner in sz_corners_transformed),
+                "bottom": max(corner[0][1] for corner in sz_corners_transformed)
+            }
                 
             # Now calculate the boundaries based on all points
             min_x = min(p[0] for p in all_viz_points)
@@ -833,6 +841,14 @@ class GloveFramingTracker:
             # Default to full view if no positions
             min_x, min_y = 0, 0
             max_x, max_y = dst_width, dst_height
+            
+            # Create a default strike zone
+            strike_zone = {
+                "left": dst_width / 2 - 50,
+                "right": dst_width / 2 + 50,
+                "top": dst_height * 0.5,
+                "bottom": dst_height * 0.6
+            }
         
         # Convert strike zone boundaries from feet to pixels
         # Determine pixels per foot
