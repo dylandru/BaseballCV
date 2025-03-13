@@ -38,7 +38,8 @@ class LoadTools:
             'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
             'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
             'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
-            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt'
+            'amateur_pitcher_hitter': 'models/YOLOv9/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
+            'glove_trackingv3': 'models/YOLOv9/glove_tracking/model_weights/glove_tracking.txt'
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
