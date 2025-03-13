@@ -738,7 +738,8 @@ class GloveFramingTracker:
             # 1. Add glove trajectory points
             all_viz_points.extend(glove_positions_transformed)
             
-            # 2. If we have home plate, add its center
+            # Add home plate at the center if it was detected
+            # In original image space, transform the home plate center
             if homeplate_box:
                 homeplate_center_x = (homeplate_box[0] + homeplate_box[2]) / 2
                 homeplate_center_y = homeplate_box[3]  # Bottom of the home plate box
@@ -749,6 +750,9 @@ class GloveFramingTracker:
                     transformation_matrix
                 )[0][0]
                 all_viz_points.append(hp_center_transformed)
+            else:
+                # Use a default position for home plate if not detected
+                hp_center_transformed = (dst_width/2, dst_height * 0.7)
             
             # 3. Create and add strike zone corners
             # Calculate home plate width in pixels
@@ -902,16 +906,15 @@ class GloveFramingTracker:
         min_y = min(min_y, strike_zone_bottom - 20)
         max_y = max(max_y, strike_zone_top + 20)
         
-        # Calculate scaling factor for visualization - use most of the frame height
+        # Calculate visualization dimensions
         vis_width = 400  # Width of visualization panel
         vis_height = frame_height  # Use full frame height
         
-        # Position the visualization in the center of the right panel
-        vis_start_x = frame_width + 20 + ((combined_width - frame_width - 20 - vis_width) // 2)
+        # Calculate combined frame width
+        combined_width = frame_width + vis_width + 20  # Add 20px for gap between views
         
         # Create output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        combined_width = frame_width + vis_width + 20  # Add 20px for gap between views
         out = cv2.VideoWriter(output_path, fourcc, fps, (combined_width, frame_height))
         
         # Get glove image path (try different asset locations)
