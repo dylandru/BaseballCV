@@ -60,7 +60,8 @@ class LoadTools:
             'amateur_pitcher_hitter': 'datasets/yolo/amateur_pitcher_hitter.txt'
         }
 
-    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
+    def _download_files(self, url: str, dest: Union[str, os.PathLike], 
+                        is_folder: Optional[bool] = False, is_labeled: Optional[bool] = False) -> None:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
@@ -131,7 +132,7 @@ class LoadTools:
             with open(txt_path, 'r') as file:
                 return file.read().strip()
 
-    def load_model(self, model_alias: str, model_type: str = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
+    def load_model(self, model_alias: str, model_type: Optional[str] = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
         '''
         Loads a given baseball computer vision model into the repository.
 
