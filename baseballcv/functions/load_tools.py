@@ -8,6 +8,7 @@ import io
 from typing import Optional, Union
 import shutil
 from huggingface_hub import snapshot_download
+from datasets import load_from_disk
 
 class LoadTools:
     """
@@ -246,8 +247,17 @@ class LoadTools:
                     token=None,
                     ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
                 )
-                print(f"Successfully downloaded dataset from Hugging Face to {dataset_alias}")
-                return Path(dataset_alias)
+                dataset = load_from_disk(dataset_alias)
+
+                for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
+                    image, filename = example["image"], example["filename"]
+                    base_path = f"{dataset_alias}/train/"
+                    image.save(f"{base_path}/{filename}")
+
+                [os.remove(os.path.join(root, file)) for root, dirs, files in os.walk(dataset_alias) for file in files if file.endswith('.parquet')]
+
+                print(f"Successfully downloaded dataset from Hugging Face to {base_path}")
+                return Path(base_path)
              
             except Exception as e:
                 print(f"Error downloading from Hugging Face: {e}")
