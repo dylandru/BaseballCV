@@ -1,3 +1,4 @@
+from pathlib import Path
 import requests
 import os
 from tqdm import tqdm
@@ -5,6 +6,7 @@ import zipfile
 import io
 from typing import Optional, Union
 import shutil
+from huggingface_hub import snapshot_download
 
 class LoadTools:
     """
@@ -47,6 +49,9 @@ class LoadTools:
         self.paligemma2_model_aliases = {
             'paligemma2_ball_tracking': 'models/vlm/paligemma2/ball_tracking/model_weights/paligemma2_ball_tracking.txt'
         }
+        self.detr_model_aliases = {
+            'detr_baseball_v2': 'hf:dyland222/detr-coco-baseball_v2'
+        }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
             'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
@@ -57,11 +62,11 @@ class LoadTools:
             'baseball_rubber_home_glove_COCO': 'datasets/COCO/baseball_rubber_home_glove_COCO.txt',
             'baseball': 'datasets/yolo/baseball.txt',
             'phc': 'datasets/yolo/phc.txt',
-            'amateur_pitcher_hitter': 'datasets/yolo/amateur_pitcher_hitter.txt'
+            'amateur_pitcher_hitter': 'datasets/yolo/amateur_pitcher_hitter.txt',
+            'international_amateur_pitcher_photo_dataset_10k_vol1': 'hf:dyland222/international_amateur_pitcher_photo_dataset_10k_vol1'
         }
 
-    def _download_files(self, url: str, dest: Union[str, os.PathLike], 
-                        is_folder: Optional[bool] = False, is_labeled: Optional[bool] = False) -> None:
+    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
@@ -152,6 +157,8 @@ class LoadTools:
             model_txt_path = self.florence_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         elif model_type == 'PALIGEMMA2':
             model_txt_path = self.paligemma2_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        elif model_type == 'DETR':
+            model_txt_path = self.detr_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         else:
             raise ValueError(f"Invalid model type: {model_type}")
         
@@ -162,18 +169,34 @@ class LoadTools:
         base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
         os.makedirs(base_dir, exist_ok=True)
 
+        is_hf_model = model_txt_path.startswith("hf:")
         if model_type == 'YOLO':
             model_weights_path = f"{base_dir}/{base_name}.pt"
         else:
-            model_weights_path = f"{base_dir}/{base_name}"
+            model_weights_path = f"{base_name}" if is_hf_model else f"{base_dir}/{base_name}"
             os.makedirs(model_weights_path, exist_ok=True)
 
-        if os.path.exists(model_weights_path):
+        if os.path.exists(model_weights_path) and not is_hf_model:
             print(f"Model found at {model_weights_path}")
             return model_weights_path
 
-        url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
-        self._download_files(url, model_weights_path, is_folder=(model_type=='FLORENCE2'))
+        if is_hf_model:
+            try:
+                snapshot_download(
+                    repo_id=model_txt_path[3:],
+                    local_dir=model_weights_path,
+                    repo_type="model",
+                    ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"],
+                )
+                print(f"Successfully downloaded model from HF to {model_weights_path}")
+                return model_weights_path
+            except Exception as e:
+                print(f"Error downloading from Hugging Face: {e}")
+                raise
+            
+        else: 
+            url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
+            self._download_files(url, model_weights_path, is_folder=(model_type=='FLORENCE2' or model_type=='PALIGEMMA2' or model_type=='DETR'))
         
         return model_weights_path
 
@@ -190,42 +213,69 @@ class LoadTools:
         Returns:
             dir_name (str): Path to the folder containing the dataset.
         '''
+        
         txt_path = self.dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
         if not txt_path:
             raise ValueError(f"Invalid alias or missing path: {dataset_alias}")
+        
+        is_hf_dataset = txt_path.startswith("hf:")  
 
-        base = os.path.splitext(os.path.basename(txt_path))[0]
-        dir_name = "unlabeled_" + base if 'raw_photos' in base or 'frames' in base or 'frames' in dataset_alias else base
-
-        if os.path.exists(dir_name):
-            print(f"Dataset found at {dir_name}")
-            return dir_name
-
-        url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
-        self._download_files(url, dir_name, is_folder=True)
-
-        redundant_dir = os.path.join(dir_name, dataset_alias)
-        if os.path.exists(redundant_dir):
-            print(f"Processing dataset {dataset_alias}...")
-            for item in os.listdir(redundant_dir):
-                source = os.path.join(redundant_dir, item)
-                destination = os.path.join(dir_name, item)
-                
-                if os.path.isdir(source):
-                    if not os.path.exists(destination):
-                        shutil.move(source, destination)
-                    else:
-                        for subitem in os.listdir(source):
-                            shutil.move(os.path.join(source, subitem), destination)
-                        os.rmdir(source)
-                else:
-                    if not os.path.exists(destination):
-                        shutil.move(source, destination)
+        if is_hf_dataset: #HF datasets
+            repo_id = txt_path[3:]  
             
-            if os.path.exists(redundant_dir):
-                os.rmdir(redundant_dir)
-            print(f"Successfully processed dataset {dataset_alias}.")
-        else:
-            print(f"Dataset download failed.")
+            if os.path.exists(dataset_alias):
+                print(f"Dataset found at {dataset_alias}")
+                return Path(dataset_alias)
+                
+            print(f"Processing dataset from HF w/ alias: {dataset_alias}...")
+            try:
+                snapshot_download(
+                    repo_id=repo_id,
+                    local_dir=dataset_alias,
+                    repo_type="dataset",
+                    token=None,
+                    ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
+                )
+                print(f"Successfully downloaded dataset from Hugging Face to {dataset_alias}")
+                return Path(dataset_alias)
+             
+            except Exception as e:
+                print(f"Error downloading from Hugging Face: {e}")
+                raise
 
-        return dir_name
+        else: #Non-HF datasets
+            base = os.path.splitext(os.path.basename(txt_path))[0]
+            dir_name = "unlabeled_" + base if 'raw_photos' in base or 'frames' in base or 'frames' in dataset_alias else base
+
+            if os.path.exists(dir_name):
+                print(f"Dataset found at {dir_name}")
+                return Path(dir_name)
+
+            url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
+            self._download_files(url, dir_name, is_folder=True)
+
+            redundant_dir = os.path.join(dir_name, dataset_alias)
+            if os.path.exists(redundant_dir):
+                print(f"Processing dataset {dataset_alias}...")
+                for item in os.listdir(redundant_dir):
+                    source = os.path.join(redundant_dir, item)
+                    destination = os.path.join(dir_name, item)
+                    
+                    if os.path.isdir(source):
+                        if not os.path.exists(destination):
+                            shutil.move(source, destination)
+                        else:
+                            for subitem in os.listdir(source):
+                                shutil.move(os.path.join(source, subitem), destination)
+                            os.rmdir(source)
+                    else:
+                        if not os.path.exists(destination):
+                            shutil.move(source, destination)
+                
+                if os.path.exists(redundant_dir):
+                    os.rmdir(redundant_dir)
+                print(f"Successfully processed dataset {dataset_alias}.")
+            else:
+                print(f"Dataset download failed.")
+
+            return Path(dir_name)
