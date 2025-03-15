@@ -247,7 +247,7 @@ class LoadTools:
                     token=None,
                     ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
                 )
-                dataset = load_from_disk(dataset_alias)
+                dataset = load_from_disk(f"{dataset_alias}/data")
 
                 for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
                     image, filename = example["image"], example["filename"]
