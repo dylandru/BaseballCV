@@ -64,7 +64,14 @@ class LoadTools:
             'phc': 'datasets/yolo/phc.txt',
             'amateur_pitcher_hitter': 'datasets/yolo/amateur_pitcher_hitter.txt',
             'amateur_hitter_pitcher_jsonl': 'datasets/JSONL/amateur_hitter_pitcher_jsonl.txt',
-            'international_amateur_pitcher_photo_dataset_10k_vol1': 'hf:dyland222/international_amateur_pitcher_photo_dataset_10k_vol1',
+            'international_amateur_baseball_catcher_photos': 'hf:dyland222/international_amateur_baseball_catcher_photos_dataset',
+            'international_amateur_baseball_catcher_video': 'hf:dyland222/international_amateur_baseball_catcher_video_dataset',
+            'international_amateur_baseball_photos': 'hf:dyland222/international_amateur_baseball_photos_dataset',
+            'international_amateur_baseball_game_video': 'hf:dyland222/international_amateur_baseball_game_videos',
+            'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
+            'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset'
+
+
         }
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:

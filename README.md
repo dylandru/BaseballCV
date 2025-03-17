@@ -55,6 +55,10 @@ pip install baseballcv
 
 We are currently in the process of partnering with **[Prep Baseball](https://www.prepbaseball.com/)** to provide open-source amateur baseball datasets and models! **Prep Baseball** believes in the power of open-source software in advancing innovation in amateur baseball, and we are excited to work with them to achieve this goal.
 
+### *Alfredo Harp Helú*
+
+The **[Alfredo Harp Helú Baseball Academy](https://www.academiaahh.mx/)** has graciously offered us a collection of videos from their academy to turn into Vision Datasets! They are dedicated to being one of the most technologically advanced baseball academies in Latin America, and we are excited to work with them to achieve this goal.
+
 ## Available Assets
 
 ### 1. Datasets
@@ -81,10 +85,20 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 
 - `broadcast_10k_frames.txt`: A collection of 10,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
 - `broadcast_15k_frames.txt`: A collection of 15,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
+- `international_amateur_baseball_pitcher_photo`: A collection of 10,000 unannotated international amateur baseball pitcher photos. Photo provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_pitcher_photo_dataset)).
+- `international_amateur_baseball_photos`: A collection of 100,000 unannotated international amateur baseball photos. Photo provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_photos_dataset)).
+- `international_amateur_baseball_catcher_photos`: A collection of 15,000 unannotated international amateur baseball catcher photos. Photo provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_catcher_photos_dataset)).
+
 
 **Available COCO-format Datasets**:
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
+
+**Available Video Datasets**:
+
+- `international_amateur_baseball_game_video`: A collection of 205 unannotated international amateur baseball game videos. Video provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_game_videos)).
+- `international_amateur_baseball_bp_video`: A collection of 50 unannotated international amateur baseball Batting Practice videos. Video provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_bp_videos)).
+- `international_amateur_baseball_catcher_video`: A collection of 37 unannotated international amateur baseball catcher videos. Video provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_catcher_video_dataset)).
 
 **Downloading Datasets**
 
