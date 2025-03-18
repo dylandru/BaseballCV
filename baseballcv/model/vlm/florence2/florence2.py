@@ -410,7 +410,17 @@ class Florence2:
         
         return [random_color_jitter, random_blur, random_noise]
     
-    def _return_clean_text_output(self, results: Dict) -> str:
+    def _return_clean_text_output(self, results) -> str:
+        """Extract and clean text output from model results.
+        
+        Args:
+            results: Either a dictionary containing text results or a string result directly
+            
+        Returns:
+            str: The cleaned text output
+        """
+        if isinstance(results, str):
+            return results.strip()
         return next(iter(results.values())).strip()
         
     def _visualize_results(self, image: Image.Image, results: Dict, save_viz_dir: str = 'visualizations'):
@@ -656,7 +666,23 @@ class Florence2:
             raise e
         
     def inference(self, image_path: str, task: str = "<OD>", 
-                 text_input: str = None):
+                 text_input: str = None, question: str = None):
+        """Run inference with the Florence2 model.
+        
+        Args:
+            image_path: Path to the input image
+            task: Type of task to perform ("<CAPTION>", "<VQA>", "<OD>", etc.)
+            text_input: Optional text input for tasks that require it
+            question: Optional question for VQA task (for backward compatibility)
+            
+        Returns:
+            For text tasks: A string containing the model output
+            For detection tasks: A dictionary containing bounding boxes and labels
+        """
+        # Handle backward compatibility with question parameter
+        if task == "<VQA>" and question is not None and text_input is None:
+            text_input = question
+            
         image = Image.open(image_path)
         prompt = task + text_input if text_input else task
 
@@ -689,6 +715,7 @@ class Florence2:
 
         if task == "<OD>":
             self._visualize_results(image, text_output)
+            return text_output
 
         if task == "CAPTION_TO_PHASE_GROUNDING" or task == "<OPEN_VOCABULARY_DETECTION>":
             if text_input != None:
@@ -702,10 +729,14 @@ class Florence2:
                         'labels': labels
                     }
                     self._visualize_results(image, results)
+                return text_output
             else:
                 raise ValueError("Text input is needed for this type of task")
             
-        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>":
-            print(self._return_clean_text_output(text_output))
+        if task == "<CAPTION>" or task == "<DETAILED_CAPTION>" or task == "<MORE_DETAILED_CAPTION>" or task == "<VQA>":
+            clean_text = self._return_clean_text_output(text_output)
+            print(clean_text)
+            return clean_text
 
+        # Default return (fallback)
         return text_output
