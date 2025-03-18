@@ -1,6 +1,6 @@
 """BaseballCV - A collection of tools and models designed to aid in the use of Computer Vision in baseball."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.21"
 
 try:
     from .utils import check_and_install

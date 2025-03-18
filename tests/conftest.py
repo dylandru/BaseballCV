@@ -3,8 +3,10 @@ import multiprocessing as mp
 from unittest.mock import Mock
 import requests
 from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper, BaseballTools
-from baseballcv.model import YOLOv9, PaliGemma2, Florence2, DETR
 import os
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import sys
 from unittest import mock
 
@@ -15,6 +17,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def setup_multiprocessing() -> None:
     """
     Ensures that the multiprocessing start method is set to 'spawn' for tests.
+    
+    This fixture runs automatically once per test session and configures the
+    multiprocessing start method to 'spawn' which is more compatible with
+    pytest and avoids potential issues with forking processes during testing.
+    
+    Returns:
+        None: This fixture doesn't return any value.
     """
     if mp.get_start_method(allow_none=True) != 'spawn':
         mp.set_start_method('spawn', force=True)
@@ -25,6 +34,10 @@ def setup_multiprocessing() -> None:
 def data_tools() -> DataTools:
     """
     Provides a DataTools instance for testing.
+    
+    Creates and returns a DataTools object with a reduced number of workers
+    to prevent excessive resource usage during testing while still allowing
+    parallel processing functionality to be tested.
 
     Returns:
         DataTools: An instance of DataTools with max_workers set to 2.
@@ -35,6 +48,10 @@ def data_tools() -> DataTools:
 def load_tools() -> LoadTools:
     """
     Provides a LoadTools instance for testing.
+    
+    Creates and returns a LoadTools object that can be used in tests to load
+    datasets, models, and other resources needed for testing the baseballcv
+    package functionality.
 
     Returns:
         LoadTools: An instance of LoadTools.
@@ -45,6 +62,10 @@ def load_tools() -> LoadTools:
 def scraper() -> BaseballSavVideoScraper:
     """
     Provides a BaseballSavVideoScraper instance for testing.
+    
+    Creates and returns a BaseballSavVideoScraper object that can be used
+    in tests to verify the functionality of scraping baseball videos and
+    related data from Baseball Savant.
 
     Returns:
         BaseballSavVideoScraper: An instance of BaseballSavVideoScraper.
@@ -55,6 +76,10 @@ def scraper() -> BaseballSavVideoScraper:
 def baseball_tools() -> BaseballTools:
     """
     Provides a BaseballTools instance for testing.
+    
+    Creates and returns a BaseballTools object that can be used in tests
+    to verify the functionality of baseball-specific data processing and
+    analysis tools provided by the baseballcv package.
 
     Returns:
         BaseballTools: An instance of BaseballTools.
@@ -62,44 +87,20 @@ def baseball_tools() -> BaseballTools:
     return BaseballTools()
 
 @pytest.fixture
-def yolo_model():
+def mock_responses() -> tuple:
     """
-    Fixture to provide the YOLOv9 class for testing.
-    This avoids importing the actual class in every test function.
-    """
-    from baseballcv.model import YOLOv9
-    return YOLOv9
-
-@pytest.fixture
-def paligemma_model():
-    """
-    Fixture to provide the PaliGemma2 class for testing.
-    This avoids importing the actual class in every test function.
-    """
-    from baseballcv.model import PaliGemma2
-    return PaliGemma2
-
-@pytest.fixture
-def florence_model():
-    """
-    Fixture to provide the Florence2 class for testing.
-    This avoids importing the actual class in every test function.
-    """
-    from baseballcv.model.vlm.florence2.florence2 import Florence2
-    return Florence2
-
-@pytest.fixture
-def detr_model() -> DETR:
-    """
-    Provides a DETR instance for testing.
+    Provides mock HTTP responses for testing network requests.
+    
+    Creates and returns two mock response objects:
+    1. A success response (200) with mock file content and headers
+    2. An error response (404) that raises an HTTPError when raise_for_status is called
+    
+    These mock responses can be used to test functions that make HTTP requests
+    without actually connecting to external services.
 
     Returns:
-        DETR: An instance of DETR.
+        tuple: A tuple containing (success_response, error_response) mock objects.
     """
-    return DETR()
-
-@pytest.fixture
-def mock_responses() -> tuple:
     success = Mock()
     success.status_code = 200
     success.content = b"mock file content"
@@ -117,51 +118,21 @@ def mock_responses() -> tuple:
     return success, error
 
 @pytest.fixture
-def mock_torch_cuda():
+def mock_model() -> Mock:
     """
-    Fixture to mock torch.cuda for CPU-only testing environments.
+    Provides a mock model for testing.
+    
+    Creates and returns a mock model object that can be used in tests to
+    verify the functionality of model training and evaluation.
     """
-    with mock.patch('torch.cuda.is_available', return_value=False), \
-         mock.patch('torch.cuda.empty_cache', return_value=None), \
-         mock.patch('torch.cuda.memory_allocated', return_value=0):
-        yield
-
-@pytest.fixture
-def mock_torch_mps():
-    """
-    Fixture to mock torch.backends.mps for CPU-only testing environments.
-    """
-    with mock.patch('torch.backends.mps.is_available', return_value=False):
-        yield
-
-@pytest.fixture
-def cpu_only_env(mock_torch_cuda, mock_torch_mps):
-    """
-    Fixture to ensure tests run in a CPU-only environment.
-    """
-    yield
-
-@pytest.fixture
-def temp_dir():
-    """
-    Fixture to provide a temporary directory for test files.
-    """
-    import tempfile
-    temp_dir = tempfile.mkdtemp()
-    yield temp_dir
-    import shutil
-    shutil.rmtree(temp_dir)
-
-@pytest.fixture
-def dummy_image():
-    """
-    Fixture to provide a dummy image for testing.
-    """
-    from PIL import Image
-    image = Image.new('RGB', (224, 224), color='white')
-    temp_path = "temp_test_image.jpg"
-    image.save(temp_path)
-    yield temp_path
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
-
+    class MockModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.vision_model = mock.MagicMock()
+            self.vision_model.encoder = mock.MagicMock()
+            self.linear = nn.Linear(10, 2)
+            
+        def forward(self, pixel_values):
+            return {"logits": torch.rand(1, 2)}
+        
+    return MockModel()

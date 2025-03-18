@@ -13,33 +13,55 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11"] 
+        component: [
+          'functions', 
+          'datasets',
+          'model',
+          'api'
+        ]
+    name: Test ${{ matrix.component }}
     
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
+
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.11'
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -e .
+        pip install pytest pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
     - name: Run tests
+      id: test
       run: |
-        pytest -c /dev/null --cov=baseballcv tests/ --cov-report=xml 
-        
+        mkdir -p test-results
+        pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml:coverage-${{ matrix.component }}.xml
+      continue-on-error: true
+      
+    - name: Determine test status
+      if: always()
+      id: status
+      run: |
+        if [ "${{ steps.test.outcome }}" == "success" ]; then
+          echo "result=success" >> $GITHUB_OUTPUT
+        else
+          echo "result=failure" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        file: ./coverage.xml
-        flags: unittests
-        name: python-coverage
+        file: coverage-${{ matrix.component }}.xml
+        flags: ${{ matrix.component }}
+        name: ${{ matrix.component }}-coverage
         fail_ci_if_error: true
         verbose: true

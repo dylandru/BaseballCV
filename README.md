@@ -445,7 +445,7 @@ We welcome contributions from the community! Whether you're looking to improve o
 
 ### How to Contribute (for repository maintainers)
 
-If you are interested in helping maintain or adding to the repository, please follow these steps:
+If you are interested in helping maintain or add to the repository, please follow these steps:
 
  - Fork the repository
  - Create a new branch (git checkout -b feature/YourFeature)
@@ -464,11 +464,11 @@ Our main need is for data annotation. With our new annotation app, you can help 
  - Open the Annotation Interface and begin annotating!
 
 ## Component Status
-
-[![Dataset Tools](https://img.shields.io/badge/Dataset%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
-[![Load Tools](https://img.shields.io/badge/Load%20Tools-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
-[![Savant Scraper](https://img.shields.io/badge/Savant%20Scraper-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
-[![BDL API](https://img.shields.io/badge/BDL%20API-passing-success)](https://github.com/dylandru/baseballcv/actions/workflows/pytest.yml)
+**Note: The badge links are for the main branch.**
+[![Functions](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=functions)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dfunctions)
+[![Datasets](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=datasets)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Ddatasets)
+[![Models](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=model)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dmodel)
+[![API](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=api)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dapi)
 
 ## License
 

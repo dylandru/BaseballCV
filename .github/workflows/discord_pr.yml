@@ -3,8 +3,13 @@ name: Discord PR Notification
 on:
   pull_request:
     types: [closed]
+    
   workflow_dispatch:
-
+    inputs:
+      pr_number:
+        description: 'Pull Request number to notify about'
+        required: true
+        type: string
 jobs:
   discord_notification:
     if: github.event.pull_request.merged == true
