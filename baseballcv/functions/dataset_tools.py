@@ -59,8 +59,8 @@ class DataTools:
             frame_stride (int): Number of frames to skip when using supervision. Default is 30.
 
         Returns:
-            output folder (str): Creates a folder of photos from the video frames to use. Outputs the directory where the photos or stored. 
-            If there are no video filed found in the specific folder, None is returned.
+            output_folder (str): Creates a folder of photos from the video frames to use. Returns the directory where the photos or stored. 
+            If there are no video files found in the specific folder, None is returned.
         """
 
         self.output_folder = output_frames_folder
