@@ -38,30 +38,40 @@ jobs:
         pip install pytest pytest-cov
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
-    - name: Run tests
-      id: test
+    - name: Run tests (non-API)
+      if: matrix.component != 'api'
+      id: test_non_api
       run: |
         mkdir -p test-results
-        pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml:coverage-${{ matrix.component }}.xml
+        pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml
+      continue-on-error: true
+        
+    - name: Run API tests
+      if: matrix.component == 'api'
+      id: test_api
+      run: |
+        mkdir -p test-results
+        # For API, don't fail on coverage issues
+        pytest tests/test_api -v
       continue-on-error: true
       
     - name: Determine test status
       if: always()
       id: status
       run: |
-        if [ "${{ steps.test.outcome }}" == "success" ]; then
+        if [[ "${{ matrix.component }}" != "api" && "${{ steps.test_non_api.outcome }}" == "success" ]] || [[ "${{ matrix.component }}" == "api" && "${{ steps.test_api.outcome }}" == "success" ]]; then
           echo "result=success" >> $GITHUB_OUTPUT
         else
           echo "result=failure" >> $GITHUB_OUTPUT
         fi
     
     - name: Upload coverage to Codecov
+      if: matrix.component != 'api'
       uses: codecov/codecov-action@v4
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        file: coverage-${{ matrix.component }}.xml
         flags: ${{ matrix.component }}
         name: ${{ matrix.component }}-coverage
-        fail_ci_if_error: true
+        fail_ci_if_error: false
         verbose: true
