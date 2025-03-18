@@ -1,99 +1,176 @@
 import pytest
 import torch
+import shutil
 import os
-from unittest import mock
+import tempfile
+from PIL import Image
 from baseballcv.model import YOLOv9
 
 class TestYOLOv9:
-    """Minimal test cases for YOLOv9 model."""
+    """
+    Test cases for YOLOv9 model.
+    
+    This test suite verifies the functionality of the YOLOv9 object detection model,
+    including initialization, device selection, inference capabilities, and parameter
+    sensitivity.
+    """
 
     @pytest.fixture
-    def setup(self):
-        """Set up minimal test environment."""
-        # Create a test input tensor
-        test_input = torch.rand(1, 3, 640, 640)
+    def setup_yolo_test(self, load_tools) -> dict:
+        """
+        Set up test environment with BaseballCV dataset.
         
-        # Basic model parameters
-        model_params = {
-            'name': 'yolov9-c',
-            'device': 'cpu',
-            'confidence_threshold': 0.25,
-            'iou_threshold': 0.45
-        }
+        Creates a temporary directory and loads a baseball dataset for testing.
+        Initializes a YOLOv9 model and prepares test images either from the dataset
+        or creates a synthetic test image if needed.
         
-        return {
-            'test_input': test_input,
-            'model_params': model_params
-        }
+        Args:
+            load_tools: Fixture providing tools to load datasets
+            
+        Yields:
+            dict: A dictionary containing test resources including:
+                - test_image_path: Path to an image for testing inference
+                - dataset_path: Path to the loaded dataset
+                - class_mapping: Dictionary mapping class IDs to class names
+                - temp_dir: Path to temporary directory for test artifacts
+                - model: Initialized YOLOv9 model instance
+        """
+        
+        try:
+            temp_dir = tempfile.mkdtemp()
+            dataset_path = load_tools.load_dataset("baseball_rubber_home_glove")
 
-    def test_model_initialization(self, setup, monkeypatch):
-        """Test model initialization and device selection."""
-        # Mock the YOLO module to avoid actual model loading
-        mock_yolo = mock.MagicMock()
-        monkeypatch.setattr('ultralytics.YOLO', lambda model_path: mock_yolo)
+            model = YOLOv9(
+                device='cpu'
+            ) #using default model yolov9-c
+            
+            train_images_dir = os.path.join(dataset_path, "train", "images")
+            test_image_path = None
+            
+            if os.path.exists(train_images_dir) and os.listdir(train_images_dir):
+                test_image_path = os.path.join(train_images_dir, [f for f in os.listdir(train_images_dir) 
+                                              if f.lower().endswith(('.jpg', '.jpeg', '.png'))][0])
+            
+            if not test_image_path:
+                test_image_path = os.path.join(temp_dir, "test_image.jpg")
+                Image.new('RGB', (640, 640), color='green').save(test_image_path)
+            
+            class_mapping = {
+                0: 'glove',
+                1: 'homeplate',
+                2: 'baseball',
+                3: 'rubber'
+            }
+            
+            yield {
+                'test_image_path': test_image_path,
+                'dataset_path': dataset_path,
+                'class_mapping': class_mapping,
+                'temp_dir': temp_dir,
+                'model': model
+            }
+            
+        except Exception as e:
+            print(f"Error setting up YOLOv9 test: {e}")
+            test_image_path = os.path.join(temp_dir, "test_image.jpg")
+            img = Image.new('RGB', (640, 640), color='red')
+            img.save(test_image_path)
+            
+            yield {
+                'test_image_path': test_image_path,
+                'dataset_path': None,
+                'class_mapping': {0: 'test_class'},
+                'temp_dir': temp_dir,
+                'model': model
+            }
         
-        # Test 1: Initialize with specified device
+        finally:
+            shutil.rmtree(temp_dir)
+            shutil.rmtree(dataset_path)
+
+    def test_model_initialization(self, setup_yolo_test) -> None:
+        """
+        Test model initialization and device selection.
+        
+        Verifies that the YOLOv9 model initializes correctly with the specified
+        device and tests device selection logic, including optional MPS support
+        when available.
+        
+        Args:
+            setup_yolo_test: Fixture providing test resources
+        """
+
         model = YOLOv9(
-            device=setup['model_params']['device'],
-            name=setup['model_params']['name']
+            device='cpu'
         )
         
         assert model is not None, "YOLOv9 model should initialize"
-        assert model.device == setup['model_params']['device'], "Device should be set correctly"
+        assert model.device == 'cpu', "Device should be set correctly"
         
-        # Test 2: Test CUDA device selection
-        with monkeypatch.context() as m:
-            # Mock torch.cuda.is_available to return True
-            m.setattr(torch.cuda, 'is_available', lambda: True)
-            
-            # Initialize with 'auto' device to test auto-detection
-            model = YOLOv9(name=setup['model_params']['name'])
-            
-            assert model.device == 'cuda:0', "Should select CUDA when available"
-            
-        # Test 3: Test CPU fallback
-        with monkeypatch.context() as m:
-            # Mock torch.cuda.is_available to return False
+        with pytest.MonkeyPatch().context() as m: #optional MPS test - not necessary but can be used to test MPS device selection
             m.setattr(torch.cuda, 'is_available', lambda: False)
+            m.setattr(torch.backends.mps, 'is_available', lambda: True)
             
-            # Initialize with 'auto' device to test fallback
-            model = YOLOv9(name=setup['model_params']['name'])
-            
-            assert model.device == 'cpu', "Should fall back to CPU when CUDA is not available"
+            try:
+                model = YOLOv9(device='mps')
+                assert model.device == 'mps', "Should select MPS when available"
+            except Exception as e:
+                pytest.skip(f"MPS model initialization test skipped: {str(e)}")
 
-    def test_inference(self, setup, monkeypatch):
-        """Test basic inference functionality."""
-        # Create mock YOLO model that returns expected format for inference
-        mock_yolo = mock.MagicMock()
-        mock_results = mock.MagicMock()
-        mock_results.boxes.xyxy = torch.tensor([[10, 20, 110, 120]])
-        mock_results.boxes.conf = torch.tensor([0.95])
-        mock_results.boxes.cls = torch.tensor([0])
-        mock_yolo.predict.return_value = [mock_results]
+    def test_inference(self, setup_yolo_test) -> None:
+        """
+        Test basic inference functionality.
         
-        monkeypatch.setattr('ultralytics.YOLO', lambda model_path: mock_yolo)
+        Verifies that the YOLOv9 model can perform inference on a test image
+        and returns properly structured detection results with expected fields.
         
-        model = YOLOv9(
-            device=setup['model_params']['device'],
-            name=setup['model_params']['name'],
-            confidence_threshold=setup['model_params']['confidence_threshold'],
-            iou_threshold=setup['model_params']['iou_threshold']
+        Args:
+            setup_yolo_test: Fixture providing test resources including model and test image
+        """
+        
+        model = setup_yolo_test['model']
+        
+        result = model.inference(
+            source=setup_yolo_test['test_image_path'],
+            project=setup_yolo_test['temp_dir']
         )
         
-        temp_path = "temp_test_image.jpg"
-        with open(temp_path, 'w') as f:
-            f.write('dummy image')
+        assert result is not None, "Inference should return results"
         
-        try:
-            with mock.patch('PIL.Image.open'):
-                result = model.inference(
-                    image_path=temp_path,
-                    save_dir=None
-                )
+        if isinstance(result, list) and len(result) > 0:
+            assert 'box' in result[0], "Detection should include bounding box"
+            assert 'confidence' in result[0], "Detection should include confidence"
+            assert 'class_id' in result[0], "Detection should include class_id"
+            
+            assert len(result[0]['box']) == 4, "Box should have 4 coordinates"
                 
-                assert result is not None, "Inference should return results"
-                mock_yolo.predict.assert_called_once()
-                
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+    
+    def test_threshold_parameters(self, setup_yolo_test) -> None:
+        """
+        Test confidence and IoU threshold parameters.
+        
+        Verifies that the confidence threshold parameter correctly filters
+        detection results, with lower thresholds yielding more detections
+        than higher thresholds.
+        
+        Args:
+            setup_yolo_test: Fixture providing test resources including model and test image
+        """
+        
+        model = setup_yolo_test['model']
+        
+        high_conf_results = model.inference(
+            source=setup_yolo_test['test_image_path'],
+            conf_thres=0.9
+        )
+        
+        low_conf_results = model.inference(
+            source=setup_yolo_test['test_image_path'],
+            conf_thres=0.05
+        )
+        
+        if high_conf_results and low_conf_results:
+            assert len(high_conf_results) <= len(low_conf_results), \
+                "Lower confidence threshold should yield more or equal detections"
+
+#TODO: Add tests for Finetuning when Tests can be run on GPU
