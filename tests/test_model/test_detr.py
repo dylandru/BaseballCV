@@ -66,6 +66,7 @@ class TestDETR:
         }
         shutil.rmtree(dataset_path) 
 
+    @pytest.mark.network
     def test_model_initialization(self):
         """
         Test model initialization and device selection.

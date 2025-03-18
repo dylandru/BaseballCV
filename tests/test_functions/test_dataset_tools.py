@@ -54,7 +54,7 @@ class TestDatasetTools:
         assert result is None
         empty_mock.assert_called_once()
 
-    # I advise running this test last in the generate photo calls as it's both deleting and not deleting the photo dataset.
+    @pytest.mark.network
     @pytest.mark.parametrize("use_supervision, value", [("use_supervision", False), ("use_supervision", True)])
     def test_generate_photo_dataset(self, data_tools, setup, use_supervision, value):
         """
@@ -83,6 +83,7 @@ class TestDatasetTools:
         for frame in frames:
             assert frame.endswith(('.jpg', '.png')), f'Invalid frame format {frame}'
 
+    @pytest.mark.network
     def test_automated_annotation(self, setup, data_tools, load_tools):
         """
         Tests the annotation tools to make sure the proper file systems are loaded 

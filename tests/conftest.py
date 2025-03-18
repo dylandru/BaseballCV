@@ -136,3 +136,13 @@ def mock_model() -> Mock:
             return {"logits": torch.rand(1, 2)}
         
     return MockModel()
+
+# Network testing configurations
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "network: mark test as requiring network access"
+    )
+
+def pytest_runtest_setup(item):
+    if "network" in item.keywords and os.environ.get("SKIP_NETWORK_TESTS", "0") == "1":
+        pytest.skip("Network tests disabled")

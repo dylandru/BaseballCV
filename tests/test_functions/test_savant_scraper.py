@@ -5,6 +5,9 @@ import pytest
 from unittest.mock import patch
 import pandas as pd
 
+def should_skip_network_tests():
+    return os.environ.get("SKIP_NETWORK_TESTS", "0") == "1"
+
 class TestSavantScraper:
     """ Tests the functionality of the Baseball Savant Scraper Class """
 
@@ -23,6 +26,7 @@ class TestSavantScraper:
                 if os.path.exists(attr['temp_dir']):
                     shutil.rmtree(attr['temp_dir'])
     
+    @pytest.mark.network
     def test_run_statcast_pull_scraper(self, scraper, setup):
         """
         Tests the main video scraping functionality.
@@ -50,6 +54,7 @@ class TestSavantScraper:
         scraper.cleanup_savant_videos(temp_dir)
         assert not os.path.exists(temp_dir), "Should remove the videos"
 
+    @pytest.mark.network
     def test_scraper_no_play_ids(self, scraper):
         """
         Tests on offseason dates to make sure a Value Error is returned when scraping

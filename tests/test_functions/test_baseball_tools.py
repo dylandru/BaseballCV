@@ -1,5 +1,7 @@
 import os
+import pytest
 
+@pytest.mark.network
 def test_distance_to_zone(baseball_tools):
     """
     Tests the distance_to_zone method using example call.
