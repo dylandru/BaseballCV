@@ -465,10 +465,8 @@ Our main need is for data annotation. With our new annotation app, you can help 
 
 ## Component Status
 **Note: The badge links are for the main branch.**
-[![Functions](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=functions)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dfunctions)
-[![Datasets](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=datasets)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Ddatasets)
-[![Models](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=model)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dmodel)
-[![API](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?branch=main&component=api)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=branch%3Amain+component%3Dapi)
+
+[![Functions](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=functions)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dfunctions) [![Datasets](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=datasets)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Ddatasets) [![Models](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=model)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dmodel) [![API](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=api)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dapi)
 
 ## License
 
