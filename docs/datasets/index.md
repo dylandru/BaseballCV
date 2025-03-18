@@ -99,6 +99,19 @@ COCO format datasets are ideal for training DETR and other transformer-based mod
    - Resolution: 1280 x 720 pixels
    - Usage: Custom annotation and model training
 
+3. **international_amateur_baseball_pitcher_photo**
+   - Content: 10,000 unannotated international amateur baseball pitcher photos
+   - Usage: Custom annotation and model training for amateur baseball pitcher detection
+
+4. **international_amateur_baseball_photos**
+   - Content: 100,000 unannotated international amateur baseball photos
+   - Usage: Custom annotation and model training for amateur baseball detection
+
+5. **international_amateur_baseball_catcher_photos**
+   - Content: 15,000 unannotated international amateur baseball catcher photos
+   - Usage: Custom annotation and model training for amateur baseball catcher detection
+
+
 ## Using the Datasets
 
 ### Loading Datasets

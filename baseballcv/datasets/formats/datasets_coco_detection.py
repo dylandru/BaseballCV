@@ -25,8 +25,8 @@ class CocoDetectionDataset(torchvision.datasets.CocoDetection):
         hierarchical_ann_file = os.path.join(dataset_dir, split, "_coco.json")
         
         # Check for flat structure
-        flat_img_dir = dataset_dir
-        flat_ann_file = os.path.join(dataset_dir, f"instances_{split}.json")
+        flat_img_dir = os.path.join(dataset_dir, split, "images")
+        flat_ann_file = os.path.join(dataset_dir, "COCO_annotations", f"instances_{split}.json")
         
         # Determine which structure to use
         if os.path.exists(hierarchical_img_dir) and os.path.exists(hierarchical_ann_file):

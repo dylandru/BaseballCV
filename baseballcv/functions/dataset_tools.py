@@ -1,5 +1,6 @@
 import os
 import random
+import supervision as sv
 from collections import defaultdict
 import concurrent.futures
 from .savant_scraper import BaseballSavVideoScraper
@@ -38,7 +39,9 @@ class DataTools:
                            max_videos_per_game: int = 10,
                            start_date: str = "2024-05-22",
                            end_date: str = "2024-07-25",
-                           delete_savant_videos: bool = True) -> None:
+                           delete_savant_videos: bool = True,
+                           use_supervision: bool = False,
+                           frame_stride: int = 30) -> (str | None):
         """
         Extracts random frames from scraped Baseball Savant broadcast videos to create a photo dataset for a 
         Computer Vision model.
@@ -51,11 +54,13 @@ class DataTools:
             max_videos_per_game (int): Max number of videos to pull for single game to increase variety. Defaults to 10.
             start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-22".
             end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-25".
-            max_workers (int): Number of worker processes to use for frame extraction. Default is 10.
             delete_savant_videos (bool): Whether or not to delete scraped savant videos after frames are extracted. Default is True.
+            use_supervision (bool): Whether to use supervision library for frame extraction. Default is False.
+            frame_stride (int): Number of frames to skip when using supervision. Default is 30.
 
         Returns:
-            None: Creates a folder of photos from the video frames to use.
+            output_folder (str): Creates a folder of photos from the video frames to use. Returns the directory where the photos or stored. 
+            If there are no video files found in the specific folder, None is returned.
         """
 
         self.output_folder = output_frames_folder
@@ -71,13 +76,16 @@ class DataTools:
             print("No video files found in the specified folder.") 
             return
         
-        games = defaultdict(list) #group videos by given game for increased variety
+        # Group videos by game for increased variety
+        games = defaultdict(list)
         for video_file in video_files:
             game_id = video_file[:6] 
             games[game_id].append(video_file)
         
         frames_per_game = max_num_frames // len(games)
-        remaining_frames = max_num_frames % len(games) #distribute frames evenly across games
+        remaining_frames = max_num_frames % len(games)
+        
+        extracted_frames = []
         
         extraction_tasks = []
         for game_id, game_videos in games.items():
@@ -89,44 +97,60 @@ class DataTools:
             
             for i, video_file in enumerate(game_videos):
                 frames_to_extract = frames_per_video + (1 if i < extra_frames else 0)
-                video_path = f"{video_download_folder}/{video_file}"
-                extraction_tasks.append((video_path, game_id, self.output_folder, frames_to_extract))
-        
-        extracted_frames = []
+                video_path = os.path.join(video_download_folder, video_file)
+                
+                if use_supervision:
+                    video_name = os.path.splitext(video_file)[0]
+                    image_name_pattern = f"{game_id}_{video_name}-{{:05d}}.png"
+                    
+                    frame_count = 0
+                    with sv.ImageSink(target_dir_path=self.output_folder, image_name_pattern=image_name_pattern) as sink:
+                        for image in sv.get_video_frames_generator(source_path=str(video_path), stride=frame_stride):
+                            sink.save_image(image=image)
+                            frame_count += 1
+                            extracted_frames.append(os.path.join(self.output_folder, image_name_pattern.format(frame_count)))
+                            
+                            if frame_count >= frames_to_extract:
+                                break
+                else:
+                    extraction_tasks.append((video_path, game_id, self.output_folder, frames_to_extract))
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            try:
-                future_videos = {executor.submit(extract_frames_from_video, *task): task 
-                               for task in extraction_tasks}
-                for future in concurrent.futures.as_completed(future_videos):
-                    video_path, game_id, _, _ = future_videos[future]
-                    try:
-                        result = future.result()
-                        extracted_frames.extend(result)
-                    except Exception as e:
-                        print(f"Error with {video_path}: {str(e)}")
-            except KeyboardInterrupt:
-                print("\nShutting down gracefully...")
-                executor.shutdown(wait=False)
-                raise
-            finally:
-                for task in extraction_tasks:
-                    video_path = task[0]
-                    if os.path.exists(video_path):
+        if not use_supervision and extraction_tasks:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                try:
+                    future_videos = {executor.submit(extract_frames_from_video, *task): task 
+                                   for task in extraction_tasks}
+                    for future in concurrent.futures.as_completed(future_videos):
+                        video_path, game_id, _, _ = future_videos[future]
                         try:
-                            os.close(os.open(video_path, os.O_RDONLY))
-                        except:
-                            pass
+                            result = future.result()
+                            extracted_frames.extend(result)
+                        except Exception as e:
+                            print(f"Error with {video_path}: {str(e)}")
+                except KeyboardInterrupt:
+                    print("\nShutting down gracefully...")
+                    executor.shutdown(wait=False)
+                    raise
+                finally:
+                    for task in extraction_tasks:
+                        video_path = task[0]
+                        if os.path.exists(video_path):
+                            try:
+                                os.close(os.open(video_path, os.O_RDONLY))
+                            except:
+                                pass
 
         random.shuffle(extracted_frames)
         
         for i, frame_path in enumerate(extracted_frames):
-            frame_name = f"{i+1:06d}{os.path.splitext(frame_path)[1]}"
-            new_path = os.path.join(self.output_folder, frame_name)
-            shutil.move(frame_path, new_path) 
+            if os.path.exists(frame_path):
+                frame_name = f"{i+1:06d}{os.path.splitext(frame_path)[1]}"
+                new_path = os.path.join(self.output_folder, frame_name)
+                shutil.move(frame_path, new_path) 
 
         existing_files = set(os.listdir(self.output_folder))
-        extracted_file_names = set(f"{i+1:06d}{os.path.splitext(frame)[1]}" for i, frame in enumerate(extracted_frames))
+        extracted_file_names = set(f"{i+1:06d}{os.path.splitext(os.path.basename(frame))[1]}" 
+                                  for i, frame in enumerate(extracted_frames))
         files_to_remove = existing_files - extracted_file_names
         for file in files_to_remove:
             os.remove(os.path.join(self.output_folder, file))
@@ -135,6 +159,8 @@ class DataTools:
         
         if delete_savant_videos:
             self.scraper.cleanup_savant_videos(video_download_folder)
+
+        return self.output_folder
     
     def automated_annotation(self, 
                              model_alias: str,

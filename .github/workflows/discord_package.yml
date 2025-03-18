@@ -9,6 +9,18 @@ jobs:
   discord_notification:
     runs-on: ubuntu-latest
     steps:
+      - name: Prepare truncated release body
+        id: prepare
+        run: |
+          BODY="${{ github.event.release.body }}"
+          TRUNCATED_BODY="${BODY:0:1000}"
+          if [ ${#BODY} -gt 1000 ]; then
+            TRUNCATED_BODY="$TRUNCATED_BODY...\n\n*Message truncated due to length. See full release notes at the link below.*"
+          fi
+          echo "truncated_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$TRUNCATED_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Discord notification
         env:
           DISCORD_WEBHOOK: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
@@ -21,6 +33,7 @@ jobs:
               Created by: ${{ github.event.release.author.login }}
 
               **Description:**
-              ${{ github.event.release.body }}
+              ${{ steps.prepare.outputs.truncated_body }}
 
+              **View Full Release Notes:**
               ${{ github.event.release.html_url }}

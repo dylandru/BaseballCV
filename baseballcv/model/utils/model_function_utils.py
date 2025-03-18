@@ -342,7 +342,7 @@ class ModelFunctionUtils:
         output = os.path.join(output_dir, "weights", os.path.basename(model_file))
         if not os.path.exists(output):
             try:
-                script = resource_filename("yolov9", "scripts/download_model_weights.sh")
+                script = resource_filename("yolov9", "scripts/get_model_weights.sh")
                 subprocess.run(["bash", script, model_file, output_dir], check=True)
             except Exception as e:
                 print(f"Error downloading weights: {e}")

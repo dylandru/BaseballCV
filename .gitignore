@@ -20,7 +20,9 @@ __pycache__/
 # Ignore __MACOSX folders
 __MACOSX/
 
-# Ignore .env files
+# Ignore .env and virtual environment files
+venv/
+myenv/
 .env
 
 # Ignore TF Event Files
