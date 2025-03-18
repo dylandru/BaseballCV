@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import patch
 import pandas as pd
 
-# I didn't test the play id and video downlaods. May not need testing
 class TestSavantScraper:
     """ Tests the functionality of the Baseball Savant Scraper Class """
 

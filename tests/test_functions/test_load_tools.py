@@ -4,15 +4,9 @@ import pytest
 import tempfile
 from pathlib import Path
 
-# TODO: Test for Hugging Face dataset. Question about the Updating for different model types
+# TODO: Test for Hugging Face dataset.
 class TestLoadTools:
     """ Test Class that affirms Load Tools works properly """
-
-    fail_params = [
-                    ("data", {'dataset_alias': 'gogoguardians'}, ValueError),
-                    ("model", {'model_alias': 'gogoguardians'}, ValueError),
-                    ("model", {'model_alias': 'phc_detector', 'model_type': 'XGBoost'}, ValueError)
-                ]
 
     @pytest.fixture(scope="class", autouse=True)
     def setup(self):
@@ -23,8 +17,9 @@ class TestLoadTools:
         with open(f'{temp_dir}/data.txt', 'w') as f:
             f.write('https://example-url.com/download.zip')
 
-
-        return {'temp_dir': temp_dir}
+        yield {
+            'temp_dir': temp_dir,
+            }
     
     @pytest.fixture(scope="class")
     def clean(self):
@@ -78,6 +73,11 @@ class TestLoadTools:
         assert os.path.exists(temp_dir), "Should be a file"
         assert dataset_path == Path("data"), "Dataset txt File should be the same name as the test"
 
+    fail_params = [
+                ("data", {'dataset_alias': 'gogoguardians'}, ValueError),
+                ("model", {'model_alias': 'gogoguardians'}, ValueError),
+                ("model", {'model_alias': 'phc_detector', 'model_type': 'XGBoost'}, ValueError)
+            ]
     @pytest.mark.parametrize("load_type, params, expectation", fail_params)
     def test_load_tools_fail_params(self, load_type, params, expectation, load_tools):
         """
