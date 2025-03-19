@@ -40,6 +40,8 @@ class DataTools:
                            start_date: str = "2024-05-22",
                            end_date: str = "2024-07-25",
                            delete_savant_videos: bool = True,
+                           use_savant_scraper: bool = True,
+                           input_video_folder: str = None,
                            use_supervision: bool = False,
                            frame_stride: int = 30) -> (str | None):
         """
@@ -55,6 +57,8 @@ class DataTools:
             start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-22".
             end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-25".
             delete_savant_videos (bool): Whether or not to delete scraped savant videos after frames are extracted. Default is True.
+            use_savant_scraper (bool): Whether to use the savant scraper to download videos. Default is True.
+            input_video_folder (str): Path to folder containing videos if not using savant scraper. Default is None.
             use_supervision (bool): Whether to use supervision library for frame extraction. Default is False.
             frame_stride (int): Number of frames to skip when using supervision. Default is 30.
 
@@ -62,24 +66,32 @@ class DataTools:
             output_folder (str): Creates a folder of photos from the video frames to use. Returns the directory where the photos or stored. 
             If there are no video files found in the specific folder, None is returned.
         """
-
         self.output_folder = output_frames_folder
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(end_date, "%Y-%m-%d")
-        self.scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
-                                download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game, max_workers=1)
+        
+        if use_savant_scraper:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            self.scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
+                                    download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game, max_workers=1)
+            video_folder = video_download_folder
+        else:
+            if input_video_folder is None:
+                raise ValueError("input_video_folder must be provided when use_savant_scraper is False")
+            video_folder = input_video_folder
                 
         os.makedirs(self.output_folder, exist_ok=True)
-        video_files = [f for f in os.listdir(video_download_folder) if f.endswith(('.mp4', '.mov', '.mts'))]
+        video_files = [f for f in os.listdir(video_folder) if f.endswith(('.mp4', '.mov', '.mts'))]
         
         if not video_files:
             print("No video files found in the specified folder.") 
-            return
+            return None
         
-        # Group videos by game for increased variety
         games = defaultdict(list)
         for video_file in video_files:
-            game_id = video_file[:6] 
+            if use_savant_scraper:
+                game_id = video_file[:6] 
+            else:
+                game_id = os.path.splitext(video_file)[0][:6]
             games[game_id].append(video_file)
         
         frames_per_game = max_num_frames // len(games)
@@ -97,7 +109,7 @@ class DataTools:
             
             for i, video_file in enumerate(game_videos):
                 frames_to_extract = frames_per_video + (1 if i < extra_frames else 0)
-                video_path = os.path.join(video_download_folder, video_file)
+                video_path = os.path.join(video_folder, video_file)
                 
                 if use_supervision:
                     video_name = os.path.splitext(video_file)[0]
@@ -157,8 +169,8 @@ class DataTools:
         
         print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos over {len(games)} games.")
         
-        if delete_savant_videos:
-            self.scraper.cleanup_savant_videos(video_download_folder)
+        if delete_savant_videos and use_savant_scraper:
+            self.scraper.cleanup_savant_videos(video_folder)
 
         return self.output_folder
     

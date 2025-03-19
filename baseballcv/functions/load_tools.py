@@ -1,4 +1,5 @@
 from pathlib import Path
+from pathlib import Path
 import requests
 import os
 from tqdm import tqdm
@@ -7,6 +8,7 @@ import io
 from typing import Optional, Union
 import shutil
 from huggingface_hub import snapshot_download
+from datasets import load_from_disk
 
 class LoadTools:
     """
@@ -40,7 +42,8 @@ class LoadTools:
             'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
             'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
             'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
-            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt'
+            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
+            'homeplate_tracking': 'models/YOLO/homeplate_tracking/model_weights/homeplate_tracking.txt'
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
@@ -70,9 +73,8 @@ class LoadTools:
             'international_amateur_baseball_game_video': 'hf:dyland222/international_amateur_baseball_game_videos',
             'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
             'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset'
-
-
         }
+
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
         response = self.session.get(url, stream=True)
@@ -244,8 +246,17 @@ class LoadTools:
                     token=None,
                     ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
                 )
-                print(f"Successfully downloaded dataset from Hugging Face to {dataset_alias}")
-                return Path(dataset_alias)
+                dataset = load_from_disk(f"{dataset_alias}/data")
+
+                for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
+                    image, filename = example["image"], example["filename"]
+                    base_path = f"{dataset_alias}/train/"
+                    image.save(f"{base_path}/{filename}")
+
+                [os.remove(os.path.join(root, file)) for root, dirs, files in os.walk(dataset_alias) for file in files if file.endswith('.parquet')]
+
+                print(f"Successfully downloaded dataset from Hugging Face to {base_path}")
+                return Path(base_path)
              
             except Exception as e:
                 print(f"Error downloading from Hugging Face: {e}")

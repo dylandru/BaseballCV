@@ -186,6 +186,7 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 **Available YOLOv9 Models**:
 
 - `amateur_pitcher_hitter.pt`: Trained to detect pitchers and hitters in amateur baseball games.
+- `homeplate_tracking.pt`: Trained to detect the home plate during broadcast feeds.
 
 ## Downloading and Loading Models
 
@@ -464,9 +465,15 @@ Our main need is for data annotation. With our new annotation app, you can help 
  - Open the Annotation Interface and begin annotating!
 
 ## Component Status
-**Note: The badge links are for the main branch.**
 
-[![Functions](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=functions)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dfunctions) [![Datasets](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=datasets)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Ddatasets) [![Models](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=model)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dmodel) [![API](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg?component=api)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml?query=component%3Dapi)
+
+<div align="center">
+
+[![Functions Coverage](https://img.shields.io/codecov/c/github/dylandru/BaseballCV/main?flag=functions&token=86UGAREPSB&label=Functions)](https://codecov.io/gh/dylandru/BaseballCV) [![Datasets Coverage](https://img.shields.io/codecov/c/github/dylandru/BaseballCV/main?flag=datasets&token=86UGAREPSB&label=Datasets)](https://codecov.io/gh/dylandru/BaseballCV) [![Models Coverage](https://img.shields.io/codecov/c/github/dylandru/BaseballCV/main?flag=model&token=86UGAREPSB&label=Models)](https://codecov.io/gh/dylandru/BaseballCV)
+
+[![Coverage Overview](https://codecov.io/gh/dylandru/BaseballCV/graphs/sunburst.svg?token=86UGAREPSB)](https://codecov.io/gh/dylandru/BaseballCV)
+
+</div>
 
 ## License
 
