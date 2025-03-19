@@ -21,6 +21,7 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 ## Available YOLOv9 Models
 
 - `amateur_pitcher_hitter`: Utilizes YOLOv9 Detection model to detect pitchers and hitters in amateur baseball games (model in PyTorch).
+- `homeplate_tracking`: Utilizes YOLOv9 Detection model to detect the home plate during broadcast feeds (model in PyTorch).
 
 ## Model Weights
 
@@ -34,6 +35,7 @@ The model weights can be downloaded directly from the links below:
 - Bat Tracking: [bat_tracking.pt](https://data.balldatalab.com/index.php/s/SqMzsxKkCrzojSF/download/bat_tracking.pt)
 - Ball Tracking v4: [ball_tracking_v4-YOLOv11.pt](https://data.balldatalab.com/index.php/s/cfoxjLS5BiZAgKs/download/ball_tracking_v4-YOLOv11.pt)
 - Amateur Pitcher Hitter: [amateur_pitcher_hitter_v1.pt](https://data.balldatalab.com/index.php/s/bqQZG5Gz7qsMq9X/download/amateur_pitcher_hitter_v1.pt)
+- Homeplate Tracking: [homeplate_tracking.pt](https://data.balldatalab.com/index.php/s/fgTr8w9ASc6XJpS/download/homeplate_tracking.pt)
 
 ### Florence2 Models
 

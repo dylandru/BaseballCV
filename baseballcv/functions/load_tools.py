@@ -42,7 +42,8 @@ class LoadTools:
             'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
             'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
             'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
-            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt'
+            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
+            'homeplate_tracking': 'models/YOLO/homeplate_tracking/model_weights/homeplate_tracking.txt'
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
@@ -72,8 +73,6 @@ class LoadTools:
             'international_amateur_baseball_game_video': 'hf:dyland222/international_amateur_baseball_game_videos',
             'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
             'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset'
-
-
         }
 
 
