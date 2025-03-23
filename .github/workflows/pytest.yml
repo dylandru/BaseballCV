@@ -19,7 +19,8 @@ jobs:
           'functions', 
           'datasets',
           'model',
-          'api'
+          'api',
+          'utilities'
         ]
     name: Test ${{ matrix.component }}
     
