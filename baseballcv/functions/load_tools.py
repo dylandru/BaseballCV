@@ -8,8 +8,8 @@ import io
 from typing import Optional, Union
 import shutil
 from huggingface_hub import snapshot_download
-from datasets import load_from_disk
 from baseballcv.utilities import BaseballCVLogger
+from datasets import load_dataset
 
 class LoadTools:
     """
@@ -248,7 +248,8 @@ class LoadTools:
                     token=None,
                     ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
                 )
-                dataset = load_from_disk(f"{dataset_alias}/data")
+
+                dataset = load_dataset(repo_id, split="train")
 
                 for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
                     image, filename = example["image"], example["filename"]

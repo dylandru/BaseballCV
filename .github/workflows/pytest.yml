@@ -47,16 +47,15 @@ jobs:
         # Use absolute path for coverage file and verify it exists
         pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml:${{ github.workspace }}/coverage-${{ matrix.component }}.xml
         ls -la ${{ github.workspace }}/coverage-${{ matrix.component }}.xml || echo "Coverage file not generated"
-      continue-on-error: true
+      continue-on-error: false
         
     - name: Run API tests
       if: matrix.component == 'api'
       id: test_api
       run: |
         mkdir -p test-results
-        # For API, don't fail on coverage issues
         pytest tests/test_api -v
-      continue-on-error: true
+      continue-on-error: false
       
     - name: Determine test status
       if: always()
