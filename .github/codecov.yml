@@ -1,0 +1,63 @@
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+
+comment:
+  layout: "reach, diff, flags, files, components"
+  behavior: default
+  require_changes: false
+  
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+        branches:
+          - "!main"
+  individual_components:
+    - component_id: baseballcv_functions
+      name: Functions
+      paths:
+        - baseballcv/functions/**
+      flag_regexes:
+        - functions
+      statuses:
+        - type: project
+          target: auto
+          threshold: 1%
+        - type: patch
+          
+    - component_id: baseballcv_datasets
+      name: Datasets
+      paths:
+        - baseballcv/datasets/**
+      flag_regexes:
+        - datasets
+      
+    - component_id: baseballcv_model
+      name: Model
+      paths:
+        - baseballcv/model/**
+      flag_regexes:
+        - model
+        
+    - component_id: baseballcv_utilities
+      name: Utilities
+      paths:
+        - baseballcv/utilities/**
+      flag_regexes:
+        - utilities
+  
