@@ -2,6 +2,7 @@ import subprocess
 import sys
 import importlib
 import logging
+from pathlib import Path
 
 logger = logging.getLogger("BaseballCV - Git Dependency Installer") #needed to avoid circular imports
 
