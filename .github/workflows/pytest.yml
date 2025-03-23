@@ -44,7 +44,7 @@ jobs:
       id: test_non_api
       run: |
         mkdir -p test-results
-        pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml
+        pytest tests/test_${{ matrix.component }} -v --cov=baseballcv.${{ matrix.component }} --cov-report=xml:coverage-${{ matrix.component }}.xml
       continue-on-error: true
         
     - name: Run API tests
@@ -72,6 +72,7 @@ jobs:
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
+        file: coverage-${{ matrix.component }}.xml
         flags: ${{ matrix.component }}
         name: ${{ matrix.component }}-coverage
         fail_ci_if_error: false
