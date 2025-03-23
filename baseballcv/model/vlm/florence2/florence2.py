@@ -18,6 +18,7 @@ import logging
 import seaborn as sns
 import torch.multiprocessing as mp
 from datetime import datetime
+from baseballcv.utilities import BaseballCVLogger
 
 '''
 This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
@@ -76,24 +77,8 @@ class Florence2:
         self.logger = None
         self.model_run_path = model_run_path
         self._init_model()
-        self._orig_logging()
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
-    def _orig_logging(self):
-        log_dir = os.path.join(self.model_run_path, "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(log_dir, f"florence2_{timestamp}.log")
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
-        )
-        self.logger = logging.getLogger(f"FLORENCE2_({self.model_id})")
         self.logger.info(f"Initializing Florence2 model with Batch Size: {self.batch_size}")
         self.logger.info(f"Device: {self.device}")
 

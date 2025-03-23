@@ -9,6 +9,7 @@ from typing import Optional, Union
 import shutil
 from huggingface_hub import snapshot_download
 from datasets import load_from_disk
+from baseballcv.utilities import BaseballCVLogger
 
 class LoadTools:
     """
@@ -74,6 +75,7 @@ class LoadTools:
             'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
             'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset'
         }
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
 
     def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
@@ -128,7 +130,7 @@ class LoadTools:
                     
                     shutil.rmtree(temp_dir)
                 
-                print(f"Dataset downloaded and extracted to {dest}")
+                self.logger.info(f"Dataset downloaded and extracted to {dest}")
             else:
                 with open(dest, 'wb') as file:
                     for data in response.iter_content(chunk_size=self.chunk_size):
@@ -136,9 +138,9 @@ class LoadTools:
                         progress_bar.update(size)
                 
                 progress_bar.close()
-                print(f"Model downloaded to {dest}")
+                self.logger.info(f"Model downloaded to {dest}")
         else:
-            print(f"Download failed. STATUS: {response.status_code}")
+            self.logger.error(f"Download failed. STATUS: {response.status_code}")
 
     def _get_url(self, alias: str, txt_path: str, use_bdl_api: bool, api_endpoint: str) -> str:
         if use_bdl_api:
@@ -187,7 +189,7 @@ class LoadTools:
             os.makedirs(model_weights_path, exist_ok=True)
 
         if os.path.exists(model_weights_path) and not is_hf_model:
-            print(f"Model found at {model_weights_path}")
+            self.logger.info(f"Model found at {model_weights_path}")
             return model_weights_path
 
         if is_hf_model:
@@ -198,10 +200,10 @@ class LoadTools:
                     repo_type="model",
                     ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"],
                 )
-                print(f"Successfully downloaded model from HF to {model_weights_path}")
+                self.logger.info(f"Successfully downloaded model from HF to {model_weights_path}")
                 return model_weights_path
             except Exception as e:
-                print(f"Error downloading from Hugging Face: {e}")
+                self.logger.error(f"Error downloading from Hugging Face: {e}")
                 raise
             
         else: 
@@ -234,10 +236,10 @@ class LoadTools:
             repo_id = txt_path[3:]  
             
             if os.path.exists(dataset_alias):
-                print(f"Dataset found at {dataset_alias}")
+                self.logger.info(f"Dataset found at {dataset_alias}")
                 return Path(dataset_alias)
                 
-            print(f"Processing dataset from HF w/ alias: {dataset_alias}...")
+            self.logger.info(f"Processing dataset from HF w/ alias: {dataset_alias}...")
             try:
                 snapshot_download(
                     repo_id=repo_id,
@@ -255,11 +257,11 @@ class LoadTools:
 
                 [os.remove(os.path.join(root, file)) for root, dirs, files in os.walk(dataset_alias) for file in files if file.endswith('.parquet')]
 
-                print(f"Successfully downloaded dataset from Hugging Face to {base_path}")
+                self.logger.info(f"Successfully downloaded dataset from Hugging Face to {base_path}")
                 return Path(base_path)
              
             except Exception as e:
-                print(f"Error downloading from Hugging Face: {e}")
+                self.logger.error(f"Error downloading from Hugging Face: {e}")
                 raise
 
         else: #Non-HF datasets
@@ -267,7 +269,7 @@ class LoadTools:
             dir_name = "unlabeled_" + base if 'raw_photos' in base or 'frames' in base or 'frames' in dataset_alias else base
 
             if os.path.exists(dir_name):
-                print(f"Dataset found at {dir_name}")
+                self.logger.info(f"Dataset found at {dir_name}")
                 return Path(dir_name)
 
             url = self._get_url(dataset_alias, txt_path, use_bdl_api, self.BDL_DATASET_API)
@@ -275,7 +277,7 @@ class LoadTools:
 
             redundant_dir = os.path.join(dir_name, dataset_alias)
             if os.path.exists(redundant_dir):
-                print(f"Processing dataset {dataset_alias}...")
+                self.logger.info(f"Processing dataset {dataset_alias}...")
                 for item in os.listdir(redundant_dir):
                     source = os.path.join(redundant_dir, item)
                     destination = os.path.join(dir_name, item)
@@ -293,8 +295,8 @@ class LoadTools:
                 
                 if os.path.exists(redundant_dir):
                     os.rmdir(redundant_dir)
-                print(f"Successfully processed dataset {dataset_alias}.")
+                self.logger.info(f"Successfully processed dataset {dataset_alias}.")
             else:
-                print(f"Dataset download failed.")
+                self.logger.error(f"Dataset download failed.")
 
             return Path(dir_name)

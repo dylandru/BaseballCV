@@ -1,5 +1,5 @@
+import logging
 import os
-import torch
 from transformers import DetrImageProcessor
 import torchvision
 from pycocotools.coco import COCO
@@ -10,15 +10,17 @@ class CocoDetectionDataset(torchvision.datasets.CocoDetection):
     1. Hierarchical structure with split/images and split/labels
     2. Flat structure with all images and instances_{split}.json files in root dir
     """
-    def __init__(self, dataset_dir: str, split: str, processor: DetrImageProcessor):
+    def __init__(self, dataset_dir: str, split: str, logger: logging.Logger, processor: DetrImageProcessor):
         """
         Initialize COCO detection dataset.
         
         Args:
             dataset_dir (str): Root directory containing the dataset
             split (str): Dataset split ('train', 'test', or 'val')
+            logger (logging.Logger): Logger instance for logging
             processor (DetrImageProcessor): DETR image processor for preprocessing
         """
+        self.logger = logger
         
         # Check for hierarchical structure first
         hierarchical_img_dir = os.path.join(dataset_dir, split)
@@ -32,16 +34,16 @@ class CocoDetectionDataset(torchvision.datasets.CocoDetection):
         if os.path.exists(hierarchical_img_dir) and os.path.exists(hierarchical_ann_file):
             self.img_dir = hierarchical_img_dir
             self.ann_file = hierarchical_ann_file
+            self.logger.info(f"Using hierarchical COCO dataset structure: {hierarchical_img_dir} and {hierarchical_ann_file}")
         elif os.path.exists(flat_img_dir) and os.path.exists(flat_ann_file):
             self.img_dir = flat_img_dir
             self.ann_file = flat_ann_file
+            self.logger.info(f"Using flat COCO dataset structure: {flat_img_dir} and {flat_ann_file}")
         else:
-            raise ValueError(
-                f"Could not find valid COCO dataset structure in {dataset_dir}. "
+            self.logger.error(f"Could not find valid COCO dataset structure in {dataset_dir}. "
                 f"Expected either:\n"
                 f"1. Hierarchical: {hierarchical_img_dir} and {hierarchical_ann_file}\n"
-                f"2. Flat: {flat_img_dir} and {flat_ann_file}"
-            )
+                f"2. Flat: {flat_img_dir} and {flat_ann_file}")
             
         super(CocoDetectionDataset, self).__init__(self.img_dir, self.ann_file)
         self.processor = processor

@@ -3,6 +3,7 @@ import multiprocessing as mp
 from unittest.mock import Mock
 import requests
 from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper, BaseballTools
+from baseballcv.utilities import BaseballCVLogger
 import os
 import torch
 import torch.nn as nn
@@ -10,7 +11,6 @@ import torch.nn.functional as F
 import sys
 from unittest import mock
 
-# Add the parent directory to the path to import baseballcv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture(scope="session", autouse=True)
@@ -124,6 +124,9 @@ def mock_model() -> Mock:
     
     Creates and returns a mock model object that can be used in tests to
     verify the functionality of model training and evaluation.
+
+    Returns:
+        Mock: A mock model object.
     """
     class MockModel(nn.Module):
         def __init__(self):
@@ -136,6 +139,23 @@ def mock_model() -> Mock:
             return {"logits": torch.rand(1, 2)}
         
     return MockModel()
+
+@pytest.fixture
+def reset_logger_registry():
+    """
+    Reset the BaseballCVLogger registry before and after each test.
+    
+    This fixture ensures that each test starts with a clean logger registry
+    and restores the original registry after the test completes.
+    
+    Yields:
+        None
+    """
+    original_loggers = BaseballCVLogger._loggers.copy()
+    BaseballCVLogger._loggers = {}
+    yield
+    BaseballCVLogger._loggers = original_loggers
+
 
 # Network testing configurations
 def pytest_configure(config):

@@ -16,8 +16,9 @@ import numpy as np
 from peft import PeftModel
 from datetime import datetime
 import supervision as sv
-from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools, ModelLogger
+from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools
 from baseballcv.datasets import DataProcessor
+from baseballcv.utilities import BaseballCVLogger
 
 """
 To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
@@ -56,8 +57,7 @@ class PaliGemma2:
         self.augment = True
         self.use_pretrained_lora = use_pretrained_lora
 
-        self.logger = ModelLogger(self.model_name, self.model_run_path, 
-                                self.model_id, self.batch_size, self.device).orig_logging()
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
         self.quantization_config = None
         self.processor = None

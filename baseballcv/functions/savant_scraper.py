@@ -8,6 +8,7 @@ import time
 import shutil
 import polars as pl
 import statcast_pitches
+from baseballcv.utilities import BaseballCVLogger
 
 '''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
 
@@ -15,6 +16,7 @@ import statcast_pitches
 class BaseballSavVideoScraper:
     def __init__(self):
         self.session = requests.Session()
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
     def run_statcast_pull_scraper(self,
                                   start_date: str | pd.Timestamp = '2024-05-01',
@@ -46,7 +48,7 @@ class BaseballSavVideoScraper:
 
         """
         try:
-            print("Retrieving Play IDs to scrape...")
+            self.logger.info("Retrieving Play IDs to scrape...")
             df = self.playids_for_date_range(
                 start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call)  # retrieves Play IDs to scrape
 
@@ -64,11 +66,11 @@ class BaseballSavVideoScraper:
                 return df
 
             else:
-                print("Play ID column not in Statcast pull or DataFrame is empty")
+                self.logger.warning("Play ID column not in Statcast pull or DataFrame is empty")
                 return pd.DataFrame()
 
         except KeyboardInterrupt:
-            print("Ctrl+C detected. Shutting down.")
+            self.logger.info("Ctrl+C detected. Shutting down.")
             return pd.DataFrame()
 
     def download_play_ids(self, download_folder: str, play_ids: DataFrame, max_workers: int = 5) -> DataFrame:
@@ -82,7 +84,7 @@ class BaseballSavVideoScraper:
                 try:
                     future.result()
                 except Exception as e:
-                    print(
+                    self.logger.error(
                         f"Error processing Play ID {play_id['play_id']}: {str(e)}")
             return play_ids
 
@@ -96,9 +98,10 @@ class BaseballSavVideoScraper:
                     with open(save_path, 'wb') as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             f.write(chunk)
-                return print(f"Video downloaded to {save_path}")
+                self.logger.info(f"Video downloaded to {save_path}")
+                return
             except Exception as e:
-                print(
+                self.logger.warning(
                     f"Error downloading video {video_url}: {e}. Attempt {attempt + 1} of {max_retries}")
                 attempt += 1
                 time.sleep(2)
@@ -116,7 +119,7 @@ class BaseballSavVideoScraper:
                     return video_container.find('video').find('source', type='video/mp4')['src']
                 return None
             except Exception as e:
-                print(
+                self.logger.warning(
                     f"Error fetching video URL from {page_url}: {e}. Attempt {attempt + 1} of {max_retries}")
                 attempt += 1
                 time.sleep(2)
@@ -131,7 +134,7 @@ class BaseballSavVideoScraper:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                print(
+                self.logger.warning(
                     f"Error fetching game data for game_pk {game_pk}: {e}. Attempt {attempt + 1} of {max_retries}")
                 attempt += 1
                 time.sleep(2)  # Wait for 2 seconds before retrying
@@ -166,12 +169,14 @@ class BaseballSavVideoScraper:
         game_pks = statcast_df['game_pk'].unique()
 
         if len(game_pks) == 0:
+            self.logger.error("No game_pks found for given date range and team")
             raise ValueError("No game_pks found for given date range and team")
         
         dfs = [self.process_game_data(self.fetch_game_data(
             game_pk), pitch_call=pitch_call) for game_pk in game_pks]
         
         if not dfs:
+            self.logger.error("No data found for given date range and team")
             raise ValueError("No data found for given date range and team")
         play_id_df = pd.concat(dfs, ignore_index=True)
         return play_id_df
@@ -187,18 +192,18 @@ class BaseballSavVideoScraper:
                     download_folder, f"{game_pk}_{play_id}.mp4")
                 self.download_video(video_url, save_path)
             else:
-                print(
+                self.logger.warning(
                     f"No video found for playId {play_id}. Please check that the playId is correct or that the video exists at baseballsavant.mlb.com/sporty-videos?playId={play_id}.")
         except Exception as e:
-            print(f"Unable to complete request. Error: {e}")
+            self.logger.error(f"Unable to complete request. Error: {e}")
 
     def cleanup_savant_videos(self, folder_path: str) -> None:
         """Delete folder of downloaded BaseballSavant videos."""
         if os.path.exists(folder_path):
             try:
                 shutil.rmtree(folder_path)
-                print(f"Deleted {folder_path}")
+                self.logger.info(f"Deleted {folder_path}")
             except Exception as e:
-                print(f"Error deleting {folder_path}: {e}")
+                self.logger.error(f"Error deleting {folder_path}: {e}")
 
             return None

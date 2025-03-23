@@ -11,9 +11,10 @@ from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 import multiprocessing as mp
 import supervision as sv
-from baseballcv.model.utils import ModelLogger, ModelFunctionUtils, ModelVisualizationTools
+from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools
 from baseballcv.datasets import CocoDetectionDataset
 import pytorch_lightning as pl
+from baseballcv.utilities import BaseballCVLogger
 
 """
 
@@ -76,8 +77,7 @@ class DETR(pl.LightningModule):
         self.model_name = "DETR"
         self.batch_size = batch_size
 
-        self.detr_logger = ModelLogger(self.model_name, self.model_run_path, 
-                                self.model_id, self.batch_size, self.detr_device).orig_logging()
+        self.detr_logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
         self.processor = DetrImageProcessor.from_pretrained(
             self.model_id,

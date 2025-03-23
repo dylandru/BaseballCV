@@ -8,6 +8,7 @@ from baseballcv.model import PaliGemma2
 from huggingface_hub import login
 from huggingface_hub.utils import GatedRepoError, LocalEntryNotFoundError
 import shutil
+from typing import Generator
 
 class TestPaliGemma2:
     """
@@ -19,7 +20,7 @@ class TestPaliGemma2:
     """
     
     @pytest.fixture
-    def setup_paligemma_test(self, load_tools) -> dict:
+    def setup_paligemma_test(self, load_tools) -> Generator[dict, None, None]:
         """
         Set up test environment for PaliGemma2.
         

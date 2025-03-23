@@ -21,6 +21,7 @@ class JSONLDetection(Dataset):
             logger (logging.Logger): Logger instance for logging.
             augment (bool): Whether to apply data augmentation.
         """
+
         self.entries = entries
         self.image_directory_path = image_directory_path
         self.augment = augment

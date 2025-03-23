@@ -1,3 +1,4 @@
+import logging
 import cv2
 import numpy as np
 import os
@@ -11,6 +12,7 @@ from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 from baseballcv.functions.load_tools import LoadTools
 import math
 import mediapipe as mp
+from baseballcv.utilities import BaseballCVLogger
 
 class DistanceToZone:
     """
@@ -29,7 +31,8 @@ class DistanceToZone:
         results_dir: str = "results",
         verbose: bool = True,
         device: str = None,
-        zone_vertical_adjustment: float = 0.5  # New parameter to control vertical adjustment
+        zone_vertical_adjustment: float = 0.5,
+        logger: logging.Logger = None
     ):
         """
         Initialize the DistanceToZone class.
@@ -45,6 +48,7 @@ class DistanceToZone:
             zone_vertical_adjustment (float): Factor to adjust strike zone vertically as percentage 
                                              of elbow-to-hip distance. Positive values move zone 
                                              toward home plate, negative away from home plate.
+            logger (logging.Logger): Logger instance for logging
         """
         self.load_tools = LoadTools()
         self.catcher_model = YOLO(self.load_tools.load_model(catcher_model))
@@ -56,9 +60,10 @@ class DistanceToZone:
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.logger = logger if logger is not None else BaseballCVLogger.get_logger(__name__)
         
         if verbose:
-            print(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
+            self.logger.info(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
         
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
@@ -131,7 +136,7 @@ class DistanceToZone:
             
             if pitch_data_row is None:
                 if self.verbose:
-                    print(f"No pitch data found for play_id {play_id}, skipping...")
+                    self.logger.info(f"No pitch data found for play_id {play_id}, skipping...")
                 continue
                 
             output_path = os.path.join(self.results_dir, f"distance_to_zone_{play_id}.mp4")
@@ -201,8 +206,8 @@ class DistanceToZone:
                 distance = distance_inches
 
                 if self.verbose:
-                    print(f"Distance to zone: {distance:.2f} inches")
-                    print(f"Position relative to zone: {position}")
+                    self.logger.info(f"Distance to zone: {distance:.2f} inches")
+                    self.logger.info(f"Position relative to zone: {position}")
             
             if create_video and output_path and strike_zone is not None:
                 self._create_annotated_video(
@@ -320,8 +325,8 @@ class DistanceToZone:
             df.to_csv(csv_path, index=False)
             
             if self.verbose:
-                print(f"Saved detailed results to {csv_path}")
-                print(f"CSV contains {len(df)} rows with {len(df.columns)} columns of data")
+                self.logger.info(f"Saved detailed results to {csv_path}")
+                self.logger.info(f"CSV contains {len(df)} rows with {len(df.columns)} columns of data")
         
         return dtoz_results
     
@@ -390,7 +395,7 @@ class DistanceToZone:
             List[Dict]: List of detection dictionaries
         """
         if self.verbose:
-            print(f"Detecting {object_name} in video: {os.path.basename(video_path)}")
+            self.logger.info(f"Detecting {object_name} in video: {os.path.basename(video_path)}")
         
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -434,7 +439,7 @@ class DistanceToZone:
         cap.release()
         
         if self.verbose:
-            print(f"Completed {object_name} detection. Found {len(detections)} detections")
+            self.logger.info(f"Completed {object_name} detection. Found {len(detections)} detections")
         
         return detections
     
@@ -453,7 +458,7 @@ class DistanceToZone:
                 (frame index, ball center coordinates, ball detection dictionary)
         """
         if self.verbose:
-            print("Detecting when ball reaches glove...")
+            self.logger.info("Detecting when ball reaches glove...")
 
         # Group detections by frame for easier processing
         glove_by_frame = {}
@@ -490,7 +495,7 @@ class DistanceToZone:
         ball_detection_sequences = find_continuous_sequences(ball_frames)
 
         if self.verbose:
-            print(f"Found {len(ball_detection_sequences)} continuous ball detection sequences")
+            self.logger.info(f"Found {len(ball_detection_sequences)} continuous ball detection sequences")
 
         # Search for ball-glove contact in the most significant detection sequences
         # Sort sequences by length, prioritizing longer sequences
@@ -520,12 +525,12 @@ class DistanceToZone:
                         if (extended_x1 <= ball_center_x <= extended_x2 and
                             extended_y1 <= ball_center_y <= extended_y2):
                             if self.verbose:
-                                print(f"Ball reached glove at frame {frame}")
+                                self.logger.info(f"Ball reached glove at frame {frame}")
                             return frame, (ball_center_x, ball_center_y), ball_det
 
         # FALLBACK 1: Try with larger tolerance
         if self.verbose:
-            print("Standard detection failed, trying with larger tolerance...")
+            self.logger.info("Standard detection failed, trying with larger tolerance...")
             
         larger_tolerance = 0.3  # 30% margin
         for sequence in ball_detection_sequences:
@@ -548,12 +553,12 @@ class DistanceToZone:
                         if (extended_x1 <= ball_center_x <= extended_x2 and
                             extended_y1 <= ball_center_y <= extended_y2):
                             if self.verbose:
-                                print(f"Ball reached glove at frame {frame} (with larger tolerance)")
+                                self.logger.info(f"Ball reached glove at frame {frame} (with larger tolerance)")
                             return frame, (ball_center_x, ball_center_y), ball_det
 
         # FALLBACK 2: Look for closest ball to any glove
         if self.verbose:
-            print("Expanded tolerance failed, trying closest approach method...")
+            self.logger.info("Expanded tolerance failed, trying closest approach method...")
             
         best_distance = float('inf')
         best_frame = None
@@ -587,7 +592,7 @@ class DistanceToZone:
         
         if best_frame is not None:
             if self.verbose:
-                print(f"Found closest ball approach at frame {best_frame} (distance: {best_distance:.2f} pixels)")
+                self.logger.info(f"Found closest ball approach at frame {best_frame} (distance: {best_distance:.2f} pixels)")
             return best_frame, best_ball_center, best_ball_det
             
         # FALLBACK 3: Just use the middle frame with a ball detection
@@ -599,11 +604,11 @@ class DistanceToZone:
             middle_ball_center_y = (middle_ball_det["y1"] + middle_ball_det["y2"]) / 2
             
             if self.verbose:
-                print(f"Using middle ball frame {middle_frame} as fallback")
+                self.logger.info(f"Using middle ball frame {middle_frame} as fallback")
             return middle_frame, (middle_ball_center_x, middle_ball_center_y), middle_ball_det
 
         if self.verbose:
-            print("Could not detect when ball reaches glove")
+            self.logger.info("Could not detect when ball reaches glove")
         return None, None, None
 
     def _find_best_hitter_box(self, video_path: str, hitter_detections: List[Dict],
@@ -624,7 +629,7 @@ class DistanceToZone:
                 (hitter box, frame containing the hitter, frame index)
         """
         if self.verbose:
-            print("Finding best hitter bounding box...")
+            self.logger.info("Finding best hitter bounding box...")
         
         # Capture video
         cap = cv2.VideoCapture(video_path)
@@ -1439,7 +1444,7 @@ class DistanceToZone:
                 (strike zone coordinates (left, top, right, bottom), pixels per foot)
         """
         if self.verbose:
-            print("Computing strike zone using MLB official dimensions...")
+            self.logger.info("Computing strike zone using MLB official dimensions...")
 
         # Use provided home plate detection if available, otherwise detect it
         if homeplate_box is None:
@@ -1539,11 +1544,11 @@ class DistanceToZone:
                             # Use the configurable factor instead of fixed 0.5
                             adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                             if self.verbose:
-                                print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
+                                self.logger.info(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                         
                         # Recalculate calibration based on zone height and Statcast data
                         if self.verbose:
-                            print(f"Using hitter pose to refine strike zone height: {zone_height_pixels}px")
+                            self.logger.info(f"Using hitter pose to refine strike zone height: {zone_height_pixels}px")
                         
                         # Center the zone horizontally
                         zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
@@ -1557,7 +1562,7 @@ class DistanceToZone:
                         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                         
                         if self.verbose:
-                            print(f"Strike zone from home plate and pose: {strike_zone}")
+                            self.logger.info(f"Strike zone from home plate and pose: {strike_zone}")
                         
                         return strike_zone, pixels_per_foot
             
@@ -1646,7 +1651,7 @@ class DistanceToZone:
                                 # Use the configurable factor instead of fixed 0.5
                                 adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                                 if self.verbose:
-                                    print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
+                                    self.logger.info(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                             
                             # Center the zone horizontally
                             zone_left_x = int(plate_center_x - (zone_width_pixels / 2))
@@ -1660,7 +1665,7 @@ class DistanceToZone:
                             strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                             
                             if self.verbose:
-                                print(f"Strike zone from home plate and MediaPipe 3D pose: {strike_zone}")
+                                self.logger.info(f"Strike zone from home plate and MediaPipe 3D pose: {strike_zone}")
                             
                             return strike_zone, pixels_per_foot
             
@@ -1700,7 +1705,7 @@ class DistanceToZone:
             strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
             
             if self.verbose:
-                print(f"Strike zone computed using home plate: {strike_zone}")
+                self.logger.info(f"Strike zone computed using home plate: {strike_zone}")
             
             return strike_zone, pixels_per_foot
         
@@ -1708,7 +1713,7 @@ class DistanceToZone:
         elif hitter_keypoints is not None and hitter_box is not None:
             # Use the hitter's pose to estimate strike zone
             if self.verbose:
-                print("Using hitter's pose to estimate strike zone...")
+                self.logger.info("Using hitter's pose to estimate strike zone...")
             
             # Extract relevant keypoints
             # Knees (bottom of zone)
@@ -1782,7 +1787,7 @@ class DistanceToZone:
                 if elbow_y is not None and hip_y is not None:
                     adjustment = int((hip_y - elbow_y) * self.zone_vertical_adjustment)
                     if self.verbose:
-                        print(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
+                        self.logger.info(f"Adjusting strike zone by {adjustment} pixels ({self.zone_vertical_adjustment:.2f} * elbow-to-hip distance)")
                 
                 # Construct the strike zone
                 zone_left_x = int(hitter_center_x - (zone_width_pixels / 2))
@@ -1798,14 +1803,14 @@ class DistanceToZone:
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
                 if self.verbose:
-                    print(f"Strike zone computed using hitter's pose: {strike_zone}")
+                    self.logger.info(f"Strike zone computed using hitter's pose: {strike_zone}")
                 
                 return strike_zone, pixels_per_foot
             
         # Fallback to catcher detection if home plate detection fails and no reliable pose
         if catcher_detections and ball_glove_frame is not None:
             if self.verbose:
-                print("Falling back to catcher detection for strike zone estimation...")
+                self.logger.info("Falling back to catcher detection for strike zone estimation...")
             
             # Group detections by frame
             catcher_by_frame = {}
@@ -1870,13 +1875,13 @@ class DistanceToZone:
                 strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
                 
                 if self.verbose:
-                    print(f"Strike zone computed using catcher (fallback): {strike_zone}")
+                    self.logger.info(f"Strike zone computed using catcher (fallback): {strike_zone}")
                 
                 return strike_zone, pixels_per_foot
         
         # Last resort: use video dimensions and Statcast data for a rough estimate
         if self.verbose:
-            print("Using video dimensions for a rough strike zone estimate (last resort)")
+            self.logger.info("Using video dimensions for a rough strike zone estimate (last resort)")
         
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1908,7 +1913,7 @@ class DistanceToZone:
         strike_zone = (zone_left_x, zone_top_y, zone_right_x, zone_bottom_y)
         
         if self.verbose:
-            print(f"Using estimated strike zone (last resort): {strike_zone}")
+            self.logger.info(f"Using estimated strike zone (last resort): {strike_zone}")
         
         return strike_zone, pixels_per_foot
 
@@ -1952,7 +1957,7 @@ class DistanceToZone:
         if inside_zone and distance_pixels > tolerance_pixels:
             # Double verify since we're getting conflicting results
             if self.verbose:
-                print(f"Ball coordinates suggest inside zone but distance ({distance_pixels:.2f}px) > tolerance. Re-checking...")
+                self.logger.info(f"Ball coordinates suggest inside zone but distance ({distance_pixels:.2f}px) > tolerance. Re-checking...")
             
             # If it's on the edge, force it to be outside
             inside_zone = False
@@ -2031,7 +2036,7 @@ class DistanceToZone:
             str: Path to the output video
         """
         if self.verbose:
-            print(f"Creating annotated video: {output_path}")
+            logging.info(f"Creating annotated video: {output_path}")
         
         # Convert detections to frame-indexed dictionaries
         catcher_by_frame = {}
@@ -2100,11 +2105,13 @@ class DistanceToZone:
         # Fix for potential None issues with ball_glove_frame
         if ball_glove_frame is None:
             ball_glove_frame = total_frames // 2  # Use middle frame as a fallback
+            logging.warning("No ball-glove contact frame detected. Using middle frame as fallback.")
             
         for frame_idx in range(total_frames):
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
             if not ret:
+                logging.error(f"Failed to read frame {frame_idx} from video {video_path}")
                 break
             
             # Create a copy for annotations
@@ -2345,13 +2352,17 @@ class DistanceToZone:
         # Now we need to convert the temp file with ffmpeg to ensure compatibility
         # Some versions of OpenCV create videos that aren't widely compatible
         final_command = f"ffmpeg -y -i {temp_output_path} -c:v libx264 -preset medium -crf 23 {output_path}"
-        os.system(final_command)
+        exit_code = os.system(final_command)
+        if exit_code != 0:
+            logging.warning(f"FFmpeg conversion may have failed with exit code {exit_code}")
         
         # Remove the temporary file
         if os.path.exists(temp_output_path):
             os.remove(temp_output_path)
+        else:
+            logging.warning(f"Could not find temporary file to remove: {temp_output_path}")
         
         if self.verbose:
-            print(f"Video saved to {output_path}")
+            logging.info(f"Video saved to {output_path}")
         
         return output_path
