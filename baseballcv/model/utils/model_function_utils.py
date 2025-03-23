@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import BitsAndBytesConfig
 from baseballcv.datasets import JSONLDetection
 from pkg_resources import resource_filename
+
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
                  device: torch.device, processor: Any, model: Any, 

@@ -10,6 +10,7 @@ from .load_tools import LoadTools
 from ultralytics import YOLO
 from tqdm import tqdm
 from datetime import datetime
+from baseballcv.utilities import BaseballCVLogger
 
 class DataTools:
     '''
@@ -23,6 +24,7 @@ class DataTools:
         process_pool (concurrent.futures.ProcessPoolExecutor): A process pool for parallel execution.
         LoadTools (LoadTools): An instance of the LoadTools class for loading models.
         output_folder (str): The output folder for generated datasets.
+        logger (BaseballCVLogger): A BaseballCV Logger instance for logging.
     '''
 
     def __init__(self, max_workers: int = 10):
@@ -30,6 +32,7 @@ class DataTools:
         self.max_workers = max_workers
         self.LoadTools = LoadTools()
         self.output_folder = ''
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
     def generate_photo_dataset(self,
                            output_frames_folder: str = "cv_dataset", 
@@ -83,7 +86,7 @@ class DataTools:
         video_files = [f for f in os.listdir(video_folder) if f.endswith(('.mp4', '.mov', '.mts'))]
         
         if not video_files:
-            print("No video files found in the specified folder.") 
+            self.logger.warning("No video files found in the specified folder.")
             return None
         
         games = defaultdict(list)
@@ -138,9 +141,9 @@ class DataTools:
                             result = future.result()
                             extracted_frames.extend(result)
                         except Exception as e:
-                            print(f"Error with {video_path}: {str(e)}")
+                            self.logger.error(f"Error with {video_path}: {str(e)}")
                 except KeyboardInterrupt:
-                    print("\nShutting down gracefully...")
+                    self.logger.info("\nShutting down gracefully...")
                     executor.shutdown(wait=False)
                     raise
                 finally:
@@ -167,7 +170,7 @@ class DataTools:
         for file in files_to_remove:
             os.remove(os.path.join(self.output_folder, file))
         
-        print(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos over {len(games)} games.")
+        self.logger.info(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos over {len(games)} games.")
         
         if delete_savant_videos and use_savant_scraper:
             self.scraper.cleanup_savant_videos(video_folder)
@@ -204,7 +207,7 @@ class DataTools:
         os.makedirs(annotations_dir, exist_ok=True)
 
         model = YOLO(self.LoadTools.load_model(model_alias))
-        print(f"Model loaded: {model}")
+        self.logger.info(f"Model loaded: {model}")
 
         annotation_tasks = [image_file for image_file in os.listdir(image_dir)]
 
@@ -223,7 +226,7 @@ class DataTools:
                             x_center, y_center, width, height = xywhn
                             annotations.append(f"{cls} {x_center} {y_center} {width} {height}")
                         else:
-                            print(f"Invalid bounding box for {image_file}: {xywhn}")
+                            self.logger.warning(f"Invalid bounding box for {image_file}: {xywhn}")
 
             #TODO: Add annotation format for YOLO Keypoint, Segmentation, and Classification models
 
@@ -234,7 +237,7 @@ class DataTools:
                 with open(output_file, 'w') as f:
                     f.write('\n'.join(annotations))
 
-        print("Annotation process complete.")
+        self.logger.info("Annotation process complete.")
 
         return None
 

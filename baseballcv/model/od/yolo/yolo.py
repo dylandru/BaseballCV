@@ -4,7 +4,7 @@ from baseballcv.functions.utils import check_import
 from baseballcv.model.utils import ModelFunctionUtils
 from yolov9 import detect_dual as detect, train_dual as train, val_dual as val
 from pkg_resources import resource_filename
-
+from baseballcv.utilities import BaseballCVLogger
 class YOLOv9:
     def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c') -> None: 
         """
@@ -16,16 +16,20 @@ class YOLOv9:
             cfg_path (str, optional): Path to model config. Defaults to 'models/detect/yolov9-c.yaml'.
             name (str, optional): Name of the model. Defaults to 'yolov9-c'.
         """
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
+        self.logger.info("Initializing YOLOv9 model...")
+
         check_import("git+https://github.com/dylandru/yolov9.git", "yolov9")
         self.device = device
         self.name = name
         self.model_path = model_path
         self.model_weights = ModelFunctionUtils.setup_yolo_weights(model_file=f"{name}.pt", output_dir=model_path)
-
         if not os.path.exists(cfg_path):
             cfg_path = resource_filename('yolov9', cfg_path)
         self.cfg_path = cfg_path
 
+        self.logger.info(f"Model initialized: {self.name}")
+    
     def finetune(self, data_path: str, epochs: int = 100,
                  imgsz: int = 640, batch_size: int = 16, rect: bool = False, resume: bool = False, nosave: bool = False,
                  noval: bool = False, noautoanchor: bool = False, noplots: bool = False, evolve: Optional[bool] = None,

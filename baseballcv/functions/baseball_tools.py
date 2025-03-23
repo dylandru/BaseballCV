@@ -1,4 +1,5 @@
 from .utils import DistanceToZone
+from baseballcv.utilities import BaseballCVLogger
 
 class BaseballTools:
     """
@@ -14,6 +15,7 @@ class BaseballTools:
         """
         self.device = device
         self.verbose = verbose
+        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
     def distance_to_zone(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None,
                          max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
@@ -50,7 +52,8 @@ class BaseballTools:
             catcher_model=catcher_model, 
             glove_model=glove_model, 
             ball_model=ball_model,
-            zone_vertical_adjustment=zone_vertical_adjustment
+            zone_vertical_adjustment=zone_vertical_adjustment,
+            logger=self.logger
         )
         
         results = dtoz.analyze(

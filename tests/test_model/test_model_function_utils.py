@@ -5,8 +5,8 @@ import shutil
 from unittest import mock
 import torch
 from baseballcv.model.utils.model_function_utils import ModelFunctionUtils
-from baseballcv.model.utils.model_logger import ModelLogger
 from baseballcv.model import Florence2
+from baseballcv.utilities import BaseballCVLogger
 
 class TestModelFunctionUtils:
     """
@@ -49,13 +49,7 @@ class TestModelFunctionUtils:
             florence2 = Florence2(**model_params)
             processor = florence2.processor
             
-            logger = ModelLogger(
-                model_name='florence2',
-                model_run_path=model_run_path,
-                model_id=model_params['model_id'],
-                batch_size=model_params['batch_size'],
-                device=str(florence2.device)
-            )
+            logger = BaseballCVLogger.get_logger(self.__class__.__name__)
             
             return {
                 'processor': processor,
