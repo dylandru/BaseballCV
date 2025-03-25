@@ -32,13 +32,7 @@ class NewBaseballSavVideoScraper(Crawler):
         self.max_videos_per_game = max_videos_per_game
         os.makedirs(self.download_folder, exist_ok=True)
 
-    def run_statcast_pull_scraper(self):
-        """
-        Legacy method name for backward compatibility.
-        """
-        return self.run_executor()
-
-    def run_executor(self) -> pd.DataFrame:
+    def run_executor(self):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             pairs = zip(self.game_pks, self.play_ids) # Ensures these are the same order
             executor.map(lambda x: self._download_videos(*x), pairs)
