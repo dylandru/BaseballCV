@@ -1,12 +1,16 @@
-from crawler import Crawler
+from .crawler import Crawler
 from datetime import datetime, date
 import requests
 from tqdm import tqdm
 import concurrent.futures
 import random
+from typing import List
 
 class GamePKScraper(Crawler):
-    def __init__(self, start_dt: str, end_dt: str=None, team_abbr: str=None):
+    """
+    Scraping Class that focuses on scraping the game ids based on a date range. Inherits from the Crawler class.
+    """
+    def __init__(self, start_dt: str, end_dt: str=None, team_abbr: str=None) -> None:
         super().__init__(start_dt, end_dt)
         self.GAMEDAY_RANGE_URL = 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={}&endDate={}&timeZone=America/New_York&gameType=E&&gameType=S&&gameType=R&&gameType=F&&gameType=D&&gameType=L&&gameType=W&&gameType=A&&gameType=C&language=en&leagueId=103&&leagueId=104&hydrate=team,flags,broadcasts(all),venue(location)&sortBy=gameDate,gameStatus,gameType'
         self.team_abbr = team_abbr
@@ -31,7 +35,7 @@ class GamePKScraper(Crawler):
             """)
         
 
-    def run_executor(self):
+    def run_executor(self) -> List[int]:
         range = list(self._date_range(self.start_dt_date, self.end_dt_date))
 
         game_pks = []
@@ -44,7 +48,17 @@ class GamePKScraper(Crawler):
         return list(set(game_pks)) # Prevents duplicate game ids
 
     
-    def _get_game_pks(self, start_dt: date, end_dt: date):
+    def _get_game_pks(self, start_dt: date, end_dt: date) -> List[int]:
+        """
+        Function that gets the game ids within each corresponding link.
+
+        Parameters:
+            start_dt (date): The start date of the query.
+            end_dt (date): The end date of the query.
+
+        Returns:
+            List[int]: A list of the game ids unless an invalid status code.
+        """
         self.rate_limiter()
         start_dt, end_dt = datetime.strftime(start_dt, "%Y-%m-%d"), datetime.strftime(end_dt, "%Y-%m-%d")
 
@@ -63,7 +77,6 @@ class GamePKScraper(Crawler):
                         game_pk_list.append(game_pk)
                     elif self.team_abbr is None:
                         game_pk_list.append(game_pk)
-                    
             return game_pk_list
         
         else:
@@ -71,7 +84,11 @@ class GamePKScraper(Crawler):
             return game_pk_list
         
 class GamePlayIDScraper(GamePKScraper):
-    def __init__(self, start_dt, end_dt=None, team_abbr=None, **kwargs):
+    """
+    Class that extracts the play ids for each game. Inherits from the GamePKScraper class.
+    """
+
+    def __init__(self, start_dt, end_dt=None, team_abbr=None, **kwargs) -> None:
         super().__init__(start_dt, end_dt, team_abbr)
         self.GAMEDAY_URL = 'https://statsapi.mlb.com/api/v1/game/{}/playByPlay'
         self.player = kwargs.get('player', None)
@@ -88,7 +105,7 @@ class GamePlayIDScraper(GamePKScraper):
             print("Warning, this may run slower as it's looking for all teams. Please consider using team abbreviation in addition to player id to make the extraction faster.")
        
         
-    def run_executor(self):
+    def run_executor(self) -> List[int]:
         play_ids = []
 
         with tqdm(total=len(self.game_pks)) as progress:
@@ -103,7 +120,17 @@ class GamePlayIDScraper(GamePKScraper):
             return random.sample(play_ids, min(self.max_return_videos, play_id_len)) # Prevents error if the max videos is larger than the actual return videos.
         return play_ids
     
-    def _get_play_ids(self, game_pk: int):
+    def _get_play_ids(self, game_pk: int) -> List[int] | None:
+        """
+        Function that extracts tha play ids for each game.
+
+        Parameters:
+            game_pk (int): The game id.
+        
+        Returns:
+            List[int] | None: A list of the play ids or None if the status code is invalid.
+        """
+
         self.rate_limiter()
 
         response = requests.get(self.GAMEDAY_URL.format(game_pk))

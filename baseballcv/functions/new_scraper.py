@@ -1,5 +1,5 @@
-from baseballcv.functions.utils.savant_utils import GamePlayIDScraper
-from baseballcv.functions.utils.savant_utils  import Crawler
+from baseballcv.functions.utils.savant_utils.gameday import GamePlayIDScraper
+from baseballcv.functions.utils.savant_utils.crawler import Crawler
 import concurrent.futures
 import requests
 from bs4 import BeautifulSoup

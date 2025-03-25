@@ -22,7 +22,7 @@ class Crawler(ABC):
     """
     Abstract Class that is used for web scraping implementation. 
     """
-    def __init__(self, start_dt: str, end_dt: str = None):
+    def __init__(self, start_dt: str, end_dt: str = None) -> None:
         super().__init__()
         self.start_dt = start_dt
         self.end_dt = end_dt
@@ -30,11 +30,9 @@ class Crawler(ABC):
         if self.end_dt is None:
             self.end_dt = self.start_dt
         if self.end_dt < self.start_dt: # If the date order is reversed, swap
-            new_start_date = self.end_dt
-            self.end_dt = self.start_dt
-            self.start_dt = new_start_date
+            self.end_dt, self.start_dt = self.start_dt, self.end_dt
 
-        self.start_dt_date, self.end_dt_date = datetime.strptime(self.start_dt, "%Y-%m-%d"), datetime.strptime(self.end_dt, "%Y-%m-%d")
+        self.start_dt_date, self.end_dt_date = datetime.strptime(self.start_dt, "%Y-%m-%d").date(), datetime.strptime(self.end_dt, "%Y-%m-%d").date()
 
     @abstractmethod
     def run_executor(self) -> Any:
@@ -97,7 +95,8 @@ class Crawler(ABC):
                 print("Skipping Offseason Dates")
 
             elif low > season_end:
-                low = date(month=3, day=15, year=low.year + 1)
+                low, _ = VALID_SEASON_DATES.get(low.year + 1, (date(month=3, day=15, year=low.year + 1), None))
+                print("Skipping Offseason Dates")
             
             if low > stop:
                 return
