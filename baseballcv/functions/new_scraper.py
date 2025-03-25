@@ -1,5 +1,4 @@
-from baseballcv.functions.utils.savant_utils.gameday import GamePlayIDScraper
-from baseballcv.functions.utils.savant_utils.crawler import Crawler
+from baseballcv.functions.utils.savant_utils import GamePlayIDScraper, Crawler
 import concurrent.futures
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +23,12 @@ class BaseballSavVideoScraper(Crawler):
         self.max_return_videos = max_return_videos
         self.max_videos_per_game = max_videos_per_game
         os.makedirs(self.download_folder, exist_ok=True)
+
+    def run_statcast_pull_scraper(self):
+        """
+        Legacy method name for backward compatibility.
+        """
+        return self.run_executor()
 
     def run_executor(self):
         with concurrent.futures.ThreadPoolExecutor() as executor:
