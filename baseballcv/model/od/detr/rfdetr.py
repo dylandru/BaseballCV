@@ -1,3 +1,8 @@
+import multiprocessing as mp
+
+from scipy.fft import set_workers
+mp.set_start_method('spawn', force=True)
+
 import os
 from typing import Tuple, List
 from rfdetr import RFDETRBase, RFDETRLarge
@@ -33,6 +38,8 @@ class RFDETR:
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
         self.logger.info("Initializing RF DETR model...")
         self.labels = labels
+
+        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1" # Enable MPS fallback as implementation buggy
 
 
     def inference(self, source_path: str, conf: float = 0.2, save_viz: bool = True) -> Tuple[List[sv.Detections], str]:
@@ -145,13 +152,16 @@ class RFDETR:
             warmup_epochs (int): Number of warmup epochs
         """
 
-        #Check if the dataset is already organized
+        # Check if the dataset is already organized
         msg = ModelFunctionUtils.setup_rfdetr_dataset(data_path)
         self.logger.info(msg)
 
-
+        # Multiprocessing on CPU addressed. 
+        if self.device == "cpu" and num_workers > 0:
+            self.logger.warning(f"Running on CPU with num_workers={num_workers}. This might cause issues. Consider setting num_workers=0 or wrapping in if __name__ == '__main__'.")
+        
         self.model.train(
-            dataset_dir=data_path,
+            dataset_dir=str(data_path),
             epochs=epochs,
             batch_size=batch_size,
             lr=lr,
@@ -175,6 +185,3 @@ class RFDETR:
 
         self.logger.info("Finetuning completed.")
         return self.model
-
-    def evaluate(self):
-        self.model.evaluate()

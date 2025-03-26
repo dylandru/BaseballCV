@@ -37,16 +37,16 @@ class LoadTools:
         self.BDL_MODEL_API = "https://balldatalab.com/api/models/"
         self.BDL_DATASET_API = "https://balldatalab.com/api/datasets/"
         self.yolo_model_aliases = {
-            'phc_detector': 'models/YOLO/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
-            'bat_tracking': 'models/YOLO/bat_tracking/model_weights/bat_tracking.txt',
-            'ball_tracking': 'models/YOLO/ball_tracking/model_weights/ball_tracking.txt',
-            'glove_tracking': 'models/YOLO/glove_tracking/model_weights/glove_tracking.txt',
-            'ball_trackingv4': 'models/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
-            'amateur_pitcher_hitter': 'models/YOLO/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
-            'homeplate_tracking': 'models/YOLO/homeplate_tracking/model_weights/homeplate_tracking.txt'
+            'phc_detector': 'models/od/YOLO/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
+            'bat_tracking': 'models/od/YOLO/bat_tracking/model_weights/bat_tracking.txt',
+            'ball_tracking': 'models/od/YOLO/ball_tracking/model_weights/ball_tracking.txt',
+            'glove_tracking': 'models/od/YOLO/glove_tracking/model_weights/glove_tracking.txt',
+            'ball_trackingv4': 'models/od/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
+            'amateur_pitcher_hitter': 'models/od/YOLOv9/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
+            'homeplate_tracking': 'models/od/YOLOv9/homeplate_tracking/model_weights/homeplate_tracking.txt'
         }
         self.florence_model_aliases = {
-            'ball_tracking': 'models/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
+            'ball_tracking': 'models/vlm/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
             'florence_ball_tracking': 'models/vlm/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt'
         }
         self.paligemma2_model_aliases = {
@@ -54,6 +54,9 @@ class LoadTools:
         }
         self.detr_model_aliases = {
             'detr_baseball_v2': 'hf:dyland222/detr-coco-baseball_v2'
+        }
+        self.rfdetr_model_aliases = {
+            'rfdetr_glove_tracking': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt'
         }
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
@@ -148,7 +151,7 @@ class LoadTools:
             with open(txt_path, 'r') as file:
                 return file.read().strip()
 
-    def load_model(self, model_alias: str, model_type: Optional[str] = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
+    def load_model(self, model_alias: str = None, model_type: Optional[str] = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
         '''
         Loads a given baseball computer vision model into the repository.
 
@@ -162,6 +165,11 @@ class LoadTools:
         Returns:
             model_weights_path (str):  Path to where the model weights are saved within the repo.
         '''
+
+        if model_alias is None and use_bdl_api:
+            self.logger.error("model_alias must be provided if use_bdl_api is True")
+            return None
+        
         if model_type == 'YOLO':
             model_txt_path = self.yolo_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         elif model_type == 'FLORENCE2':
@@ -170,6 +178,8 @@ class LoadTools:
             model_txt_path = self.paligemma2_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         elif model_type == 'DETR':
             model_txt_path = self.detr_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
+        elif model_type == 'RFDETR':
+            model_txt_path = self.rfdetr_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         else:
             raise ValueError(f"Invalid model type: {model_type}")
         
@@ -289,14 +299,12 @@ class LoadTools:
                             for subitem in os.listdir(source):
                                 shutil.move(os.path.join(source, subitem), destination)
                             os.rmdir(source)
-                    else:
+                    else: 
                         if not os.path.exists(destination):
                             shutil.move(source, destination)
                 
                 if os.path.exists(redundant_dir):
                     os.rmdir(redundant_dir)
                 self.logger.info(f"Successfully processed dataset {dataset_alias}.")
-            else:
-                self.logger.error(f"Dataset download failed.")
 
             return Path(dir_name)

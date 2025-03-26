@@ -193,6 +193,26 @@ The class automatically handles:
 - Standardized output format for easy post-processing
 - Automatic YOLOv9 installation and weight downloads if needed
 
+### 5. RF DETR (Recurrent Feature DETR)
+A better version of DETR, available to be used for inference and finetuning. The `RFDETR` class is a wrapper for the `rfdetr` package, available to be used for inference and finetuning.
+
+```python
+from baseballcv.model.od import RFDETR
+
+# Initialize model
+model = RFDETR(
+    device="cpu",
+    model_type="large",
+    model_path="models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt"
+)
+
+# Run inference on single image
+detections = model.inference(
+    source="baseball_play.jpg",
+    conf=0.25
+)
+```
+
 ## Adding New Models
 
 When adding new model classes, follow these guidelines:
