@@ -1,6 +1,7 @@
 import logging
 import random
 import os
+import shutil
 import subprocess
 import string
 from typing import Dict, Tuple, Any, List
@@ -352,6 +353,39 @@ class ModelFunctionUtils:
             print(f"Model weights file found at {output}.")
 
         return output
+    
+    @staticmethod
+    def setup_rfdetr_dataset(data_path: str) -> str:
+        """
+        Setup the expected COCO format for the RF DETR model.
+
+        Args:
+            data_path (str): The path to the dataset.
+        """
+        #Check 1 - Check if Val or Valid Folder and Change to Val
+        if os.path.exists(os.path.join(data_path, "val")):
+            os.rename(os.path.join(data_path, "val"), os.path.join(data_path, "valid"))
+
+        #Check 2 - Move the COCO annotations and images to the correct split directories
+        if os.path.exists(os.path.join(data_path, "COCO_annotations")):
+            coco_annotations_dir = os.path.join(data_path, "COCO_annotations") 
+
+            for split in ["train", "valid", "test"]:
+                split_dir = os.path.join(data_path, split)
+                images_dir = os.path.join(split_dir, "images")
+                
+                # Move annotation file if it exists
+                src_file = os.path.join(coco_annotations_dir, f"instances_{split}.json")
+                if os.path.exists(src_file):
+                    shutil.move(src_file, os.path.join(split_dir, "_annotations.coco.json"))
+                
+                # Move all image files to the split directory IF EXISTS
+                if os.path.exists(images_dir):
+                    for img in [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]:
+                        shutil.move(os.path.join(images_dir, img), os.path.join(split_dir, img))
+
+        return "Dataset organized successfully!"            
+
 
 
     
