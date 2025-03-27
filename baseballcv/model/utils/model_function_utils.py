@@ -362,9 +362,13 @@ class ModelFunctionUtils:
         Args:
             data_path (str): The path to the dataset.
         """
-        #Check 1 - Check if Val or Valid Folder and Change to Val
+        #Check 1 - Check if Val or Valid Folder / Fileand Change to Val
         if os.path.exists(os.path.join(data_path, "val")):
             os.rename(os.path.join(data_path, "val"), os.path.join(data_path, "valid"))
+
+        if os.path.exists(os.path.join(data_path, "COCO_annotations", "instances_val.json")):
+            os.rename(os.path.join(data_path, "COCO_annotations", "instances_val.json"), os.path.join(data_path, "COCO_annotations", "instances_valid.json"))
+
 
         #Check 2 - Move the COCO annotations and images to the correct split directories
         if os.path.exists(os.path.join(data_path, "COCO_annotations")):

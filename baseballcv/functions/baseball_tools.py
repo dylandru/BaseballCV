@@ -17,7 +17,7 @@ class BaseballTools:
         self.verbose = verbose
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
-    def distance_to_zone(self, start_date: str, end_date: str, team: str = None, pitch_call: str = None,
+    def distance_to_zone(self, start_date: str = "2024-05-01", end_date: str = "2024-05-01", team: str = None, pitch_call: str = None,
                          max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
                          catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
                          ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
