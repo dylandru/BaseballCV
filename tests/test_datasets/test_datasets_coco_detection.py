@@ -1,13 +1,13 @@
 import pytest
 import torch
 import shutil
-from typing import tuple
+from typing import Tuple
 from transformers import DetrImageProcessor
 from baseballcv.datasets import CocoDetectionDataset
 
 class TestCocoDetectionDataset:
     @pytest.fixture
-    def setup_coco_dataset(self, load_tools) -> tuple[str, DetrImageProcessor]:
+    def setup_coco_dataset(self, load_tools) -> Tuple[str, DetrImageProcessor]:
         """Download and set up the actual COCO dataset provided by BaseballCV for testing
         
         This fixture downloads a baseball-specific COCO-formatted dataset and initializes
