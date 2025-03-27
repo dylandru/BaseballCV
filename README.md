@@ -183,6 +183,10 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 
 - Coming Soon...
 
+**Available RF DETR Models**:
+
+- `rfdetr_glove_tracking`: Trained to detect and track the catcher's glove, the ball, homeplate, and the pitcher's rubber from a broadcast feed with improved performance in accuracy.
+
 **Available YOLOv9 Models**:
 
 - `amateur_pitcher_hitter.pt`: Trained to detect pitchers and hitters in amateur baseball games.
@@ -400,6 +404,28 @@ results = model.inference(
 
 print(results)  #Prints coordinates of BBoxes in JSON as such: {'OD': {'bboxes': [[x1, y1, x2, y2], [x1, y1, x2, y2], ...], 'labels': ['label1', 'label2', ...]}}
 
+```
+
+### RF DETR (Recurrent Feature DETR)
+
+#### Inference Example
+
+Here's an example of how to use our pre-trained RF DETR models to run inference and finetune on an image(s) or video(s).
+
+```python
+from baseballcv.model import RFDETR
+
+# Initialize our RF DETR model
+model = RFDETR(labels=["glove", "ball", "homeplate", "rubber"], model_type="large", model_path="models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt")
+
+# Run inference on image
+model.inference("baseball_play.jpg")
+
+# Run inference on video
+model.inference("baseball_play.mp4")
+
+# Finetune on custom dataset
+model.finetune(data_path="custom_dataset.txt")
 ```
 
 ## Notebooks

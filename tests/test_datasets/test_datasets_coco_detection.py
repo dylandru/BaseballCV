@@ -1,12 +1,13 @@
 import pytest
 import torch
 import shutil
+from typing import Tuple
 from transformers import DetrImageProcessor
 from baseballcv.datasets import CocoDetectionDataset
 
 class TestCocoDetectionDataset:
     @pytest.fixture
-    def setup_coco_dataset(self, load_tools) -> tuple[str, DetrImageProcessor]:
+    def setup_coco_dataset(self, load_tools) -> Tuple[str, DetrImageProcessor]:
         """Download and set up the actual COCO dataset provided by BaseballCV for testing
         
         This fixture downloads a baseball-specific COCO-formatted dataset and initializes
@@ -28,7 +29,7 @@ class TestCocoDetectionDataset:
         yield dataset_path, processor
         shutil.rmtree(dataset_path)
     
-    def test_coco_dataset_initialization(self, setup_coco_dataset) -> None:
+    def test_coco_dataset_initialization(self, setup_coco_dataset, logger) -> None:
         """Test the initialization of CocoDetectionDataset
         
         Verifies that the CocoDetectionDataset initializes correctly with the provided
@@ -47,14 +48,14 @@ class TestCocoDetectionDataset:
         dataset_path, processor = setup_coco_dataset
         
         split = "train"
-        dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor)
+        dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor, logger=logger)
         
         assert dataset.img_dir is not None
         assert dataset.ann_file is not None
         assert len(dataset) > 0
         assert isinstance(dataset.processor, DetrImageProcessor)
     
-    def test_coco_dataset_getitem(self, setup_coco_dataset) -> None:
+    def test_coco_dataset_getitem(self, setup_coco_dataset, logger) -> None:
         """Test the __getitem__ method of CocoDetectionDataset
         
         Verifies that the dataset's item retrieval functionality works correctly by
@@ -73,7 +74,7 @@ class TestCocoDetectionDataset:
         dataset_path, processor = setup_coco_dataset
         
         split = "train"
-        dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor)
+        dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor, logger=logger)
         
         if len(dataset) > 0:
             pixel_values, target = dataset[0]

@@ -3,7 +3,7 @@
 __version__ = "0.1.21"
 
 try:
-    from .utils import check_and_install
+    from .utilities import check_and_install
     check_and_install()
 except Exception as e:
     print(f"Error checking and installing git dependencies: {e}")

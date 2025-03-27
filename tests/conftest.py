@@ -87,6 +87,17 @@ def baseball_tools() -> BaseballTools:
     return BaseballTools()
 
 @pytest.fixture
+def logger() -> BaseballCVLogger:
+    """
+    Creates and returns a BaseballCVLogger instance that can be used in tests
+    to verify the functionality of logging and logging messages.
+
+    Returns:
+        BaseballCVLogger: An instance of BaseballCVLogger.
+    """
+    return BaseballCVLogger.get_logger("TestLogger")
+
+@pytest.fixture
 def mock_responses() -> tuple:
     """
     Provides mock HTTP responses for testing network requests.

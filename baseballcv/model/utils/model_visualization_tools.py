@@ -36,8 +36,11 @@ class ModelVisualizationTools:
         Returns:
             logger_message (logging.Logger): The logger message for logging the completed visualization saving.
         """
+        if isinstance(file_path, str):
+            image = cv2.imread(file_path)
+        else:
+            image = file_path
 
-        image = cv2.imread(file_path)
         box_annotator = sv.BoxAnnotator()
         annotated_frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
 
