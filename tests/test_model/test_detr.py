@@ -15,7 +15,7 @@ class TestDETR:
     """
 
     @pytest.fixture
-    def setup_detr_test(self, load_tools):
+    def setup_detr_test(self, load_tools, logger):
         """
         Set up test environment with real dataset.
         
@@ -38,7 +38,7 @@ class TestDETR:
         processor = DetrImageProcessor(do_resize=True, size={"height": 800, "width": 800})
 
         split = "train"
-        coco_dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor)
+        coco_dataset = CocoDetectionDataset(dataset_dir=dataset_path, split=split, processor=processor, logger=logger)
         
         test_image = None
         image_size = (100, 100, 3)  #fallback
