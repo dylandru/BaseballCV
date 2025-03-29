@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, date, timedelta
 import time
 import random
+import requests
 from typing import Any, Generator, Tuple
 
 VALID_SEASON_DATES = {
@@ -71,6 +72,21 @@ class Crawler(ABC):
             time.sleep(time_to_wait)
 
         self.last_called = time.time()
+
+    def requests_with_retry(self, url, stream = False):
+        attempts = 0
+        retries = 5
+
+        while attempts < retries:
+            try:
+                response = requests.get(url, stream=stream, timeout=10)
+                if response.status_code == 200:
+                    return response
+            except Exception as e:
+                print("Error Downloading URL. Attempting another")
+                attempts += 1
+                time.sleep(2)
+
         
     def _date_range(self, start_dt: date, stop: date, step: int = 1) -> Generator[Tuple[date, date], Any, None]:
         """

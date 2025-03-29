@@ -31,7 +31,7 @@ class GamePKScraper(Crawler):
         if self.player:
             year = self.end_dt[0:4] # First 4 elements to get the year 
             url = f'https://statsapi.mlb.com/api/v1/sports/1/players?season={year}'
-            response  = requests.get(url)
+            response = self.requests_with_retry(url)
             people = response.json()['people']
             team_id = -100 # Dummy variable that should change if team id is found.
 
@@ -86,31 +86,26 @@ class GamePKScraper(Crawler):
         self.rate_limiter()
         start_dt, end_dt = datetime.strftime(start_dt, "%Y-%m-%d"), datetime.strftime(end_dt, "%Y-%m-%d")
 
-        response = requests.get(self.GAMEDAY_RANGE_URL.format(start_dt, end_dt))
+        response = self.requests_with_retry(self.GAMEDAY_RANGE_URL.format(start_dt, end_dt))
         game_pk_list = []
 
-        if response.status_code == 200:
-            dates = response.json()['dates']
-            for games in dates:
-                for game in games['games']:
-                    home_team = game['teams']['home']['team'].get('abbreviation', 'Unknown')
-                    away_team = game['teams']['away']['team'].get('abbreviation', 'Unknown')
-                    game_pk = game.get('gamePk', None)
+        dates = response.json()['dates']
+        for games in dates:
+            for game in games['games']:
+                home_team = game['teams']['home']['team'].get('abbreviation', 'Unknown')
+                away_team = game['teams']['away']['team'].get('abbreviation', 'Unknown')
+                game_pk = game.get('gamePk', None)
 
-                    if home_team == self.team_abbr or away_team == self.team_abbr:
-                        # We know both home and away team so append it.
-                        game_pk_list.append(game_pk)
-                        self.home_team.append(home_team)
-                        self.away_team.append(away_team)
-                    elif self.team_abbr == None:
-                        game_pk_list.append(game_pk)
-                        self.home_team.append(home_team)
-                        self.away_team.append(away_team)
-            return game_pk_list
-        
-        else:
-            print('Error with response, error code', response.status_code)
-            return game_pk_list
+                if home_team == self.team_abbr or away_team == self.team_abbr:
+                    # We know both home and away team so append it.
+                    game_pk_list.append(game_pk)
+                    self.home_team.append(home_team)
+                    self.away_team.append(away_team)
+                elif self.team_abbr == None:
+                    game_pk_list.append(game_pk)
+                    self.home_team.append(home_team)
+                    self.away_team.append(away_team)
+        return game_pk_list
 
 class GamePlayIDScraper(GamePKScraper):
     """
@@ -197,7 +192,7 @@ class GamePlayIDScraper(GamePKScraper):
   
                     progress.update(1)
 
-        play_ids_df = pl.concat(play_ids_df, how= 'diagonal')
+        play_ids_df = pl.concat(play_ids_df, how = 'vertical_relaxed') # Hoping vertical relaxed fixes the Null -> Ints, Floats columns
 
         if play_ids_df.is_empty():
             raise pl.exceptions.NoDataError("Cannot continue, no dataframe was returned.")
@@ -220,7 +215,7 @@ class GamePlayIDScraper(GamePKScraper):
 
         self.rate_limiter(rate=20) # 20 Calls per second
 
-        response = requests.get(self.GAMEDAY_URL.format(game_pk))
+        response = self.requests_with_retry(self.GAMEDAY_URL.format(game_pk))
 
         df = pl.DataFrame()
         batter_list = []
@@ -229,73 +224,68 @@ class GamePlayIDScraper(GamePKScraper):
         inning_list = []
         inning_top_bot_list = []
 
-        if response.status_code == 200:
-            data = response.json()
-            for play in data['allPlays']:
-                batter = play['matchup']['batter']['id']
-                pitcher = play['matchup']['pitcher']['id']
-                p_throws = play['matchup']['pitchHand']['code']
-                inning = play['about']['inning']
-                inning_top_bot = play['about']['halfInning']
-                for pitch in play.get('playEvents', {}):
-                    if not pitch:
-                        print('Skip Pitch, no data')
-                        continue
+        data = response.json()
+        for play in data['allPlays']:
+            batter = play['matchup']['batter']['id']
+            pitcher = play['matchup']['pitcher']['id']
+            p_throws = play['matchup']['pitchHand']['code']
+            inning = play['about']['inning']
+            inning_top_bot = play['about']['halfInning']
+            for pitch in play.get('playEvents', {}):
+                if not pitch:
+                    print('Skip Pitch, no data')
+                    continue
 
-                    _df = pl.json_normalize(pitch, separator='_')
-                    df = pl.concat([df, _df], how='diagonal')
+                _df = pl.json_normalize(pitch, separator='_')
+                df = pl.concat([df, _df], how='diagonal')
 
-                    batter_list.append(batter) # Assures these are the same length as df
-                    pitcher_list.append(pitcher)
-                    p_throws_list.append(p_throws)
-                    inning_list.append(inning)
-                    inning_top_bot_list.append(inning_top_bot)
+                batter_list.append(batter) # Assures these are the same length as df
+                pitcher_list.append(pitcher)
+                p_throws_list.append(p_throws)
+                inning_list.append(inning)
+                inning_top_bot_list.append(inning_top_bot)
             
-            df = df.with_columns([
-                pl.Series(name="batter", values = batter_list),
-                pl.Series(name="pitcher", values = pitcher_list),
-                pl.Series(name="p_throws", values = p_throws_list),
-                pl.Series(name="inning", values = inning_list),
-                pl.Series(name="inning_top_bot", values = inning_top_bot_list),
-                pl.lit(game_pk).alias("game_pk"),
-                pl.lit(home_team).alias("home_team"),
-                pl.lit(away_team).alias("away_team")
-            ])
+        df = df.with_columns([
+            pl.Series(name="batter", values = batter_list),
+            pl.Series(name="pitcher", values = pitcher_list),
+            pl.Series(name="p_throws", values = p_throws_list),
+            pl.Series(name="inning", values = inning_list),
+            pl.Series(name="inning_top_bot", values = inning_top_bot_list),
+            pl.lit(game_pk).alias("game_pk"),
+            pl.lit(home_team).alias("home_team"),
+            pl.lit(away_team).alias("away_team")
+        ])
 
-            # Fills in Missing columns with None so play ids are still there.
-            required_columns = list(self.rename_dict.keys())
-            existing_columns = df.columns
+        # Fills in Missing columns with None so play ids are still there.
+        required_columns = list(self.rename_dict.keys())
+        existing_columns = df.columns
 
-            missing_columns = [col for col in required_columns if col not in existing_columns]
+        missing_columns = [col for col in required_columns if col not in existing_columns]
 
-            for col in missing_columns:
-                df = df.with_columns(pl.lit(None).cast(pl.Float64).alias(col)) # These are most likely the pitching columns
+        for col in missing_columns:
+            df = df.with_columns(pl.lit(None).alias(col)) # These are most likely the pitching columns
 
-            df = df.select(required_columns) # Extract wanted columns from the rename dictionary
-            df = df.rename(self.rename_dict)
-            df = df.filter(pl.col("play_id").is_not_null()) # Filter for when a play happens
-            
-            if self.player and self.pitch_type:
-                df = df.filter(
-                    (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player) &
-                    (pl.col("pitch_type") == self.pitch_type)
-                )
+        df = df.select(required_columns) # Extract wanted columns from the rename dictionary
+        df = df.rename(self.rename_dict)
+        df = df.filter(pl.col("play_id").is_not_null()) # Filter for when a play happens
+        
+        if self.player and self.pitch_type:
+            df = df.filter(
+                (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player) &
+                (pl.col("pitch_type") == self.pitch_type)
+            )
 
-            elif self.player and not self.pitch_type:
-                df = df.filter(
-                    (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player)
-                )
+        elif self.player and not self.pitch_type:
+            df = df.filter(
+                (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player)
+            )
 
-            elif not self.player and self.pitch_type:
-                df = df.filter(
-                    pl.col("pitch_type") == self.pitch_type
-                )
+        elif not self.player and self.pitch_type:
+            df = df.filter(
+                pl.col("pitch_type") == self.pitch_type
+            )
 
-            if self.max_videos_per_game:
-                return df.sample(min(self.max_videos_per_game, len(df)))
-            
-            return df
-
-        else:
-            print("Error with response", response.status_code)
-            return df # Empty dataframe
+        if self.max_videos_per_game:
+            return df.sample(min(self.max_videos_per_game, len(df)))
+        
+        return df

@@ -1,10 +1,11 @@
 import pytest
 from baseballcv.functions.new_scraper import NewBaseballSavVideoScraper
 from baseballcv.functions.utils.savant_utils.crawler import Crawler
-from baseballcv.functions.utils.savant_utils.gameday import GamePKScraper, GamePlayIDScraper
+from baseballcv.functions.utils.savant_utils.gameday import GamePlayIDScraper
 import polars as pl
 import pandas as pd
-from unittest.mock import patch
+from unittest.mock import patch, Mock
+import requests
 import os
 import time
 
@@ -16,6 +17,15 @@ import time
 # Test on old dates like 2015
 
 # TODO: Fix these tests so they don't require a link
+class TestCrawler(Crawler):
+        def __init__(self, start_dt, end_dt = None):
+                super().__init__(start_dt, end_dt)
+        def run_executor(self):
+            return super().run_executor()
+        
+@pytest.fixture
+def test_crawler():
+    return TestCrawler('2024-02-01')
 
 class TestNewSavantScraper:
 
@@ -47,7 +57,8 @@ class TestNewSavantScraper:
         assert len(scraper.game_pks) == len(scraper.play_ids), "Game PKs and Play Ids should be the same length"
         assert os.path.exists(scraper.download_folder), "A Download Folder should be created"
 
-        df = scraper.run_executor()
+        scraper.run_executor()
+        df = scraper.get_play_ids_df()
 
         game_pk, play_id = str(df['game_pk'].iloc[0]), str(df['play_id'].iloc[0])
 
@@ -72,15 +83,9 @@ class TestNewSavantScraper:
 
         assert found, "Wrong Naming Convention. There are no instances where the Game Pk and Play ID are in the directory."
             
-    def test_rate_limiter(self):
+    def test_rate_limiter(self, test_crawler):
 
-        class TestCrawler(Crawler): # Need to make this to work since Crawler is abstract
-            def __init__(self, start_dt, end_dt = None):
-                super().__init__(start_dt, end_dt)
-            def run_executor(self):
-                return super().run_executor()
-            
-        crawler = TestCrawler('2024-02-01')
+        crawler = test_crawler
         rate = 10
         last_called = 0
 
@@ -96,8 +101,13 @@ class TestNewSavantScraper:
                 crawler.rate_limiter(rate)
                 assert mock_sleep.call_args[0][0] == expected_wait, "Wait time should be the same as expected wait time"
 
-    def test_network_error(self):
-        pass
+    def test_network_error(self, test_crawler):
+        with patch('requests.get', side_effect=[requests.exceptions.RequestException("Temporary network error"), 
+                                                requests.exceptions.RequestException("Temporary network error"),
+                                                Mock(status_code=200)]) as mock_get:
+            response = test_crawler.requests_with_retry('https://example.com/video_url')
+            assert response.status_code == 200, "The 3rd request should be successful."
+            assert mock_get.call_count == 3, "Mock get should be called 3 times."
 
     def test_teams_players_pitch_types(self):
         # Spencer Strider Game, Braves were away
@@ -122,8 +132,6 @@ class TestNewSavantScraper:
 
     def test_old_dates(self):
         pass
-
-
 
 
         
