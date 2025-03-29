@@ -5,23 +5,24 @@ from tqdm import tqdm
 import concurrent.futures
 from typing import List
 import polars as pl
+import logging
 
 class GamePKScraper(Crawler):
     """
     Scraping Class that focuses on scraping the game ids based on a date range. Inherits from the Crawler class.
     """
-    def __init__(self, start_dt: str, end_dt: str=None, team_abbr: str=None, player: int=None) -> None:
-        super().__init__(start_dt, end_dt)
+    def __init__(self, start_dt: str, end_dt: str=None, team_abbr: str=None, player: int=None, logger: logging.Logger = None) -> None:
+        self.logger = logger if logger else logging.getLogger(__name__)
+        super().__init__(start_dt, end_dt, self.logger)
         self.GAMEDAY_RANGE_URL = 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate={}&endDate={}&timeZone=America/New_York&gameType=E&&gameType=S&&gameType=R&&gameType=F&&gameType=D&&gameType=L&&gameType=W&&gameType=A&&gameType=C&language=en&leagueId=103&&leagueId=104&hydrate=team,flags,broadcasts(all),venue(location)&sortBy=gameDate,gameStatus,gameType'
-        self.player = player
-        self.home_team, self.away_team = [], []
-        corrected_teams_dict = {'CHW': 'CWS',
+        self.home_team, self.away_team, self.player = [], [], player
+        self.corrected_teams_dict = {'CHW': 'CWS',
                                 'OAK': 'ATH',
                                 'ARI': 'AZ' }
-        self.team_abbr = corrected_teams_dict.get(team_abbr, team_abbr)
+        self.team_abbr = self.corrected_teams_dict.get(team_abbr, team_abbr)
 
         # Team: Team ID
-        recognized_abbr = {'ATH': 133, 'PIT': 134, 'SD': 135, 'SEA': 136,
+        self.recognized_abbr = {'ATH': 133, 'PIT': 134, 'SD': 135, 'SEA': 136,
                            'SF': 137, 'STL': 138, 'TB': 139, 'TEX': 140, 'TOR': 141,
                            'MIN': 142, 'PHI': 143, 'ATL': 144, 'CWS': 145, 'MIA': 146,
                            'NYY': 147, 'MIL': 158, 'LAA': 108, 'AZ': 109, 'BAL': 110, 
@@ -43,9 +44,9 @@ class GamePKScraper(Crawler):
             if team_id == -100:
                 raise ValueError(f"Cannot find player ID {self.player}. Maybe a typo?")
 
-            self.team_abbr = {v: k for k,v in recognized_abbr.items()}.get(team_id)
+            self.team_abbr = {v: k for k,v in self.recognized_abbr.items()}.get(team_id)
 
-        if team_abbr != None and self.team_abbr not in recognized_abbr:
+        if team_abbr != None and self.team_abbr not in self.recognized_abbr:
             raise ValueError(f"""
             WARNING: Team Abbreviation {self.team_abbr} was not recognized. Please use proper team abbreviations. The following are converted
             for your convenience:
@@ -85,23 +86,16 @@ class GamePKScraper(Crawler):
         """
         self.rate_limiter()
         start_dt, end_dt = datetime.strftime(start_dt, "%Y-%m-%d"), datetime.strftime(end_dt, "%Y-%m-%d")
-
         response = self.requests_with_retry(self.GAMEDAY_RANGE_URL.format(start_dt, end_dt))
         game_pk_list = []
-
-        dates = response.json()['dates']
-        for games in dates:
+        
+        for games in response.json()['dates']:
             for game in games['games']:
                 home_team = game['teams']['home']['team'].get('abbreviation', 'Unknown')
                 away_team = game['teams']['away']['team'].get('abbreviation', 'Unknown')
                 game_pk = game.get('gamePk', None)
-
-                if home_team == self.team_abbr or away_team == self.team_abbr:
-                    # We know both home and away team so append it.
-                    game_pk_list.append(game_pk)
-                    self.home_team.append(home_team)
-                    self.away_team.append(away_team)
-                elif self.team_abbr == None:
+                
+                if self.team_abbr is None or home_team == self.team_abbr or away_team == self.team_abbr:
                     game_pk_list.append(game_pk)
                     self.home_team.append(home_team)
                     self.away_team.append(away_team)
@@ -112,14 +106,15 @@ class GamePlayIDScraper(GamePKScraper):
     Class that extracts the play ids for each game. Inherits from the GamePKScraper class.
     """
 
-    def __init__(self, start_dt, end_dt=None, team_abbr=None, player = None, **kwargs) -> None:
-        super().__init__(start_dt, end_dt, team_abbr, player)
+    def __init__(self, start_dt, end_dt=None, team_abbr=None, player = None, logger: logging.Logger = None, **kwargs) -> None:
+        self.logger = logger if logger else logging.getLogger(__name__)
+        super().__init__(start_dt, end_dt, team_abbr, player, self.logger)
         self.GAMEDAY_URL = 'https://statsapi.mlb.com/api/v1/game/{}/playByPlay'
         self.pitch_type = kwargs.get('pitch_type', None)
         self.max_return_videos = kwargs.get('max_return_videos', 10)
         self.max_videos_per_game = kwargs.get('max_videos_per_game', None)
 
-        self.game_pks = super().run_executor()
+        self.game_pks = super().run_executor()  
 
         self.rename_dict = {
                             'game_pk': 'game_pk',
@@ -171,7 +166,7 @@ class GamePlayIDScraper(GamePKScraper):
             raise ValueError(f"Cannot Scrape Game IDs with no Game IDs. No games played from {str(start_dt)} to {str(end_dt)}")
         
         if self.player and not team_abbr:
-            print(f"Warning, this may run slower as it's looking for all the player\'s team. Please consider using team abbreviation in addition to player id to make the extraction faster. Defaulting to the player\'s current team in year {self.end_dt[0:4]}")
+            self.logger.warning(f"Warning, this may run slower as it's looking for all the player\'s team. Please consider using team abbreviation in addition to player id to make the extraction faster. Defaulting to the player\'s current team in year {self.end_dt[0:4]}")
        
         
     def run_executor(self) -> pl.DataFrame:
@@ -188,7 +183,7 @@ class GamePlayIDScraper(GamePKScraper):
                     try:
                         play_ids_df.append(future.result())
                     except Exception as e:
-                        print(f"Issue getting {game_pk}. Most Likely doesn\'t have pitch-level data.", e)
+                        self.logger.error(f"Issue getting {game_pk}. Most Likely doesn\'t have pitch-level data. {e}")
   
                     progress.update(1)
 
@@ -233,7 +228,7 @@ class GamePlayIDScraper(GamePKScraper):
             inning_top_bot = play['about']['halfInning']
             for pitch in play.get('playEvents', {}):
                 if not pitch:
-                    print('Skip Pitch, no data')
+                    self.logger.debug('Skip Pitch, no data')
                     continue
 
                 _df = pl.json_normalize(pitch, separator='_')
@@ -256,35 +251,22 @@ class GamePlayIDScraper(GamePKScraper):
             pl.lit(away_team).alias("away_team")
         ])
 
-        # Fills in Missing columns with None so play ids are still there.
-        required_columns = list(self.rename_dict.keys())
-        existing_columns = df.columns
-
-        missing_columns = [col for col in required_columns if col not in existing_columns]
-
-        for col in missing_columns:
-            df = df.with_columns(pl.lit(None).alias(col)) # These are most likely the pitching columns
-
-        df = df.select(required_columns) # Extract wanted columns from the rename dictionary
-        df = df.rename(self.rename_dict)
-        df = df.filter(pl.col("play_id").is_not_null()) # Filter for when a play happens
+        # Add missing columns, select required ones, and apply filters
+        for col in [c for c in self.rename_dict.keys() if c not in df.columns]:
+            df = df.with_columns(pl.lit(None).alias(col))
+            
+        df = df.select(list(self.rename_dict.keys())).rename(self.rename_dict).filter(pl.col("play_id").is_not_null())
         
-        if self.player and self.pitch_type:
-            df = df.filter(
-                (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player) &
-                (pl.col("pitch_type") == self.pitch_type)
-            )
-
-        elif self.player and not self.pitch_type:
-            df = df.filter(
-                (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player)
-            )
-
-        elif not self.player and self.pitch_type:
-            df = df.filter(
-                pl.col("pitch_type") == self.pitch_type
-            )
-
+        # Apply filters on player and pitch_type
+        if self.player:
+            player_filter = (pl.col("batter") == self.player) | (pl.col("pitcher") == self.player)
+            if self.pitch_type:
+                df = df.filter(player_filter & (pl.col("pitch_type") == self.pitch_type))
+            else:
+                df = df.filter(player_filter)
+        elif self.pitch_type:
+            df = df.filter(pl.col("pitch_type") == self.pitch_type)
+            
         if self.max_videos_per_game:
             return df.sample(min(self.max_videos_per_game, len(df)))
         

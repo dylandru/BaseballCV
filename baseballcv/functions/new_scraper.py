@@ -5,7 +5,7 @@ import os
 import shutil
 import polars as pl
 import pandas as pd
-
+from baseballcv.utilities import BaseballCVLogger
 
 class NewBaseballSavVideoScraper(Crawler):
     def __init__(self, start_dt: str, end_dt: str = None, 
@@ -14,12 +14,14 @@ class NewBaseballSavVideoScraper(Crawler):
                  max_return_videos: int = 10, 
                  max_videos_per_game: int = None):
 
-        super().__init__(start_dt, end_dt)
+        self.logger = BaseballCVLogger().get_logger(self.__class__.__name__)
+        super().__init__(start_dt, end_dt, self.logger)
 
         self.play_ids_df = GamePlayIDScraper(start_dt, end_dt, team_abbr,
                                           player, pitch_type=pitch_type, 
                                           max_return_videos=max_return_videos, 
-                                          max_videos_per_game=max_videos_per_game).run_executor()
+                                          max_videos_per_game=max_videos_per_game,
+                                          logger=self.logger).run_executor()
         
         self.play_ids = pl.Series(self.play_ids_df.select("play_id")).to_list()
         self.game_pks = pl.Series(self.play_ids_df.select("game_pk")).to_list()
@@ -48,12 +50,12 @@ class NewBaseballSavVideoScraper(Crawler):
         if video_container:
             video_url = video_container.find('video').find('source', type='video/mp4')['src']
             if not video_url:
-                print("This is where logging.warning will go: Warning: No video url was returned")
+                self.logger.warning("Warning: No video url was returned")
 
             video_container_response = self.requests_with_retry(video_url, stream=True)
 
             self._write_content(game_pk, play_id, video_container_response)
-            print('Successfully downloaded video', play_id)
+            self.logger.info('Successfully downloaded video %s', play_id)
     
     def _write_content(self, game_pk, play_id, response):
         content_file = os.path.join(self.download_folder, f'{game_pk}_{play_id}.mp4')
@@ -66,6 +68,6 @@ class NewBaseballSavVideoScraper(Crawler):
         if os.path.exists(folder_path):
             try:
                 shutil.rmtree(folder_path)
-                print(f"Deleted {folder_path}")
+                self.logger.info("Deleted %s", folder_path)
             except Exception as e:
-                print(f"Error deleting {folder_path}: {e}")
+                self.logger.error("Error deleting %s: %s", folder_path, e)

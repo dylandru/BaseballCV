@@ -4,29 +4,31 @@ import time
 import random
 import requests
 from typing import Any, Generator, Tuple
-
-VALID_SEASON_DATES = {
-    2015: (date(2015, 4, 5), date(2015, 11, 1)),
-    2016: (date(2016, 4, 3), date(2016, 11, 2)),
-    2017: (date(2017, 4, 2), date(2017, 11, 1)),
-    2018: (date(2018, 3, 29), date(2018, 10, 28)),
-    2019: (date(2019, 3, 20), date(2019, 10, 30)),
-    2020: (date(2020, 7, 23), date(2020, 10, 27)),
-    2021: (date(2021, 4, 1), date(2021, 11, 2)),
-    2022: (date(2022, 4, 7), date(2022, 11, 5)),
-    2023: (date(2023, 3, 30), date(2023, 11, 1)),
-    2024: (date(2024, 3, 28), date(2024, 10, 30)),
-    2025: (date(2025, 3, 27), date(2025, 3, 27)) # Will fix this as the season progresses, doesn't have spring training for covid.
-    }
+import logging
 
 class Crawler(ABC):
     """
     Abstract Class that is used for web scraping implementation. 
     """
-    def __init__(self, start_dt: str, end_dt: str = None) -> None:
+    def __init__(self, start_dt: str, end_dt: str = None, logger: logging.Logger = None) -> None:
         super().__init__()
+
+        self.VALID_SEASON_DATES = {
+            2015: (date(2015, 4, 5), date(2015, 11, 1)),
+            2016: (date(2016, 4, 3), date(2016, 11, 2)),
+            2017: (date(2017, 4, 2), date(2017, 11, 1)),
+            2018: (date(2018, 3, 29), date(2018, 10, 28)),
+            2019: (date(2019, 3, 20), date(2019, 10, 30)),
+            2020: (date(2020, 7, 23), date(2020, 10, 27)),
+            2021: (date(2021, 4, 1), date(2021, 11, 2)),
+            2022: (date(2022, 4, 7), date(2022, 11, 5)),
+            2023: (date(2023, 3, 30), date(2023, 11, 1)),
+            2024: (date(2024, 3, 28), date(2024, 10, 30)),
+            2025: (date(2025, 3, 27), date(2025, 3, 27)) # Will fix this as the season progresses, doesn't have spring training for covid.
+            }
         self.start_dt = start_dt
         self.end_dt = end_dt
+        self.logger = logger if logger else logging.getLogger(__name__)
 
         if self.end_dt is None:
             self.end_dt = self.start_dt
@@ -83,7 +85,7 @@ class Crawler(ABC):
                 if response.status_code == 200:
                     return response
             except Exception as e:
-                print("Error Downloading URL. Attempting another")
+                self.logger.warning(f"Error Downloading URL. Attempting another: {e}")
                 attempts += 1
                 time.sleep(2)
 
@@ -105,16 +107,16 @@ class Crawler(ABC):
 
         while low <= stop:
             date_span = low.replace(month=3, day=15), low.replace(month=11, day=15)
-            season_start, season_end = VALID_SEASON_DATES.get(low.year, date_span)
+            season_start, season_end = self.VALID_SEASON_DATES.get(low.year, date_span)
             
             if low < season_start:
                 low = season_start
 
-                print("Skipping Offseason Dates")
+                self.logger.warning("Skipping Offseason Dates")
 
             elif low > season_end:
-                low, _ = VALID_SEASON_DATES.get(low.year + 1, (date(month=3, day=15, year=low.year + 1), None))
-                print("Skipping Offseason Dates")
+                low, _ = self.VALID_SEASON_DATES.get(low.year + 1, (date(month=3, day=15, year=low.year + 1), None))
+                self.logger.warning("Skipping Offseason Dates")
             
             if low > stop:
                 return
