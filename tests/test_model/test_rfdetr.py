@@ -8,10 +8,10 @@ import cv2
 import signal
 import supervision as sv
 from baseballcv.model.od import RFDETR
-
+from baseballcv.functions import BaseballSavVideoScraper
 class TestRFDETR:
     @pytest.fixture
-    def setup_rfdetr_test(self, scraper, load_tools):
+    def setup_rfdetr_test(self, load_tools):
         """
         Setup test environment for RFDETR tests.
         
@@ -21,15 +21,9 @@ class TestRFDETR:
         temp_dir = tempfile.mkdtemp()
         test_input_dir = os.path.join(temp_dir, "test_input")
         os.makedirs(test_input_dir)
-        df = scraper.run_statcast_pull_scraper(
-            start_date="2024-04-01",
-            end_date="2024-04-01",
-            download_folder=test_input_dir,
-            max_workers=2,
-            max_videos=1,
-            max_videos_per_game=1,
-            team="CHC"
-        )
+        scraper = BaseballSavVideoScraper(start_dt='2024-04-01', end_dt='2024-04-01', team_abbr='CHC', 
+                                          download_folder=test_input_dir, max_return_videos=1, max_videos_per_game=1)
+        df = scraper.run_executor()
         video_files = sorted(f for f in os.listdir(test_input_dir) if f.endswith('.mp4'))
         if not video_files:
             raise ValueError(f"No video files found in {test_input_dir}")

@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import patch
 import pandas as pd
 from baseballcv.functions.dataset_tools import DataTools
-from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 from baseballcv.functions.load_tools import LoadTools
 
 class TestDatasetTools:
@@ -36,23 +35,8 @@ class TestDatasetTools:
 
         tools = DataTools()
 
-        assert isinstance(tools.scraper, BaseballSavVideoScraper)
-        assert tools.max_workers == 10
         assert isinstance(tools.LoadTools, LoadTools)
         assert tools.output_folder == ''
-
-    def test_generate_no_photo(self, data_tools, setup):
-        """
-        Tests if a None is returned when blank dataframe is returned from the statcast scraper.
-        """
-        temp_dir = setup['temp_dir']
-        temp_video_dir = setup['temp_video_dir']
-
-        with patch("baseballcv.functions.dataset_tools.BaseballSavVideoScraper.run_statcast_pull_scraper", return_value=pd.DataFrame()) as empty_mock:
-            result = data_tools.generate_photo_dataset(output_frames_folder=temp_dir, video_download_folder=temp_video_dir)   
-
-        assert result is None
-        empty_mock.assert_called_once()
 
     @pytest.mark.network
     @pytest.mark.parametrize("use_supervision, value", [("use_supervision", False), ("use_supervision", True)])

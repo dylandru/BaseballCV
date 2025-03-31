@@ -110,14 +110,10 @@ BaseballCV provides tools for creating custom datasets:
 
 1. First, collect video footage:
 ```python
-from baseballcv.scripts import BaseballSavVideoScraper
+from baseballcv.functions import BaseballSavVideoScraper
 
-scraper = BaseballSavVideoScraper()
-scraper.run_statcast_pull_scraper(
-    start_date="2024-05-01",
-    end_date="2024-05-31",
-    max_videos=100
-)
+scraper = BaseballSavVideoScraper(start_dt='2024-05-01', end_dt='2024-05-02', team_abbr='AZ')
+scraper.run_executor()
 ```
 
 2. Then generate frames and annotations:
