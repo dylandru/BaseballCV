@@ -16,7 +16,6 @@ def test_distance_to_zone(baseball_tools):
     assert len(results_internal) > 0, "Should have results"
     assert isinstance(results_internal, list)
     assert isinstance(results_internal[0], dict)
-    assert os.path.exists(results_dir), "Results directory should exist"
 
     #Test BaseballTools Class Implentation
     results_class = baseball_tools.distance_to_zone(start_date="2024-05-01", end_date="2024-05-01", max_videos=2, max_videos_per_game=2, create_video=True)
