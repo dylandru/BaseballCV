@@ -8,6 +8,7 @@ def test_distance_to_zone(baseball_tools):
     Tests the distance_to_zone method using example call.
     """
     results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
 
     #Test internal class
     dtoz = DistanceToZone(results_dir=results_dir)

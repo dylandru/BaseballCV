@@ -22,8 +22,7 @@ class TestRFDETR:
         test_input_dir = os.path.join(temp_dir, "test_input")
         os.makedirs(test_input_dir)
         scraper = BaseballSavVideoScraper(start_dt='2024-04-01', end_dt='2024-04-01', team_abbr='CHC', 
-                                          download_folder=test_input_dir, max_return_videos=1, max_videos_per_game=1, 
-                                          max_workers=2)
+                                          download_folder=test_input_dir, max_return_videos=1, max_videos_per_game=1)
         df = scraper.run_executor()
         video_files = sorted(f for f in os.listdir(test_input_dir) if f.endswith('.mp4'))
         if not video_files:
