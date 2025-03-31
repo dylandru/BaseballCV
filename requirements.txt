@@ -23,5 +23,7 @@ polars==1.10.0
 mediapipe==0.10.21
 datasets==3.4.0
 rfdetr==1.0.8
+autodistill==0.1.29
+autodistill-grounded-sam==0.1.2
 git+https://github.com/Jensen-holm/statcast-era-pitches.git
 git+https://github.com/dylandru/yolov9.git

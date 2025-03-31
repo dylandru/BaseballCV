@@ -37,7 +37,9 @@ dependencies = [
     "coco-eval==0.0.4",
     "pytorch-lightning==2.5.0",
     "polars==1.10.0",
-    "mediapipe==0.10.21"
+    "mediapipe==0.10.21",
+    "autodistill==0.1.29",
+    "autodistill-grounded-sam==0.1.2"
 ]
 
 [project.urls]
