@@ -179,12 +179,24 @@ data_tools.generate_photo_dataset(
     end_date="2024-05-31"
 )
 
-# Auto-annotate using existing model
+# Auto-annotate using existing model w/ YOLO
 data_tools.automated_annotation(
     model_alias="ball_tracking",
     image_dir="custom_dataset",
     output_dir="annotated_dataset",
-    conf=0.8
+    conf=0.8,
+    mode="legacy"
+)
+
+# Auto-annotate using existing model w/ Autodistill
+ontology = { "a mitt worn by a baseball player for catching a baseball": "glove" }
+data_tools.automated_annotation(
+    model_type="detection",
+    image_dir="custom_dataset",
+    output_dir="annotated_dataset",
+    conf=0.8,
+    mode="autodistill",
+    ontology=ontology
 )
 ```
 

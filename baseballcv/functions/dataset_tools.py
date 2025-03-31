@@ -11,6 +11,8 @@ from ultralytics import YOLO
 from tqdm import tqdm
 from datetime import datetime
 from baseballcv.utilities import BaseballCVLogger
+from autodistill.detection import CaptionOntology
+from autodistill_grounded_sam import GroundedSAM
 
 class DataTools:
     '''
@@ -176,12 +178,15 @@ class DataTools:
         return self.output_folder
     
     def automated_annotation(self, 
-                             model_alias: str,
+                             model_alias: str = None,
                              model_type: str = 'detection',
                              image_dir: str = "cv_dataset",
                              output_dir: str = "labeled_dataset", 
                              conf: float = .80, 
-                             device: str = 'cpu') -> None:
+                             device: str = 'cpu',
+                             mode: str = 'autodistill',
+                             ontology: dict = None,
+                             extension: str = '.jpg') -> str:
         """
         Automatically annotates images using pre-trained YOLO model from BaseballCV repo. The annotated output
         consists of image files in the output directory, and label files in the subfolder "annotations" to 
@@ -195,7 +200,10 @@ class DataTools:
             image_dir (str): Directory with images to annotate. Default is "cv_dataset".
             output_dir (str): Directory to save annotated images / labels. Default is "labeled_dataset".
             conf (float): Minimum confidence threshold for detections. Default is 0.80.
-            device (str): Device to run model on ('cpu', 'mps', 'cuda'). Default is 'cpu'.
+            device (str): Device to run model on ('cpu', 'mps', 'cuda'). Default is 'cpu'. MPS is not supported for AutoDistill.
+            mode (str): Mode to use for annotation. Default is 'autodistill'.
+            ontology (dict): Ontology to use for annotation. Default is None.
+            extension (str): Extension of images to annotate. Default is '.jpg'.
 
         Returns:
             None: Saves annotated images and labels to the output directory.
@@ -204,38 +212,56 @@ class DataTools:
         annotations_dir = os.path.join(output_dir, "annotations")
         os.makedirs(annotations_dir, exist_ok=True)
 
-        model = YOLO(self.LoadTools.load_model(model_alias))
-        self.logger.info(f"Model loaded: {model}")
+        if mode == 'autodistill': #use RF Autodistill library
+            if ontology is not None:
+                self.logger.info(f"Using Autodistill mode with ontology: {ontology}")
+                self.logger.info(f"This may take a while...")
+                auto_model= GroundedSAM(ontology=CaptionOntology(ontology))
+                auto_model.label(
+                    input_folder=str(image_dir),
+                    output_folder=str(output_dir),
+                    extension=extension
+                )
+                self.logger.info("Annotation process complete.")
+                return output_dir
+            else:
+                raise ValueError("ontology must be provided when using autodistill mode")
+        
+        else: #Legacy Version for using models from YOLO repo
+            if model_alias is not None:
+                model = YOLO(self.LoadTools.load_model(model_alias))
+                self.logger.info(f"Model loaded: {model}")
+            else:
+                raise ValueError("model_alias must be provided when using legacy mode")
 
-        annotation_tasks = [image_file for image_file in os.listdir(image_dir)]
+            annotation_tasks = [image_file for image_file in os.listdir(image_dir)]
 
-        for image_file in tqdm(annotation_tasks, desc="Annotating images"):
-            image_path = os.path.join(image_dir, image_file)
-            annotations = []
+            for image_file in tqdm(annotation_tasks, desc="Annotating images"):
+                image_path = os.path.join(image_dir, image_file)
+                annotations = []
 
-            results = model.predict(source=image_path, save=False, conf=conf, device=device, verbose=False)
-            
-            if model_type == 'detection':
-                for result in results:
-                    for box in result.boxes:
-                        cls = int(box.cls)
-                        xywhn = box.xywhn[0].tolist()
-                        if len(xywhn) == 4:
-                            x_center, y_center, width, height = xywhn
-                            annotations.append(f"{cls} {x_center} {y_center} {width} {height}")
-                        else:
-                            self.logger.warning(f"Invalid bounding box for {image_file}: {xywhn}")
+                results = model.predict(source=image_path, save=False, conf=conf, device=device, verbose=False)
+                
+                if model_type == 'detection':
+                    for result in results:
+                        for box in result.boxes:
+                            cls = int(box.cls)
+                            xywhn = box.xywhn[0].tolist()
+                            if len(xywhn) == 4:
+                                x_center, y_center, width, height = xywhn
+                                annotations.append(f"{cls} {x_center} {y_center} {width} {height}")
+                            else:
+                                self.logger.warning(f"Invalid bounding box for {image_file}: {xywhn}")
 
-            #TODO: Add annotation format for YOLO Keypoint, Segmentation, and Classification models
+                #TODO: Add annotation format for YOLO Keypoint, Segmentation, and Classification models
 
-            if annotations:
-                shutil.copy(image_path, output_dir)
-                output_file = os.path.join(annotations_dir, os.path.splitext(image_file)[0] + '.txt')
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                with open(output_file, 'w') as f:
-                    f.write('\n'.join(annotations))
+                if annotations:
+                    shutil.copy(image_path, output_dir)
+                    output_file = os.path.join(annotations_dir, os.path.splitext(image_file)[0] + '.txt')
+                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                    with open(output_file, 'w') as f:
+                        f.write('\n'.join(annotations))
 
-        self.logger.info("Annotation process complete.")
-
-        return None
+            self.logger.info("Annotation process complete.")
+            return output_dir
 

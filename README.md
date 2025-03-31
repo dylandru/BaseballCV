@@ -155,7 +155,11 @@ With that given dataset, you can then use our automatic annotation tool to annot
   data_tools = DataTools()
 
   # Annotate photos folder based on glove tracking model with a confidence threshold of 60%
-  data_tools.automated_annotation(model_alias="glove_tracking", dataset_path="photos", conf=0.6)
+  data_tools.automated_annotation(model_alias="glove_tracking", dataset_path="photos", conf=0.6, mode="legacy")
+
+  # Annotate photos folder based on glove ontology using Autodistill
+  ontology = { "a mitt worn by a baseball player for catching a baseball": "glove" }
+  data_tools.automated_annotation(dataset_path="photos", mode="autodistill", ontology=ontology)
 ```
 
 More datasets and tools will likely be added in the future, so check back!
