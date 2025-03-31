@@ -68,7 +68,8 @@ class TestDatasetTools:
             assert frame.endswith(('.jpg', '.png')), f'Invalid frame format {frame}'
 
     @pytest.mark.network
-    def test_automated_annotation(self, setup, data_tools, load_tools):
+    @pytest.mark.parametrize("mode, value", [("mode", "autodistill"), ("mode", "legacy")])
+    def test_automated_annotation(self, setup, data_tools, load_tools, mode, value):
         """
         Tests the annotation tools to make sure the proper file systems are loaded 
         and manipulated.
@@ -87,23 +88,41 @@ class TestDatasetTools:
             delete_savant_videos=True
         )
 
+        ontology = { "a mitt worn by a baseball player for catching a baseball": "glove" } if value == "autodistill" else None
+
+        legacy_annotation_dir = tempfile.mkdtemp()
+        autodistill_annotation_dir = tempfile.mkdtemp()
+        annotation_dir = legacy_annotation_dir if value != "autodistill" else autodistill_annotation_dir
+
         with tempfile.TemporaryDirectory() as annotation_dir:
             data_tools.automated_annotation(
                 model_alias="glove_tracking",
                 model_type="detection",
                 image_dir=temp_dir,
-                output_dir=annotation_dir,
-                conf=0.5
+                output_dir=annotation_dir if value != "autodistill" else f"{annotation_dir}_autodistill",
+                conf=0.5,
+                mode=value,
+                ontology=ontology
             )
             assert os.path.exists(annotation_dir)
-            assert os.path.exists(os.path.join(annotation_dir, "annotations"))
-            
-            images = os.listdir(annotation_dir)
-            annotations = os.listdir(os.path.join(annotation_dir, "annotations"))
-            assert len(images) > 0, "Should have copied some images"
-            assert len(annotations) > 0, "Should have generated some annotations"
-            
-            for ann_file in annotations:
-                assert ann_file.endswith('.txt'), f"Invalid annotation format: {ann_file}"
 
-        os.remove(load_tools.yolo_model_aliases['glove_tracking'].replace('.txt', '.pt')) # Remove the loaded pytorch file
+            if value != "autodistill":
+                assert os.path.exists(os.path.join(annotation_dir, "annotations"))
+                images = os.listdir(annotation_dir)
+                annotations = os.listdir(os.path.join(annotation_dir, "annotations"))
+                assert len(images) > 0, "Should have copied some images"
+                assert len(annotations) > 0, "Should have generated some annotations"
+                
+                for ann_file in annotations:
+                    assert ann_file.endswith('.txt'), f"Invalid annotation format: {ann_file}"
+                
+                os.remove(load_tools.yolo_model_aliases['glove_tracking'].replace('.txt', '.pt')) # Remove the loaded pytorch file
+
+            else:
+                assert os.path.exists(os.path.join(f"{annotation_dir}_autodistill", "train", "labels")), "Should have labels"
+                assert os.path.exists(os.path.join(f"{annotation_dir}_autodistill", "train", "images")), "Should have images"
+                assert os.path.exists(os.path.join(f"{annotation_dir}_autodistill", "data.yaml")), "Should have data.yaml"
+                images = os.listdir(os.path.join(f"{annotation_dir}_autodistill", "train", "images"))
+                annotations = os.listdir(os.path.join(f"{annotation_dir}_autodistill", "train", "labels"))
+                assert len(images) > 0, "Should have copied some images"
+                assert len(annotations) > 0, "Should have generated some annotations"
