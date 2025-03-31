@@ -25,7 +25,7 @@ class TestCrawler(Crawler):
 def test_crawler():
     return TestCrawler('2024-02-01')
 
-class TestNewSavantScraper:
+class TestSavantScraper:
     """
     Test suite for the `BaseballSavVideoScraper`.
 

@@ -251,15 +251,11 @@ def integrate_with_savant():
     Integrate BaseballCV with Baseball Savant following
     best practices.
     """
-    scraper = BaseballSavVideoScraper()
+    scraper = BaseballSavVideoScraper(start_dt='2024-05-01', end_dt='2024-05-02', team_abbr='AZ')
     
     # Fetch data with proper error handling
     try:
-        data = scraper.run_statcast_pull_scraper(
-            start_date="2024-05-01",
-            end_date="2024-05-31",
-            max_videos=100
-        )
+        scraper.run_executor()
     except Exception as e:
         handle_savant_error(e)
 ```
