@@ -59,7 +59,8 @@ class BaseballTrainingPipeline:
             model_alias="ball_tracking",
             image_dir="raw_dataset",
             output_dir="annotated_dataset",
-            conf=0.8
+            conf=0.8,
+            mode="legacy"
         )
 
     def train_model(self):
