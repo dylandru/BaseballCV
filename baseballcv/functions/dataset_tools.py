@@ -27,9 +27,7 @@ class DataTools:
         logger (BaseballCVLogger): A BaseballCV Logger instance for logging.
     '''
 
-    def __init__(self, max_workers: int = 10):
-        self.scraper = BaseballSavVideoScraper()
-        self.max_workers = max_workers
+    def __init__(self):
         self.LoadTools = LoadTools()
         self.output_folder = ''
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
@@ -72,10 +70,10 @@ class DataTools:
         self.output_folder = output_frames_folder
         
         if use_savant_scraper:
-            start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            end_date = datetime.strptime(end_date, "%Y-%m-%d")
-            self.scraper.run_statcast_pull_scraper(start_date=start_date, end_date=end_date, 
-                                    download_folder=video_download_folder, max_videos=max_plays, max_videos_per_game=max_videos_per_game, max_workers=1)
+            self.scraper = BaseballSavVideoScraper(start_date, end_date, download_folder=video_download_folder,
+                                    max_return_videos=max_plays, max_videos_per_game=max_videos_per_game)
+            
+            self.scraper.run_executor()
             video_folder = video_download_folder
         else:
             if input_video_folder is None:
@@ -131,7 +129,7 @@ class DataTools:
                     extraction_tasks.append((video_path, game_id, self.output_folder, frames_to_extract))
 
         if not use_supervision and extraction_tasks:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
                 try:
                     future_videos = {executor.submit(extract_frames_from_video, *task): task 
                                    for task in extraction_tasks}
@@ -173,7 +171,7 @@ class DataTools:
         self.logger.info(f"Extracted {len(extracted_frames)} frames from {len(video_files)} videos over {len(games)} games.")
         
         if delete_savant_videos and use_savant_scraper:
-            self.scraper.cleanup_savant_videos(video_folder)
+            self.scraper.cleanup_savant_videos()
 
         return self.output_folder
     

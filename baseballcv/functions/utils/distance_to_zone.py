@@ -8,7 +8,6 @@ import pandas as pd
 from ultralytics import YOLO
 import io
 from contextlib import redirect_stdout
-from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 from baseballcv.functions.load_tools import LoadTools
 import math
 import mediapipe as mp
@@ -76,8 +75,9 @@ class DistanceToZone:
         self, 
         start_date: str, 
         end_date: str,
-        team: str = None,
-        pitch_call: str = None,
+        team_abbr: str = None,
+        player: int = None,
+        pitch_type: str = None,
         max_videos: int = None,
         max_videos_per_game: int = None,
         create_video: bool = True,
@@ -90,8 +90,9 @@ class DistanceToZone:
         Args:
             start_date (str): Start date in YYYY-MM-DD format
             end_date (str): End date in YYYY-MM-DD format
-            team (str): Team abbreviation to filter by
-            pitch_call (str): Pitch call to filter by (e.g., "Strike")
+            team_abbr (str): Team abbreviation to filter by
+            player (int): Player ID to filter by
+            pitch_type (str): Pitch type to filter by (e.g., "FF")
             max_videos (int): Maximum number of videos to process
             max_videos_per_game (int): Maximum videos per game
             create_video (bool): Whether to create annotated videos
@@ -101,19 +102,19 @@ class DistanceToZone:
         Returns:
             List[Dict]: List of analysis results per video
         """
+        from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
         
-        savant_scraper = BaseballSavVideoScraper()
+        savant_scraper = BaseballSavVideoScraper(start_date, end_date,
+                                                 player=player,
+                                                 team_abbr=team_abbr, pitch_type=pitch_type,
+                                                 max_return_videos=max_videos, 
+                                                 max_videos_per_game=max_videos_per_game)
+        
         download_folder = os.path.join(self.results_dir, "savant_videos")
-        pitch_data = savant_scraper.run_statcast_pull_scraper(
-            download_folder=download_folder, 
-            start_date=start_date, 
-            end_date=end_date, 
-            team=team, 
-            pitch_call=pitch_call, 
-            max_videos=max_videos, 
-            max_videos_per_game=max_videos_per_game,
-            max_workers=(os.cpu_count() - 2) if os.cpu_count() > 3 else 1
-        )
+
+        savant_scraper.run_executor()
+
+        pitch_data = savant_scraper.get_play_ids_df()
 
         video_files = [os.path.join(download_folder, f) for f in os.listdir(download_folder) if f.endswith('.mp4')]
         

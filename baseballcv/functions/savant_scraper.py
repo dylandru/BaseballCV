@@ -1,209 +1,111 @@
-import pandas as pd
-from pandas.core.api import DataFrame
+from baseballcv.functions.utils.savant_utils import GamePlayIDScraper, Crawler
+import concurrent.futures
+from tqdm import tqdm
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import os
 from bs4 import BeautifulSoup
-import time
+import os
 import shutil
 import polars as pl
-import statcast_pitches
+import pandas as pd
 from baseballcv.utilities import BaseballCVLogger
 
-'''Class BaseballSavVideoScraper based on code from BSav_Scraper_Vid Repo, which can be found at https://github.com/dylandru/BSav_Scraper_Vid'''
+class BaseballSavVideoScraper(Crawler):
+    """
+    Class that scrapes Video Data off Baseball Savant. Inherits from the `Crawler` class to perform request with retry 
+    and rate limiting.
+    """
+    def __init__(self, start_dt: str, end_dt: str = None, 
+                 player: int = None, team_abbr: str = None, pitch_type: str = None,
+                 download_folder: str = 'savant_videos', 
+                 max_return_videos: int = 10, 
+                 max_videos_per_game: int = None) -> None:
 
+        self.logger = BaseballCVLogger().get_logger(self.__class__.__name__)
+        super().__init__(start_dt, end_dt, self.logger)
 
-class BaseballSavVideoScraper:
-    def __init__(self):
-        self.session = requests.Session()
-        self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
+        self.play_ids_df = GamePlayIDScraper(start_dt, end_dt, team_abbr,
+                                          player, pitch_type=pitch_type, 
+                                          max_return_videos=max_return_videos, 
+                                          max_videos_per_game=max_videos_per_game,
+                                          logger=self.logger).run_executor()
+        
+        self.play_ids = pl.Series(self.play_ids_df.select("play_id")).to_list()
+        self.game_pks = pl.Series(self.play_ids_df.select("game_pk")).to_list()
+        self.SAVANT_VIDEO_URL = 'https://baseballsavant.mlb.com/sporty-videos?playId={}'
+        self.download_folder = download_folder
+        self.max_return_videos = max_return_videos
+        self.max_videos_per_game = max_videos_per_game
+        os.makedirs(self.download_folder, exist_ok=True)
 
-    def run_statcast_pull_scraper(self,
-                                  start_date: str | pd.Timestamp = '2024-05-01',
-                                  end_date: str | pd.Timestamp = '2024-06-01',
-                                  download_folder: str = 'savant_videos',
-                                  max_workers: int = 5,
-                                  team: str = None,
-                                  pitch_call: str = None,
-                                  max_videos: int = None,
-                                  max_videos_per_game: int = None) -> pd.DataFrame:
+    def run_executor(self) -> None:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            pairs = zip(self.game_pks, self.play_ids) # Ensures these are the same order
+            for _ in tqdm(executor.map(lambda x: self._download_videos(*x), pairs), desc="Downloading Videos", total=len(self.play_ids)):
+                pass
+    
+    def get_play_ids_df(self) -> pd.DataFrame:
         """
-        Run scraper from Statcast Pull of Play IDs. Retrieves data and processes each row in parallel.
-
-        Args:
-            start_date (pd.Timestamp): Timestamp of start date for pull. Defaults to 2024-05-01.
-            end_date (pd.Timestamp): Timestamp of end date for pull. Defaults to 2024-06-01.
-            download_folder (str): Folder path where videos are downloaded. Defaults to 'savant_videos'.
-            max_workers (int, optional): Max number of concurrent workers. Defaults to 5.
-            team (str, optional): Team filter for which videos are scraped. Defaults to None.
-            pitch_call (str, optional): Pitch call filter for which videos are scraped. Defaults to None.
-            max_videos (int, optional): Max number of videos to pull. Defaults to None.
-            max_videos_per_game (int, optional): Max number of videos to pull for single game. Defaults to None.
+        Function that returns a queried `DataFrame`. 
 
         Returns:
-            pd.DataFrame: DataFrame containing Play IDs and relavent information on the videos that were scraped.
-
-        Raises:
-            Exception: Any error in downloading a video for a given play. 
-
+            DataFrame: The play ids df query. Output is similar to statcast csv ouptut.
         """
-        try:
-            self.logger.info("Retrieving Play IDs to scrape...")
-            df = self.playids_for_date_range(
-                start_date=start_date, end_date=end_date, team=team, pitch_call=pitch_call)  # retrieves Play IDs to scrape
+        return self.play_ids_df.to_pandas()
 
-            if not df.empty and 'play_id' in df.columns:
-                os.makedirs(download_folder, exist_ok=True)
 
-                if max_videos_per_game is not None:
-                    df = df.groupby('game_pk').head(
-                        max_videos_per_game).reset_index(drop=True)
-
-                if max_videos is not None:
-                    df = df.head(max_videos)
-
-                self.download_play_ids(download_folder, df, max_workers)
-                return df
-
-            else:
-                self.logger.warning("Play ID column not in Statcast pull or DataFrame is empty")
-                return pd.DataFrame()
-
-        except KeyboardInterrupt:
-            self.logger.info("Ctrl+C detected. Shutting down.")
-            return pd.DataFrame()
-
-    def download_play_ids(self, download_folder: str, play_ids: DataFrame, max_workers: int = 5) -> DataFrame:
-        """Download videos for given Play IDs."""
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # sets futures to download videos for given Play IDs
-            future_to_play_id = {executor.submit(
-                self.get_video_for_play_id, row['play_id'], row['game_pk'], download_folder): row for _, row in play_ids.iterrows()}
-            for future in as_completed(future_to_play_id):
-                play_id = future_to_play_id[future]
-                try:
-                    future.result()
-                except Exception as e:
-                    self.logger.error(
-                        f"Error processing Play ID {play_id['play_id']}: {str(e)}")
-            return play_ids
-
-    def download_video(self, video_url, save_path, max_retries=5) -> None:
-        """Downloads video from given URL and saves to specified path."""
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                with self.session.get(video_url, stream=True) as r:
-                    r.raise_for_status()
-                    with open(save_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                self.logger.info(f"Video downloaded to {save_path}")
-                return
-            except Exception as e:
-                self.logger.warning(
-                    f"Error downloading video {video_url}: {e}. Attempt {attempt + 1} of {max_retries}")
-                attempt += 1
-                time.sleep(2)
-
-    def get_video_url(self, page_url, max_retries=5) -> str | None:
-        """Retrieves Savant video URL from given page URL."""
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                response = self.session.get(page_url)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.content, 'html.parser')
-                video_container = soup.find('div', class_='video-box')
-                if video_container:
-                    return video_container.find('video').find('source', type='video/mp4')['src']
-                return None
-            except Exception as e:
-                self.logger.warning(
-                    f"Error fetching video URL from {page_url}: {e}. Attempt {attempt + 1} of {max_retries}")
-                attempt += 1
-                time.sleep(2)
-
-    def fetch_game_data(self, game_pk, max_retries=5):
-        """Fetch game data for a single game_pk using the global session."""
-        attempt = 0
-        while attempt < max_retries:
-            try:
-                url = f'https://baseballsavant.mlb.com/gf?game_pk={game_pk}'
-                response = self.session.get(url)
-                response.raise_for_status()
-                return response.json()
-            except Exception as e:
-                self.logger.warning(
-                    f"Error fetching game data for game_pk {game_pk}: {e}. Attempt {attempt + 1} of {max_retries}")
-                attempt += 1
-                time.sleep(2)  # Wait for 2 seconds before retrying
-
-    def process_game_data(self, game_data, pitch_call=None) -> DataFrame:
-        """Process game data and filter by pitch_call if provided."""
-        team_home_data = game_data.get('team_home', [])
-        team_away_data = game_data.get('team_away', [])
-        home_df = pd.json_normalize(team_home_data)
-        away_df = pd.json_normalize(team_away_data)
-        df = pd.concat([home_df, away_df], axis=0)
-        if pitch_call:
-            df = df.loc[df['pitch_call'] == pitch_call]
-        return df
-
-    def playids_for_date_range(self, start_date: str | pd.Timestamp, end_date: str | pd.Timestamp, team: str = None, pitch_call: str = None) -> DataFrame:
+    def _download_videos(self, game_pk: int, play_id: str) -> None:
         """
-        Retrieves PlayIDs for games played within date range. Can filter by team or pitch call.
+        Function that downloads each video query and writes it to the `download_folder`
+        using the `_write_content` function.
+
+        Args:
+            game_pk (int): The game id of the game. Used as the video file name.
+            play_id (str): The play id of the game. Used to query the url and part of the video file name.
+
+        Returns:
+            None
         """
-        start_date, end_date = pd.Timestamp(start_date) if isinstance(start_date, str) else start_date, pd.Timestamp(end_date) if isinstance(end_date, str) else end_date
+        self.rate_limiter()
+        video_response = self.requests_with_retry(self.SAVANT_VIDEO_URL.format(play_id))
 
-        statcast_df = (statcast_pitches.load()
-                       .filter(
-            (pl.col("game_date").dt.date() >= start_date.date()) &
-            (pl.col("game_date").dt.date() <= end_date.date()) &
-            ((pl.col("home_team") == team) |
-             (pl.col("away_team") == team)
-             if team is not None else pl.lit(True)))
-            .collect()
-            .to_pandas())
+        soup = BeautifulSoup(video_response.content, 'html.parser')
 
-        game_pks = statcast_df['game_pk'].unique()
+        video_container = soup.find('div', class_='video-box')
+        if video_container:
+            video_url = video_container.find('video').find('source', type='video/mp4')['src']
 
-        if len(game_pks) == 0:
-            self.logger.error("No game_pks found for given date range and team")
-            raise ValueError("No game_pks found for given date range and team")
-        
-        dfs = [self.process_game_data(self.fetch_game_data(
-            game_pk), pitch_call=pitch_call) for game_pk in game_pks]
-        
-        if not dfs:
-            self.logger.error("No data found for given date range and team")
-            raise ValueError("No data found for given date range and team")
-        play_id_df = pd.concat(dfs, ignore_index=True)
-        return play_id_df
-
-    def get_video_for_play_id(self, play_id, game_pk, download_folder) -> None:
-        """Process single play ID to download corresponding video."""
-        page_url = f"https://baseballsavant.mlb.com/sporty-videos?playId={play_id}"
-        try:
-            video_url = self.get_video_url(page_url)
             if video_url:
-                # Video currently named for Play ID
-                save_path = os.path.join(
-                    download_folder, f"{game_pk}_{play_id}.mp4")
-                self.download_video(video_url, save_path)
-            else:
-                self.logger.warning(
-                    f"No video found for playId {play_id}. Please check that the playId is correct or that the video exists at baseballsavant.mlb.com/sporty-videos?playId={play_id}.")
-        except Exception as e:
-            self.logger.error(f"Unable to complete request. Error: {e}")
+                video_container_response = self.requests_with_retry(video_url, stream=True)
+                self._write_content(game_pk, play_id, video_container_response)
+                self.logger.info('Successfully downloaded video %s', play_id)
+    
+    def _write_content(self, game_pk: int, play_id: str, response: requests.Response) -> None:
+        """
+        Function that writes the requested video content to the `download_folder`.
 
-    def cleanup_savant_videos(self, folder_path: str) -> None:
-        """Delete folder of downloaded BaseballSavant videos."""
-        if os.path.exists(folder_path):
+        Args:
+            game_pk (int): The game id of the game. Used as the video file name.
+            play_id (str): The play id of the game. Used to query the url and part of the video file name.
+            response (Response): The successful response connection that was used on the url. 
+
+        Returns:
+            None
+        """
+        content_file = os.path.join(self.download_folder, f'{game_pk}_{play_id}.mp4')
+        with open(content_file, 'wb') as f:
+            for chunk in response.iter_content(chunk_size = 8192):
+                f.write(chunk)
+
+    def cleanup_savant_videos(self) -> None:
+        """
+        Function that deletes the `download_folder` directory.
+
+        Returns:
+            None
+        """
+        if os.path.exists(self.download_folder):
             try:
-                shutil.rmtree(folder_path)
-                self.logger.info(f"Deleted {folder_path}")
+                shutil.rmtree(self.download_folder)
+                self.logger.info("Deleted %s", self.download_folder)
             except Exception as e:
-                self.logger.error(f"Error deleting {folder_path}: {e}")
-
-            return None
+                self.logger.error("Error deleting %s: %s", self.download_folder, e)

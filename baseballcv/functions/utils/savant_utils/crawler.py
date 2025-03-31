@@ -24,7 +24,7 @@ class Crawler(ABC):
             2022: (date(2022, 4, 7), date(2022, 11, 5)),
             2023: (date(2023, 3, 30), date(2023, 11, 1)),
             2024: (date(2024, 3, 28), date(2024, 10, 30)),
-            2025: (date(2025, 3, 27), date(2025, 3, 27)) # Will fix this as the season progresses, doesn't have spring training for covid.
+            2025: (date(2025, 3, 27), date(2025, 3, 27)) # Will fix this as the season progresses.
             }
         self.start_dt = start_dt
         self.end_dt = end_dt
@@ -43,19 +43,19 @@ class Crawler(ABC):
     @abstractmethod
     def run_executor(self) -> Any:
         """
-        Method that uses threading on functions calls to improve the speed of the program.
+        Function that uses threading on functions calls to improve the speed of the program.
 
         Returns:
-            Any: In this case it can be a list or None.
+            Any: In this case it can be a List, DataFrame or None.
         """
         pass
 
     def rate_limiter(self, rate = 10) -> None: # Random wait calls
         """
-        A function that approximates wait time calls per minute so the API isn't rate limiting the program.
+        Function that approximates wait time calls per minute so the API isn't rate limiting the program.
         It uses some noise to prevent consistent wait times.
 
-        Parameters:
+        Args:
             rate (int): The number of times the function should be called per second. Default is 10.
 
         Returns:
@@ -75,7 +75,24 @@ class Crawler(ABC):
 
         self.last_called = time.time()
 
-    def requests_with_retry(self, url, stream = False):
+    def requests_with_retry(self, url: str, stream: bool = False) -> (requests.Response | None):
+        """
+        Function that retries a request on a url if it fails. It re-attempts up to 5
+        times with a 10 second timeout if it takes a while to load the page. If the request is
+        re-atempted, it waits for 5 seconds before making another request.
+
+        Args:
+            url (str): The url to make the request on.
+            stream (bool): If it's a video stream, it's set to True. Default to False.
+
+        Returns:
+            Response: A response to the request if successful, else None.
+
+        Raises:
+            Exception: Any error that could cause an issue with making the request. Main
+            targeted error is rate limits.
+
+        """
         attempts = 0
         retries = 5
 
@@ -85,17 +102,17 @@ class Crawler(ABC):
                 if response.status_code == 200:
                     return response
             except Exception as e:
-                self.logger.warning(f"Error Downloading URL. Attempting another: {e}")
+                self.logger.warning(f"Error Downloading URL {url}.\nAttempting another: {e}\n")
                 attempts += 1
-                time.sleep(2)
+                time.sleep(5)
 
         
     def _date_range(self, start_dt: date, stop: date, step: int = 1) -> Generator[Tuple[date, date], Any, None]:
         """
-        Iterates over the start and end date ranges using tuples with the ranges from the step. 
+        Function that iterates over the start and end date ranges using tuples with the ranges from the step. 
         Ex) 2024-02-01, 2024-02-28, with a step of 3, it will skip every 3 days such as (2024-02-01, 2024-02-03)
 
-        Parameters:
+        Args:
             start_dt (date): The starting date, represented as a datetime object.
             end_dt (date): The ending date, represented as a datetime object.
             step (int): The number of days to increment by, defaults to 1 day.

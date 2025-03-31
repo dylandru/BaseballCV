@@ -91,13 +91,8 @@ dt.automated_annotation(
 from baseballcv import BaseballSavVideoScraper
 
 # Scrape game videos
-scraper = BaseballSavVideoScraper()
-scraper.run_statcast_pull_scraper(
-    start_date="2024-05-01",
-    end_date="2024-05-07",
-    download_folder="videos/",
-    pitch_call="Strike"
-)
+scraper = BaseballSavVideoScraper('2024-04-10', '2024-05-10', download_folder='videos')
+scraper.run_executor()
 ```
 
 ## Core Components

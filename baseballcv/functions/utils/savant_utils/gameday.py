@@ -1,6 +1,5 @@
 from .crawler import Crawler
 from datetime import datetime, date
-import requests
 from tqdm import tqdm
 import concurrent.futures
 from typing import List
@@ -9,7 +8,7 @@ import logging
 
 class GamePKScraper(Crawler):
     """
-    Scraping Class that focuses on scraping the game ids based on a date range. Inherits from the Crawler class.
+    Scraping Class that focuses on scraping the game ids based on a date range. Inherits from the `Crawler` class.
     """
     def __init__(self, start_dt: str, end_dt: str=None, team_abbr: str=None, player: int=None, logger: logging.Logger = None) -> None:
         self.logger = logger if logger else logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class GamePKScraper(Crawler):
 
         if team_abbr != None and self.team_abbr not in self.recognized_abbr:
             raise ValueError(f"""
-            WARNING: Team Abbreviation {self.team_abbr} was not recognized. Please use proper team abbreviations. The following are converted
+            ERROR: Team Abbreviation {self.team_abbr} was not recognized. Please use proper team abbreviations. The following are converted
             for your convenience:
             * ARI -> AZ
             * OAK -> ATH
@@ -77,7 +76,7 @@ class GamePKScraper(Crawler):
         """
         Function that gets the game ids within each corresponding link.
 
-        Parameters:
+        Args:
             start_dt (date): The start date of the query.
             end_dt (date): The end date of the query.
 
@@ -103,7 +102,7 @@ class GamePKScraper(Crawler):
 
 class GamePlayIDScraper(GamePKScraper):
     """
-    Class that extracts the play ids for each game. Inherits from the GamePKScraper class.
+    Class that extracts the play ids for each game. Inherits from the `GamePKScraper` class.
     """
 
     def __init__(self, start_dt, end_dt=None, team_abbr=None, player = None, logger: logging.Logger = None, **kwargs) -> None:
@@ -163,7 +162,7 @@ class GamePlayIDScraper(GamePKScraper):
                         }
         
         if not self.game_pks:
-            raise ValueError(f"Cannot Scrape Game IDs with no Game IDs. No games played from {str(start_dt)} to {str(end_dt)}")
+            raise ValueError(f"Cannot Scrape Game DataFrames with no Game IDs. No games played from {str(start_dt)} to {str(end_dt)}")
         
         if self.player and not team_abbr:
             self.logger.warning(f"Warning, this may run slower as it's looking for all the player\'s team. Please consider using team abbreviation in addition to player id to make the extraction faster. Defaulting to the player\'s current team in year {self.end_dt[0:4]}")
@@ -197,15 +196,17 @@ class GamePlayIDScraper(GamePKScraper):
         return play_ids_df
     
 
-    def _get_play_ids(self, game_pk: int, home_team: str, away_team: str) -> pl.DataFrame:
+    def _get_play_ids(self, game_pk: int, home_team: str, away_team: str) -> (pl.DataFrame | None):
         """
         Function that extracts tha play ids for each game.
 
         Parameters:
-            game_pk (int): The game id.
+            game_pk (int): The game id used to scrape the pitch-level data.
+            home_team (str): The home team for the game. Used as a descriptive feature in the DataFrame.
+            away_team (str): The away team for the game. Used as a descriptive feature in the DataFrame.
         
         Returns:
-            DataFrame: A list of the play ids or None if the status code is invalid.
+            DataFrame: A polars DataFrame of the pitch-level data with 40 columns.
         """
 
         self.rate_limiter(rate=20) # 20 Calls per second

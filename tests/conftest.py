@@ -2,7 +2,7 @@ import pytest
 import multiprocessing as mp
 from unittest.mock import Mock
 import requests
-from baseballcv.functions import DataTools, LoadTools, BaseballSavVideoScraper, BaseballTools
+from baseballcv.functions import DataTools, LoadTools, BaseballTools
 from baseballcv.utilities import BaseballCVLogger
 import os
 import torch
@@ -40,9 +40,9 @@ def data_tools() -> DataTools:
     parallel processing functionality to be tested.
 
     Returns:
-        DataTools: An instance of DataTools with max_workers set to 2.
+        DataTools: An instance of DataTools.
     """
-    return DataTools(max_workers=2)
+    return DataTools()
 
 @pytest.fixture
 def load_tools() -> LoadTools:
@@ -57,20 +57,6 @@ def load_tools() -> LoadTools:
         LoadTools: An instance of LoadTools.
     """
     return LoadTools()
-
-@pytest.fixture
-def scraper() -> BaseballSavVideoScraper:
-    """
-    Provides a BaseballSavVideoScraper instance for testing.
-    
-    Creates and returns a BaseballSavVideoScraper object that can be used
-    in tests to verify the functionality of scraping baseball videos and
-    related data from Baseball Savant.
-
-    Returns:
-        BaseballSavVideoScraper: An instance of BaseballSavVideoScraper.
-    """
-    return BaseballSavVideoScraper()
 
 @pytest.fixture
 def baseball_tools() -> BaseballTools:
