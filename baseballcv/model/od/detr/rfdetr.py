@@ -7,8 +7,7 @@ import os
 from typing import Tuple, List
 from rfdetr import RFDETRBase, RFDETRLarge
 from baseballcv.model.utils import ModelVisualizationTools, ModelFunctionUtils
-from baseballcv.utilities import BaseballCVLogger
-from tqdm import tqdm
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 import supervision as sv
 import cv2
 
@@ -67,24 +66,21 @@ class RFDETR:
             output_path = os.path.join(self.model_run_path, os.path.basename(source_path))
 
             with sv.VideoSink(target_path=output_path, video_info=video_info) as sink:
-                for frame in tqdm(frame_generator, total=video_info.total_frames, desc="Processing frames"):
-                    detections = self.model.predict(frame, threshold=conf)
-                    all_detections.append(detections)
-                    if save_viz:
-                        labels = []
-                        for class_id in detections.class_id:
-                            class_id_str = str(class_id)
-                            class_name = class_mapping.get(class_id_str)
-                            labels.append(class_name)
-
-
-                        annotated_image = sv.BoxAnnotator().annotate(scene=frame.copy(), detections=detections)
-                        annotated_image = sv.LabelAnnotator(text_thickness=1).annotate(
-                            scene=annotated_image, 
-                            detections=detections,
-                            labels=labels
-                        )
-                        sink.write_frame(annotated_image)
+                frames = list(frame_generator)
+                with ProgressBar(total=video_info.total_frames, desc="Processing frames") as pbar:
+                    for frame in frames:
+                        detections = self.model.predict(frame, threshold=conf)
+                        all_detections.append(detections)
+                        if save_viz:
+                            labels = [class_mapping.get(str(class_id)) for class_id in detections.class_id]
+                            annotated_image = sv.BoxAnnotator().annotate(scene=frame.copy(), detections=detections)
+                            annotated_image = sv.LabelAnnotator(text_thickness=1).annotate(
+                                scene=annotated_image, 
+                                detections=detections,
+                                labels=labels
+                            )
+                            sink.write_frame(annotated_image)
+                        pbar.update(1)
 
                 self.logger.info(f"Inference completed." + ("Saved to " + output_path if save_viz else ""))
 

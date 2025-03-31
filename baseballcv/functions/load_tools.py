@@ -7,7 +7,7 @@ import io
 from typing import Optional, Union
 import shutil
 from huggingface_hub import snapshot_download
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from datasets import load_dataset
 
 class LoadTools:
@@ -84,7 +84,7 @@ class LoadTools:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
-            progress_bar = tqdm(total=total_size, unit='iB', unit_scale=True, desc=f"Downloading {os.path.basename(dest)}")
+            progress_bar = ProgressBar(total=total_size, unit='iB', unit_scale=True, desc=f"Downloading {os.path.basename(dest)}")
             
             if is_folder: 
                 content = io.BytesIO()

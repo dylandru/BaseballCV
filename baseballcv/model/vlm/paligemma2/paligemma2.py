@@ -18,7 +18,7 @@ from datetime import datetime
 import supervision as sv
 from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools
 from baseballcv.datasets import DataProcessor
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 """
 To use PaliGemma2 from HuggingFace, the user must accept Google's Usage License and be approved by Google.
@@ -358,10 +358,9 @@ class PaliGemma2:
                 train_loss = 0
                 epoch_losses = []
 
-                train_progress = tqdm(
-                    self.train_loader,
+                train_progress = ProgressBar(
+                    iterable=self.train_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Train]",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
                     postfix=dict(loss="0.0000", lr="0.0"),
                     dynamic_ncols=True,
                     initial=0
@@ -372,7 +371,7 @@ class PaliGemma2:
                             for k, v in batch.items()}
 
                     if scaler is not None:
-                        with torch.cuda.amp.autocast():
+                        with torch.amp.autocast(device_type=self.device.type):
                             outputs = self.model(**batch)
                             loss = outputs.loss / gradient_accumulation_steps
                         scaler.scale(loss).backward()
@@ -415,10 +414,9 @@ class PaliGemma2:
                 val_loss = 0
                 val_losses = []
 
-                val_progress = tqdm(
-                    self.val_loader,
+                val_progress = ProgressBar(
+                    iterable=self.val_loader,
                     desc=f"Epoch {epoch + 1}/{epochs} [Valid]",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
                     postfix=dict(loss="0.0000"),
                     dynamic_ncols=True,
                     initial=0
@@ -567,11 +565,9 @@ class PaliGemma2:
         predictions = []
 
         with torch.inference_mode():
-          for batch_idx, batch in enumerate(tqdm(
-                    eval_loader,
+          for batch_idx, batch in enumerate(ProgressBar(
+                    iterable=eval_loader,
                     desc=f"Evaluating Model",
-                    bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
-                    dynamic_ncols=True,
                     initial=0
                 )):
 
