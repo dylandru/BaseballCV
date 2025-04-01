@@ -75,7 +75,7 @@ class DataProcessor:
 
                 splits = [("train", train_files), ("test", test_files), ("valid", valid_files)]
                 for split_name, files in splits:
-                    for file_name in ProgressBar(total=len(files), desc=f"Processing {split_name}"):
+                    for file_name in ProgressBar(iterable=files, desc=f"Processing {split_name}"):
                         src_image = os.path.join(base_path, file_name)
                         dst_image = os.path.join(base_path, split_name, "images", file_name)
                         shutil.copy2(src_image, dst_image)
@@ -145,7 +145,7 @@ class DataProcessor:
         annotations = []
         files = [f for f in os.listdir(annotations_dir) if f.endswith(".txt")]
 
-        for filename in ProgressBar(total=len(files), desc=f"Converting {split} annotations"):
+        for filename in ProgressBar(iterable=files, desc=f"Converting {split} annotations"):
             annotation_file = os.path.join(annotations_dir, filename)
             with open(annotation_file, 'r') as f:
                 lines = f.readlines()
