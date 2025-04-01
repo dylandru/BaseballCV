@@ -7,7 +7,7 @@ import os
 import shutil
 import polars as pl
 import pandas as pd
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 class BaseballSavVideoScraper(Crawler):
     """

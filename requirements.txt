@@ -22,6 +22,7 @@ pytorch-lightning==2.5.0
 polars==1.10.0
 mediapipe==0.10.21
 datasets==3.4.0
+roboflow==1.1.50
 rfdetr==1.0.8
 autodistill==0.1.29
 autodistill-grounded-sam==0.1.2

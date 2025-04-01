@@ -10,7 +10,7 @@ from .load_tools import LoadTools
 from ultralytics import YOLO
 from tqdm import tqdm
 from datetime import datetime
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from autodistill.detection import CaptionOntology
 from autodistill_grounded_sam import GroundedSAM
 
@@ -236,32 +236,35 @@ class DataTools:
 
             annotation_tasks = [image_file for image_file in os.listdir(image_dir)]
 
-            for image_file in tqdm(annotation_tasks, desc="Annotating images"):
-                image_path = os.path.join(image_dir, image_file)
-                annotations = []
+            with ProgressBar(total=len(annotation_tasks), desc="Annotating images") as pbar:
+                for image_file in annotation_tasks:
+                    image_path = os.path.join(image_dir, image_file)
+                    annotations = []
 
-                results = model.predict(source=image_path, save=False, conf=conf, device=device, verbose=False)
-                
-                if model_type == 'detection':
-                    for result in results:
-                        for box in result.boxes:
-                            cls = int(box.cls)
-                            xywhn = box.xywhn[0].tolist()
-                            if len(xywhn) == 4:
-                                x_center, y_center, width, height = xywhn
-                                annotations.append(f"{cls} {x_center} {y_center} {width} {height}")
-                            else:
-                                self.logger.warning(f"Invalid bounding box for {image_file}: {xywhn}")
+                    results = model.predict(source=image_path, save=False, conf=conf, device=device, verbose=False)
+                    
+                    if model_type == 'detection':
+                        for result in results:
+                            for box in result.boxes:
+                                cls = int(box.cls)
+                                xywhn = box.xywhn[0].tolist()
+                                if len(xywhn) == 4:
+                                    x_center, y_center, width, height = xywhn
+                                    annotations.append(f"{cls} {x_center} {y_center} {width} {height}")
+                                else:
+                                    self.logger.warning(f"Invalid bounding box for {image_file}: {xywhn}")
 
-                #TODO: Add annotation format for YOLO Keypoint, Segmentation, and Classification models
+                    #TODO: Add annotation format for YOLO Keypoint, Segmentation, and Classification models
 
-                if annotations:
-                    shutil.copy(image_path, output_dir)
-                    output_file = os.path.join(annotations_dir, os.path.splitext(image_file)[0] + '.txt')
-                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-                    with open(output_file, 'w') as f:
-                        f.write('\n'.join(annotations))
-
-            self.logger.info("Annotation process complete.")
-            return output_dir
+                    if annotations:
+                        shutil.copy(image_path, output_dir)
+                        output_file = os.path.join(annotations_dir, os.path.splitext(image_file)[0] + '.txt')
+                        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                        with open(output_file, 'w') as f:
+                            f.write('\n'.join(annotations))
+                    
+                    pbar.update(1)
+                    
+                self.logger.info("Annotation process complete.")
+                return output_dir
 

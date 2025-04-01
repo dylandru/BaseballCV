@@ -6,7 +6,6 @@ from transformers import AutoModelForCausalLM, AutoProcessor, get_scheduler
 from peft import LoraConfig, get_peft_model
 from PIL import ImageEnhance
 import torch.backends
-from tqdm import tqdm
 import os
 import json
 from PIL import Image
@@ -14,11 +13,10 @@ import matplotlib.pyplot as plt
 import random
 import shutil
 from typing import List, Dict, Any, Tuple
-import logging
 import seaborn as sns
 import torch.multiprocessing as mp
 from datetime import datetime
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 '''
 This implementation of the Florence2 class is based on the following notebooks / code (all of which are open source):
@@ -208,7 +206,7 @@ class Florence2:
 
           splits = [("train", train_files), ("test", test_files), ("valid", valid_files)]
           for split_name, files in splits:
-              for file_name in tqdm(files, desc=f"Processing {split_name}"):
+              for file_name in ProgressBar(iterable=files, desc=f"Processing {split_name}"):
                   src_image = os.path.join(base_path, file_name)
                   dst_image = os.path.join(base_path, split_name, "images", file_name)
                   shutil.copy2(src_image, dst_image)
@@ -232,7 +230,7 @@ class Florence2:
         annotations = []
         files = [f for f in os.listdir(annotations_dir) if f.endswith(".txt")]
         
-        for filename in tqdm(files, desc=f"Converting {split} annotations"):
+        for filename in ProgressBar(iterable=files, desc=f"Converting {split} annotations"):
             annotation_file = os.path.join(annotations_dir, filename)
             with open(annotation_file, 'r') as f:
                 lines = f.readlines()
@@ -523,7 +521,7 @@ class Florence2:
                 self.peft_model.train()
                 train_loss = 0
                 
-                for batch_idx, (inputs, answers) in enumerate(tqdm(self.train_loader, 
+                for batch_idx, (inputs, answers) in enumerate(ProgressBar(iterable=self.train_loader, 
                                                                 desc=f"Training Epoch {epoch + 1}/{epochs}")):
                     try:
                         input_ids = inputs["input_ids"]
@@ -568,7 +566,7 @@ class Florence2:
                 val_loss = 0
                 
                 with torch.no_grad():
-                    for inputs, answers in tqdm(self.val_loader,
+                    for inputs, answers in ProgressBar(iterable=self.val_loader,
                                             desc=f"Validation Epoch {epoch + 1}/{epochs}"):
                         try:
                             input_ids = inputs["input_ids"]

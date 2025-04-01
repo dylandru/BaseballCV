@@ -2,7 +2,6 @@ import logging
 import cv2
 import torch
 from coco_eval import CocoEvaluator
-from tqdm import tqdm
 from transformers import DetrImageProcessor, DetrForObjectDetection
 import os
 import warnings
@@ -14,7 +13,7 @@ import supervision as sv
 from baseballcv.model.utils import ModelFunctionUtils, ModelVisualizationTools
 from baseballcv.datasets import CocoDetectionDataset
 import pytorch_lightning as pl
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 """
 
@@ -360,10 +359,7 @@ class DETR(pl.LightningModule):
             all_detections = []
             frame_count = 0
 
-            progress_bar = tqdm(total=total_frames, desc=f'Predicting Video: Frame {frame_count} / {total_frames}',
-                                bar_format="{desc}\n{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]\n{postfix}",
-                                dynamic_ncols=True,
-                                initial=0)
+            progress_bar = ProgressBar(total=total_frames, desc=f'Predicting Video: Frame {frame_count} / {total_frames}')
 
             with progress_bar as pbar:
                 while cap.isOpened():
@@ -484,7 +480,7 @@ class DETR(pl.LightningModule):
 
                 return coco_results
 
-            for idx, batch in tqdm(enumerate(test_loader), desc="Evaluating", total=len(test_loader)):
+            for idx, batch in ProgressBar(enumerate(test_loader), desc="Evaluating", total=len(test_loader)):
                 pixel_values = batch['pixel_values'].to(self.detr_device)
                 pixel_mask = batch['pixel_mask'].to(self.detr_device)
                 labels = [{k: v.to(self.detr_device) for k, v in t.items()} for t in batch['labels']]

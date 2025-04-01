@@ -1,5 +1,6 @@
 from .crawler import Crawler
 from datetime import datetime, date
+from baseballcv.utilities import ProgressBar
 from tqdm import tqdm
 import concurrent.futures
 from typing import List
@@ -61,7 +62,7 @@ class GamePKScraper(Crawler):
         range = list(self._date_range(self.start_dt_date, self.end_dt_date))
 
         game_pks = []
-        with tqdm(total=len(range), desc="Extracting Game IDs from Dates") as progress:
+        with ProgressBar(total=len(range), desc="Extracting Game IDs from Dates") as progress:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = {executor.submit(self._get_game_pks, subq_start, subq_end) for subq_start, subq_end in range}
                 for future in concurrent.futures.as_completed(futures):
@@ -171,7 +172,7 @@ class GamePlayIDScraper(GamePKScraper):
     def run_executor(self) -> pl.DataFrame:
         play_ids_df = []
 
-        with tqdm(total=len(self.game_pks), desc="Extracting Play IDs") as progress:
+        with ProgressBar(total=len(self.game_pks), desc="Extracting Play IDs") as progress:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = futures = {
                                     executor.submit(self._get_play_ids, game_pk, home_team, away_team): (game_pk, home_team, away_team)

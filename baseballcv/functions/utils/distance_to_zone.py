@@ -2,7 +2,6 @@ import logging
 import cv2
 import numpy as np
 import os
-from tqdm import tqdm
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 from ultralytics import YOLO
@@ -11,7 +10,7 @@ from contextlib import redirect_stdout
 from baseballcv.functions.load_tools import LoadTools
 import math
 import mediapipe as mp
-from baseballcv.utilities import BaseballCVLogger
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 class DistanceToZone:
     """
@@ -404,7 +403,7 @@ class DistanceToZone:
         detections = []
         frame_number = 0
         
-        pbar = tqdm(total=total_frames, desc=f"{object_name.capitalize()} Detection", 
+        pbar = ProgressBar(total=total_frames, desc=f"{object_name.capitalize()} Detection", 
                    disable=not self.verbose)
         
         while cap.isOpened():
@@ -2096,7 +2095,7 @@ class DistanceToZone:
         ball_trajectory = []
         
         # Process each frame
-        pbar = tqdm(total=total_frames, desc="Creating Video", disable=not self.verbose)
+        pbar = ProgressBar(total=total_frames, desc="Creating Video", disable=not self.verbose)
         
         # Store key frames for slow motion
         slow_motion_frames = []
