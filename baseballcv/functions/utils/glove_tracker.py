@@ -413,59 +413,59 @@ class GloveTracker:
     def _save_tracking_data(self, csv_path):
         """
         Save tracking data to a CSV file.
-        
+
         Args:
             csv_path: Path to save the CSV file
         """
         if not self.tracking_data:
             self.logger.warning("No tracking data to save")
             return
-        
+
         # Prepare data for CSV
         csv_data = []
-        
+
         for detection in self.tracking_data:
             frame_idx = detection['frame_idx']
-            
+
             # Home plate data
             homeplate_center_x = None
             homeplate_center_y = None
             homeplate_width = None
             homeplate_confidence = None
-            
+
             if detection['homeplate'] is not None:
                 homeplate_center_x, homeplate_center_y = detection['homeplate']['center']
                 homeplate_width = detection['homeplate']['width']
                 homeplate_confidence = detection['homeplate']['confidence']
-            
+
             # Glove data
             glove_center_x = None
             glove_center_y = None
             glove_confidence = None
             glove_real_x = None
             glove_real_y = None
-            
+
             if detection['glove'] is not None:
                 glove_center_x, glove_center_y = detection['glove']['center']
                 glove_confidence = detection['glove']['confidence']
-                
+
                 if 'glove' in detection['real_world_coords']:
                     glove_real_x, glove_real_y = detection['real_world_coords']['glove']
-            
+
             # Baseball data
             baseball_center_x = None
             baseball_center_y = None
             baseball_confidence = None
             baseball_real_x = None
             baseball_real_y = None
-            
+
             if detection['baseball'] is not None:
                 baseball_center_x, baseball_center_y = detection['baseball']['center']
                 baseball_confidence = detection['baseball']['confidence']
-                
+
                 if 'baseball' in detection['real_world_coords']:
                     baseball_real_x, baseball_real_y = detection['real_world_coords']['baseball']
-            
+
             # Add row to CSV data
             csv_data.append({
                 'frame_idx': frame_idx,
@@ -485,12 +485,20 @@ class GloveTracker:
                 'baseball_real_y': baseball_real_y,
                 'pixels_per_inch': self.pixels_per_inch
             })
-        
+
         # Create DataFrame and save to CSV
         df = pd.DataFrame(csv_data)
         df.to_csv(csv_path, index=False)
-        
+
+        # Debugging information
+        print(f"CSV Path: {csv_path}")
+        if os.path.exists(csv_path):
+            print(f"CSV file saved successfully at {csv_path}")
+        else:
+            print(f"CSV file not found at {csv_path}")
+
         self.logger.info(f"Tracking data saved to {csv_path}")
+
         
     def analyze_glove_movement(self, csv_path: Optional[str] = None):
         """
