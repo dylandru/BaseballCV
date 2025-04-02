@@ -345,6 +345,7 @@ class ModelFunctionUtils:
         if not os.path.exists(output):
             try:
                 script = resource_filename("yolov9", "scripts/get_model_weights.sh")
+                subprocess.run(["chmod", "+x", script], check=True)
                 subprocess.run(["bash", script, model_file, output_dir], check=True)
             except Exception as e:
                 print(f"Error downloading weights: {e}")
