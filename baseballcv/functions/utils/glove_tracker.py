@@ -284,6 +284,53 @@ class GloveTracker:
             self.tracking_data.append(detections)
         
         return detections
+    
+    def _fill_missing_detections(self):
+        """
+        Fill in missing glove detection coordinates by repeating the last known position.
+        This prevents gaps and jumps in the tracking visualization.
+        
+        Returns:
+            List[Tuple[float, float]]: Processed glove coordinates for all frames
+        """
+        if not self.tracking_data:
+            return [], []
+        
+        # Extract frame indices and glove coordinates
+        frame_indices = []
+        glove_coords = []
+        
+        for detection in self.tracking_data:
+            frame_indices.append(detection['frame_idx'])
+            
+            if 'glove' in detection['real_world_coords']:
+                glove_coords.append(detection['real_world_coords']['glove'])
+            else:
+                glove_coords.append(None)
+        
+        # Fill in missing glove coordinates
+        filled_x = []
+        filled_y = []
+        last_valid_x = None
+        last_valid_y = None
+        
+        for i, coords in enumerate(glove_coords):
+            if coords is not None:
+                # Valid detection
+                x, y = coords
+                filled_x.append(x)
+                filled_y.append(y)
+                last_valid_x, last_valid_y = x, y
+            elif last_valid_x is not None and last_valid_y is not None:
+                # Missing detection, but we have previous valid coordinates
+                filled_x.append(last_valid_x)
+                filled_y.append(last_valid_y)
+            else:
+                # No valid previous coordinates to use
+                # We'll skip this frame entirely
+                pass
+        
+        return filled_x, filled_y
 
     def _annotate_frame(self, frame, detections, frame_idx):
         """
@@ -371,15 +418,8 @@ class GloveTracker:
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
 
-        # Get glove tracking points only
-        glove_x = []
-        glove_y = []
-
-        for detection in self.tracking_data:
-            if 'glove' in detection['real_world_coords']:
-                x, y = detection['real_world_coords']['glove']
-                glove_x.append(x)
-                glove_y.append(y)
+        # Fill missing glove detections to prevent jumps
+        glove_x, glove_y = self._fill_missing_detections()
 
         # Draw home plate at origin
         if self.home_plate_reference is not None:
@@ -396,11 +436,14 @@ class GloveTracker:
         ax.set_xlim(-50, 50)
         ax.set_ylim(-10, 60)
         
-        # Set aspect ratio to equal to maintain 1:1 ratio
-        ax.set_aspect('equal')
-
+        # Force exact 1:1 aspect ratio
+        ax.set_aspect('equal', 'box')
+        
         # Add legend
         ax.legend(loc='upper right')
+        
+        # Make figure tight
+        fig.tight_layout()
 
         # Make sure the plot refreshes
         fig.canvas.draw()
@@ -639,14 +682,29 @@ class GloveTracker:
         """
         if csv_path is not None:
             df = pd.read_csv(csv_path)
+            
+            # Create filled version of the data from the CSV
+            real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
+            
+            if len(real_coords) > 1:
+                # Fill missing values by forward-filling
+                filled_df = df.copy()
+                filled_df['glove_real_x'] = filled_df['glove_real_x'].fillna(method='ffill')
+                filled_df['glove_real_y'] = filled_df['glove_real_y'].fillna(method='ffill')
+                
+                # Use the filled data
+                glove_x = filled_df['glove_real_x'].dropna().tolist()
+                glove_y = filled_df['glove_real_y'].dropna().tolist()
+            else:
+                self.logger.warning("Not enough data points in CSV for heatmap")
+                return None
         elif self.tracking_data:
-            # Convert tracking data to DataFrame
-            data = []
-            for detection in self.tracking_data:
-                if 'glove' in detection['real_world_coords']:
-                    x, y = detection['real_world_coords']['glove']
-                    data.append({'glove_real_x': x, 'glove_real_y': y})
-            df = pd.DataFrame(data)
+            # Use the current tracking data with filled detections
+            glove_x, glove_y = self._fill_missing_detections()
+            
+            if not glove_x or not glove_y:
+                self.logger.warning("No valid glove tracking data available for heatmap")
+                return None
         else:
             self.logger.warning("No tracking data available for heatmap")
             return None
@@ -655,38 +713,37 @@ class GloveTracker:
         plt.figure(figsize=(10, 8))
         
         # Create heatmap from glove positions
-        if 'glove_real_x' in df.columns and 'glove_real_y' in df.columns:
-            real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
+        if len(glove_x) > 1:
+            plt.hist2d(glove_x, glove_y, bins=20, cmap='hot')
+            plt.colorbar(label='Frequency')
             
-            if len(real_coords) > 1:
-                plt.hist2d(real_coords['glove_real_x'], real_coords['glove_real_y'], 
-                        bins=20, cmap='hot')
-                plt.colorbar(label='Frequency')
-                
-                # Draw home plate at origin
-                home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
-                plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
-                
-                plt.title('Glove Position Heatmap')
-                plt.xlabel('X Position (inches from home plate)')
-                plt.ylabel('Y Position (inches from home plate)')
-                plt.grid(True, alpha=0.3)
-                
-                # Save the heatmap
-                if output_path is None:
-                    output_path = os.path.join(self.results_dir, "glove_heatmap.png")
-                
-                plt.savefig(output_path, dpi=300, bbox_inches='tight')
-                plt.close()
-                
-                self.logger.info(f"Glove heatmap saved to {output_path}")
-                return output_path
-            else:
-                self.logger.warning("Not enough glove position data for heatmap")
-                plt.close()
-                return None
+            # Draw home plate at origin
+            home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
+            plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
+            
+            plt.title('Glove Position Heatmap')
+            plt.xlabel('X Position (inches from home plate)')
+            plt.ylabel('Y Position (inches from home plate)')
+            plt.grid(True, alpha=0.3)
+            
+            # Set fixed axis limits
+            plt.xlim(-50, 50)
+            plt.ylim(-10, 60)
+            
+            # Force 1:1 aspect ratio
+            plt.gca().set_aspect('equal', 'box')
+            
+            # Save the heatmap
+            if output_path is None:
+                output_path = os.path.join(self.results_dir, "glove_heatmap.png")
+            
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            self.logger.info(f"Glove heatmap saved to {output_path}")
+            return output_path
         else:
-            self.logger.warning("No real-world glove coordinates available for heatmap")
+            self.logger.warning("Not enough glove position data for heatmap")
             plt.close()
             return None
         
