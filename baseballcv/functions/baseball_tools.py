@@ -1,3 +1,4 @@
+from typing import Dict, List
 from .utils import DistanceToZone
 from baseballcv.utilities import BaseballCVLogger
 
