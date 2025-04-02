@@ -24,6 +24,8 @@ class GloveTracker:
         results_dir: str = "glove_tracking_results",
         device: str = None,
         confidence_threshold: float = 0.5,
+        enable_filtering: bool = True,
+        max_velocity_inches_per_sec: float = 120.0,
         logger: Optional[BaseballCVLogger] = None
     ):
         """
@@ -34,6 +36,8 @@ class GloveTracker:
             results_dir (str): Directory to save results
             device (str): Device to run the model on (cpu, cuda, mps)
             confidence_threshold (float): Confidence threshold for detections
+            enable_filtering (bool): Whether to enable outlier filtering for glove detections
+            max_velocity_inches_per_sec (float): Maximum plausible velocity for glove movement (for filtering)
             logger (BaseballCVLogger): Logger instance for logging
         """
         self.load_tools = LoadTools()
@@ -44,6 +48,10 @@ class GloveTracker:
         self.confidence_threshold = confidence_threshold
         self.results_dir = results_dir
         os.makedirs(self.results_dir, exist_ok=True)
+        
+        # Enable filtering and set velocity threshold
+        self.enable_filtering = enable_filtering
+        self.max_velocity_inches_per_sec = max_velocity_inches_per_sec
         
         # Get class names from the model
         self.class_names = self.model.names
@@ -135,8 +143,8 @@ class GloveTracker:
                 # Run YOLO detection on the frame
                 results = self.model.predict(frame, conf=self.confidence_threshold, device=self.device, verbose=False)
 
-                # Process and extract detections
-                detections = self._process_detections(results, frame, frame_idx)
+                # Process and extract detections - now passing fps
+                detections = self._process_detections(results, frame, frame_idx, fps)
 
                 # Draw annotations on the frame
                 annotated_frame = self._annotate_frame(frame.copy(), detections, frame_idx)
@@ -177,15 +185,16 @@ class GloveTracker:
         return output_path
 
 
-    def _process_detections(self, results, frame, frame_idx):
+    def _process_detections(self, results, frame, frame_idx, fps=30.0):
         """
-        Process YOLO detection results for the current frame.
+        Process YOLO detection results for the current frame with outlier filtering.
         
         Args:
             results: YOLO detection results
             frame: Current video frame
             frame_idx: Frame index
-            
+            fps: Frames per second of the video
+                
         Returns:
             dict: Processed detections with glove, homeplate, and baseball info
         """
@@ -261,7 +270,16 @@ class GloveTracker:
                 real_y = (origin_y - ball_y) / self.pixels_per_inch
                 detections['real_world_coords']['baseball'] = (real_x, real_y)
         
-        # Add to tracking data
+        # Apply filtering to glove detections
+        if hasattr(self, 'enable_filtering') and self.enable_filtering and len(self.tracking_data) > 0:
+            prev_detection = self.tracking_data[-1]
+            if not self._filter_glove_detection(prev_detection, detections, fps, self.max_velocity_inches_per_sec):
+                # If detection is an outlier, don't include glove data
+                if 'glove' in detections['real_world_coords']:
+                    del detections['real_world_coords']['glove']
+                detections['glove'] = None
+        
+        # Add to tracking data if there are relevant detections
         if detections['glove'] is not None or detections['homeplate'] is not None or detections['baseball'] is not None:
             self.tracking_data.append(detections)
         
@@ -339,7 +357,7 @@ class GloveTracker:
 
     def _update_tracking_plot(self, ax, fig):
         """
-        Update the 2D tracking plot with latest data.
+        Update the 2D tracking plot with latest data, showing only glove movement.
 
         Args:
             ax: Matplotlib axis
@@ -348,16 +366,14 @@ class GloveTracker:
         ax.clear()
 
         # Set up the plot
-        ax.set_title('Glove and Baseball Tracking')
+        ax.set_title('Glove Movement Tracking')
         ax.set_xlabel('X Position (inches from home plate)')
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
 
-        # Get glove tracking points
+        # Get glove tracking points only
         glove_x = []
         glove_y = []
-        ball_x = []
-        ball_y = []
 
         for detection in self.tracking_data:
             if 'glove' in detection['real_world_coords']:
@@ -365,36 +381,23 @@ class GloveTracker:
                 glove_x.append(x)
                 glove_y.append(y)
 
-            if 'baseball' in detection['real_world_coords']:
-                x, y = detection['real_world_coords']['baseball']
-                ball_x.append(x)
-                ball_y.append(y)
-
         # Draw home plate at origin
         if self.home_plate_reference is not None:
             # Simplified home plate shape at the origin
             home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
             ax.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5, label='Home Plate')
 
-        # Plot tracking data
+        # Plot tracking data (glove only)
         if glove_x and glove_y:
             ax.plot(glove_x, glove_y, 'g-', label='Glove Path')
             ax.scatter(glove_x[-1], glove_y[-1], color='green', s=100, marker='o', label='Current Glove Pos')
 
-        if ball_x and ball_y:
-            ax.plot(ball_x, ball_y, 'r-', label='Ball Path')
-            ax.scatter(ball_x[-1], ball_y[-1], color='red', s=100, marker='o', label='Current Ball Pos')
-
-        # Set axis limits with some padding
-        min_x = min(glove_x + ball_x + [-20]) if glove_x or ball_x else -20
-        max_x = max(glove_x + ball_x + [20]) if glove_x or ball_x else 20
-        min_y = min(glove_y + ball_y + [-5]) if glove_y or ball_y else -5
-        max_y = max(glove_y + ball_y + [30]) if glove_y or ball_y else 30
-
-        # Add some padding
-        padding = 10
-        ax.set_xlim(min_x - padding, max_x + padding)
-        ax.set_ylim(min_y - padding, max_y + padding)
+        # Set fixed axis limits as requested
+        ax.set_xlim(-50, 50)
+        ax.set_ylim(-10, 60)
+        
+        # Set aspect ratio to equal to maintain 1:1 ratio
+        ax.set_aspect('equal')
 
         # Add legend
         ax.legend(loc='upper right')
@@ -686,3 +689,47 @@ class GloveTracker:
             self.logger.warning("No real-world glove coordinates available for heatmap")
             plt.close()
             return None
+        
+    def _filter_glove_detection(self, prev_detection, current_detection, fps, max_velocity_inches_per_sec=120.0):
+        """
+        Filter out physically impossible glove movements based on velocity constraints.
+        
+        Args:
+            prev_detection (dict): Previous frame's detection data
+            current_detection (dict): Current frame's detection data
+            fps (float): Frames per second of the video
+            max_velocity_inches_per_sec (float): Maximum plausible velocity of the glove in inches per second
+            
+        Returns:
+            bool: True if the detection passes the filter, False if it's an outlier
+        """
+        # If no previous detection, accept current one
+        if prev_detection is None or 'glove' not in prev_detection['real_world_coords']:
+            return True
+        
+        # If no current glove detection, nothing to filter
+        if 'glove' not in current_detection['real_world_coords']:
+            return True
+        
+        # Get real-world coordinates
+        prev_x, prev_y = prev_detection['real_world_coords']['glove']
+        curr_x, curr_y = current_detection['real_world_coords']['glove']
+        
+        # Calculate distance moved in real-world units (inches)
+        distance = ((curr_x - prev_x)**2 + (curr_y - prev_y)**2)**0.5
+        
+        # Calculate time between frames
+        time_diff = (current_detection['frame_idx'] - prev_detection['frame_idx']) / fps
+        
+        # Calculate velocity in inches per second
+        if time_diff > 0:
+            velocity = distance / time_diff
+        else:
+            velocity = float('inf')  # Avoid division by zero
+        
+        # Check if velocity exceeds maximum plausible limit
+        if velocity > max_velocity_inches_per_sec:
+            self.logger.debug(f"Filtered outlier at frame {current_detection['frame_idx']}: velocity={velocity:.2f} in/s > {max_velocity_inches_per_sec} in/s")
+            return False
+        
+        return True

@@ -78,7 +78,8 @@ class BaseballTools:
 
     def track_glove(self, video_path: str = None, output_path: str = None, 
                     confidence_threshold: float = 0.5, device: str = None, 
-                    show_plot: bool = True, generate_heatmap: bool = True) -> Dict:
+                    show_plot: bool = True, generate_heatmap: bool = True,
+                    enable_filtering: bool = True, max_velocity_inches_per_sec: float = 120.0) -> Dict:
         """
         Track the catcher's glove, home plate, and baseball in a video.
         
@@ -92,6 +93,8 @@ class BaseballTools:
             device (str): Device to run the model on (cpu, cuda, mps)
             show_plot (bool): Whether to show the 2D tracking plot in the output video
             generate_heatmap (bool): Whether to generate a heatmap of glove positions
+            enable_filtering (bool): Whether to enable filtering of outlier glove detections
+            max_velocity_inches_per_sec (float): Maximum plausible velocity (inches/sec) for filtering
             
         Returns:
             Dict: Results containing paths to output files and movement statistics
@@ -107,6 +110,8 @@ class BaseballTools:
             model_alias='glove_tracking',
             device=device if device else self.device,
             confidence_threshold=confidence_threshold,
+            enable_filtering=enable_filtering,
+            max_velocity_inches_per_sec=max_velocity_inches_per_sec,
             logger=self.logger
         )
         
@@ -139,7 +144,9 @@ class BaseballTools:
             "output_video": output_video,
             "tracking_data": csv_path,
             "movement_stats": movement_stats,
-            "heatmap": heatmap_path
+            "heatmap": heatmap_path,
+            "filtering_applied": enable_filtering,
+            "max_velocity_threshold": max_velocity_inches_per_sec if enable_filtering else None
         }
         
         return results
