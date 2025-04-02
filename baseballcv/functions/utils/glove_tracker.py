@@ -73,109 +73,109 @@ class GloveTracker:
         self.home_plate_reference = None
         self.pixels_per_inch = None
 
-    def track_video(self, video_path: str, output_path: Optional[str] = None, 
-                   csv_path: Optional[str] = None, show_plot: bool = True) -> str:
+    def track_video(self, video_path: str, output_path: Optional[str] = None,
+                    show_plot: bool = True) -> str:
         """
         Track objects in a video and generate visualization with 2D tracking plot.
-        
+
         Args:
             video_path (str): Path to input video
             output_path (str): Path for output video (if None, auto-generated in results_dir)
-            csv_path (str): Path for output CSV (if None, auto-generated in results_dir)
             show_plot (bool): Whether to show the 2D plot in the output video
-            
+
         Returns:
             str: Path to the output video
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found at {video_path}")
-        
+
         # Create output paths if not provided
         if output_path is None:
             video_filename = os.path.basename(video_path)
             output_path = os.path.join(self.results_dir, f"tracked_{video_filename}")
-        
-        if csv_path is None:
-            csv_filename = os.path.splitext(os.path.basename(video_path))[0] + "_tracking.csv"
-            csv_path = os.path.join(self.results_dir, csv_filename)
-        
+
+        # Construct the CSV path correctly
+        csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
+        csv_path = os.path.join(self.results_dir, csv_filename)
+
         # Open video
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
+
         # Setup output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        
+
         # If show_plot is True, we'll create a wider output to accommodate the plot
         out_width = width * 2 if show_plot else width
         out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height))
-        
+
         # Reset tracking data
         self.tracking_data = []
         self.home_plate_reference = None
         self.pixels_per_inch = None
-        
+
         # Create plot for glove tracking
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111)
-        
+
         # Process frames
         progress_bar = ProgressBar(total=total_frames, desc="Processing Video")
-        
+
         frame_idx = 0
-        
+
         with progress_bar as pbar:
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
-                
+
                 # Run YOLO detection on the frame
                 results = self.model.predict(frame, conf=self.confidence_threshold, device=self.device, verbose=False)
-                
+
                 # Process and extract detections
                 detections = self._process_detections(results, frame, frame_idx)
-                
+
                 # Draw annotations on the frame
                 annotated_frame = self._annotate_frame(frame.copy(), detections, frame_idx)
-                
+
                 # Create the 2D tracking plot if needed
                 if show_plot:
                     self._update_tracking_plot(ax, fig)
-                    
+
                     # Convert matplotlib figure to image
                     fig.canvas.draw()
                     buf = fig.canvas.buffer_rgba()
                     plot_img = np.asarray(buf)[:, :, :3]  # Convert RGBA to RGB by taking only first 3 channels
                     plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-                    
+
                     # Resize plot to match frame height
                     plot_img = cv2.resize(plot_img, (width, height))
-                    
+
                     # Create combined frame with original and plot side by side
                     combined_frame = np.hstack((annotated_frame, plot_img))
                     out.write(combined_frame)
                 else:
                     out.write(annotated_frame)
-                
+
                 frame_idx += 1
                 pbar.update(1)
-        
+
         # Clean up
         cap.release()
         out.release()
         plt.close(fig)
-        
+
         # Save tracking data to CSV
         self._save_tracking_data(csv_path)
-        
+
         self.logger.info(f"Tracking completed. Output video saved to {output_path}")
         self.logger.info(f"Tracking data saved to {csv_path}")
-        
+
         return output_path
+
 
     def _process_detections(self, results, frame, frame_idx):
         """
