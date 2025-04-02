@@ -72,3 +72,66 @@ class BaseballTools:
         )
         
         return results
+
+
+    def track_glove(self, video_path: str = None, output_path: str = None, 
+                confidence_threshold: float = 0.5, device: str = None, 
+                show_plot: bool = True, generate_heatmap: bool = True) -> Dict:
+        """
+        Track the catcher's glove, home plate, and baseball in a video.
+        
+        This function uses the GloveTracker class to track these objects and 
+        creates visualizations showing their movement throughout the video.
+        
+        Args:
+            video_path (str): Path to the input video file
+            output_path (str): Path to save the tracked output video (optional)
+            confidence_threshold (float): Confidence threshold for detections (default: 0.5)
+            device (str): Device to run the model on (cpu, cuda, mps)
+            show_plot (bool): Whether to show the 2D tracking plot in the output video
+            generate_heatmap (bool): Whether to generate a heatmap of glove positions
+            
+        Returns:
+            Dict: Results containing paths to output files and movement statistics
+        """
+        if video_path is None or not os.path.exists(video_path):
+            self.logger.error(f"Video file not found at {video_path}")
+            return {"error": f"Video file not found at {video_path}"}
+        
+        # Initialize GloveTracker
+        from .utils.glove_tracker import GloveTracker
+        
+        tracker = GloveTracker(
+            model_alias='glove_tracking',
+            device=device if device else self.device,
+            confidence_threshold=confidence_threshold,
+            logger=self.logger
+        )
+        
+        # Track the video
+        output_video = tracker.track_video(
+            video_path=video_path,
+            output_path=output_path,
+            show_plot=show_plot
+        )
+        
+        # Get the CSV path
+        csv_filename = os.path.splitext(os.path.basename(output_video))[0] + ".csv"
+        csv_path = os.path.join(tracker.results_dir, csv_filename)
+        
+        # Analyze movement
+        movement_stats = tracker.analyze_glove_movement(csv_path)
+        
+        # Generate heatmap if requested
+        heatmap_path = None
+        if generate_heatmap:
+            heatmap_path = tracker.plot_glove_heatmap(csv_path)
+        
+        results = {
+            "output_video": output_video,
+            "tracking_data": csv_path,
+            "movement_stats": movement_stats,
+            "heatmap": heatmap_path
+        }
+        
+        return results
