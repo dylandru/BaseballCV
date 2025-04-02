@@ -148,7 +148,8 @@ class GloveTracker:
                     
                     # Convert matplotlib figure to image
                     fig.canvas.draw()
-                    plot_img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                    buf = fig.canvas.buffer_rgba()
+                    plot_img = np.asarray(buf)[:, :, :3]  # Convert RGBA to RGB by taking only first 3 channels
                     plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                     
                     # Resize plot to match frame height
