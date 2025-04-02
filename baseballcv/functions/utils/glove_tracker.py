@@ -490,14 +490,14 @@ class GloveTracker:
         df = pd.DataFrame(csv_data)
         df.to_csv(csv_path, index=False)
 
-        # Debugging information
-        print(f"CSV Path: {csv_path}")
-        if os.path.exists(csv_path):
-            print(f"CSV file saved successfully at {csv_path}")
-        else:
-            print(f"CSV file not found at {csv_path}")
-
+        # Logging information
         self.logger.info(f"Tracking data saved to {csv_path}")
+        
+        # For debugging
+        if not os.path.exists(csv_path):
+            self.logger.error(f"Failed to save CSV file at {csv_path}")
+        else:
+            self.logger.debug(f"CSV file saved successfully at {csv_path}")
 
         
     def analyze_glove_movement(self, csv_path: Optional[str] = None):

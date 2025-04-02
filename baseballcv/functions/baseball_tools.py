@@ -77,8 +77,8 @@ class BaseballTools:
 
 
     def track_glove(self, video_path: str = None, output_path: str = None, 
-                confidence_threshold: float = 0.5, device: str = None, 
-                show_plot: bool = True, generate_heatmap: bool = True) -> Dict:
+                    confidence_threshold: float = 0.5, device: str = None, 
+                    show_plot: bool = True, generate_heatmap: bool = True) -> Dict:
         """
         Track the catcher's glove, home plate, and baseball in a video.
         
@@ -117,9 +117,15 @@ class BaseballTools:
             show_plot=show_plot
         )
         
-        # Get the CSV path
-        csv_filename = os.path.splitext(os.path.basename(output_video))[0] + ".csv"
+        # Get the CSV path - FIXED: Adding "_tracking" suffix to match actual file
+        csv_filename = os.path.splitext(os.path.basename(output_video))[0] + "_tracking.csv"
         csv_path = os.path.join(tracker.results_dir, csv_filename)
+        
+        # Check if file exists and log it
+        if os.path.exists(csv_path):
+            self.logger.info(f"Using tracking data from {csv_path}")
+        else:
+            self.logger.warning(f"Tracking data file not found at {csv_path}")
         
         # Analyze movement
         movement_stats = tracker.analyze_glove_movement(csv_path)
