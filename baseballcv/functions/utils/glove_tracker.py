@@ -339,67 +339,75 @@ class GloveTracker:
     def _update_tracking_plot(self, ax, fig):
         """
         Update the 2D tracking plot with latest data.
-        
+
         Args:
             ax: Matplotlib axis
             fig: Matplotlib figure
         """
         ax.clear()
-        
+
         # Set up the plot
         ax.set_title('Glove and Baseball Tracking')
         ax.set_xlabel('X Position (inches from home plate)')
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
-        
+
         # Get glove tracking points
         glove_x = []
         glove_y = []
         ball_x = []
         ball_y = []
-        
+
         for detection in self.tracking_data:
             if 'glove' in detection['real_world_coords']:
                 x, y = detection['real_world_coords']['glove']
                 glove_x.append(x)
                 glove_y.append(y)
-            
+
             if 'baseball' in detection['real_world_coords']:
                 x, y = detection['real_world_coords']['baseball']
                 ball_x.append(x)
                 ball_y.append(y)
-        
+
         # Draw home plate at origin
         if self.home_plate_reference is not None:
             # Simplified home plate shape at the origin
             home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
             ax.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5, label='Home Plate')
-        
+
         # Plot tracking data
         if glove_x and glove_y:
             ax.plot(glove_x, glove_y, 'g-', label='Glove Path')
             ax.scatter(glove_x[-1], glove_y[-1], color='green', s=100, marker='o', label='Current Glove Pos')
-        
+
         if ball_x and ball_y:
             ax.plot(ball_x, ball_y, 'r-', label='Ball Path')
             ax.scatter(ball_x[-1], ball_y[-1], color='red', s=100, marker='o', label='Current Ball Pos')
-        
+
         # Set axis limits with some padding
         min_x = min(glove_x + ball_x + [-20]) if glove_x or ball_x else -20
         max_x = max(glove_x + ball_x + [20]) if glove_x or ball_x else 20
         min_y = min(glove_y + ball_y + [-5]) if glove_y or ball_y else -5
         max_y = max(glove_y + ball_y + [30]) if glove_y or ball_y else 30
-        
+
         # Add some padding
         padding = 10
         ax.set_xlim(min_x - padding, max_x + padding)
         ax.set_ylim(min_y - padding, max_y + padding)
-        
+
         # Add legend
         ax.legend(loc='upper right')
-        
+
         # Make sure the plot refreshes
         fig.canvas.draw()
+
+        # Convert matplotlib figure to image
+        plot_img = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+        plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+        plot_img = cv2.cvtColor(plot_img, cv2.COLOR_RGBA2RGB)
+
+        return plot_img
+
 
     def _save_tracking_data(self, csv_path):
         """
