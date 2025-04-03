@@ -418,8 +418,8 @@ class GloveTracker:
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
 
-        # Fill missing glove detections to prevent jumps
-        glove_x, glove_y = self._fill_missing_detections()
+        # Use advanced method to handle missing detections
+        glove_x, glove_y = self._handle_missing_detections()
 
         # Draw home plate at origin
         if self.home_plate_reference is not None:
@@ -668,6 +668,164 @@ class GloveTracker:
             stats['avg_y_position_inches'] = real_coords['glove_real_y'].mean()
         
         return stats
+
+    def _handle_missing_detections(self):
+        """
+        Enhanced method to handle missing glove detections using multiple strategies.
+        Uses a combination of interpolation, filtering, and smoothing techniques
+        to create a more natural and continuous glove movement trajectory.
+        
+        Returns:
+            List[Tuple[float, float]]: Processed glove coordinates for all frames
+        """
+        if not self.tracking_data:
+            return [], []
+        
+        # Extract frame indices and glove coordinates
+        frame_indices = []
+        glove_coords = []
+        
+        for detection in self.tracking_data:
+            frame_indices.append(detection['frame_idx'])
+            
+            if 'glove' in detection['real_world_coords']:
+                glove_coords.append(detection['real_world_coords']['glove'])
+            else:
+                glove_coords.append(None)
+        
+        # Find sequences of valid detections
+        valid_sequences = []
+        current_sequence = []
+        current_frames = []
+        
+        for i, (coords, frame_idx) in enumerate(zip(glove_coords, frame_indices)):
+            if coords is not None:
+                current_sequence.append(coords)
+                current_frames.append(frame_idx)
+            elif current_sequence:
+                if len(current_sequence) >= 2:  # Need at least 2 points for a valid sequence
+                    valid_sequences.append((current_frames, current_sequence))
+                current_sequence = []
+                current_frames = []
+        
+        # Add the last sequence if it's not empty
+        if len(current_sequence) >= 2:
+            valid_sequences.append((current_frames, current_sequence))
+        
+        if not valid_sequences:
+            self.logger.warning("No valid glove detection sequences found")
+            return [], []
+        
+        # Process each valid sequence to remove outliers
+        filtered_sequences = []
+        for frames, coords in valid_sequences:
+            if len(coords) <= 3:
+                # For very short sequences, just keep them as is
+                filtered_sequences.append((frames, coords))
+            else:
+                # For longer sequences, apply moving average to smooth the trajectory
+                x_vals = [c[0] for c in coords]
+                y_vals = [c[1] for c in coords]
+                
+                # Simple moving average with window size 3
+                smoothed_x = []
+                smoothed_y = []
+                
+                for i in range(len(x_vals)):
+                    if i == 0 or i == len(x_vals) - 1:
+                        # Keep endpoints unchanged
+                        smoothed_x.append(x_vals[i])
+                        smoothed_y.append(y_vals[i])
+                    else:
+                        # Average with neighboring points
+                        smoothed_x.append((x_vals[i-1] + x_vals[i] + x_vals[i+1]) / 3)
+                        smoothed_y.append((y_vals[i-1] + y_vals[i] + y_vals[i+1]) / 3)
+                
+                smoothed_coords = list(zip(smoothed_x, smoothed_y))
+                filtered_sequences.append((frames, smoothed_coords))
+        
+        # Check if we need to interpolate between sequences
+        if len(filtered_sequences) > 1:
+            # Connect the sequences with smooth interpolation if the gaps aren't too large
+            full_sequence_frames = []
+            full_sequence_coords = []
+            
+            # Add the first sequence
+            first_frames, first_coords = filtered_sequences[0]
+            full_sequence_frames.extend(first_frames)
+            full_sequence_coords.extend(first_coords)
+            
+            # Connect subsequent sequences with interpolation
+            for i in range(1, len(filtered_sequences)):
+                prev_frames, prev_coords = filtered_sequences[i-1]
+                curr_frames, curr_coords = filtered_sequences[i]
+                
+                # Get the gap size in frames
+                frame_gap = curr_frames[0] - prev_frames[-1]
+                
+                # Only interpolate if the gap isn't too large (less than 30 frames)
+                if 1 < frame_gap < 30:
+                    # Get the end coordinates of the previous sequence
+                    start_x, start_y = prev_coords[-1]
+                    # Get the start coordinates of the current sequence
+                    end_x, end_y = curr_coords[0]
+                    
+                    # Create interpolated frames and coordinates
+                    for j in range(1, frame_gap):
+                        # Linear interpolation: position = start + (end - start) * fraction
+                        fraction = j / frame_gap
+                        interp_x = start_x + (end_x - start_x) * fraction
+                        interp_y = start_y + (end_y - start_y) * fraction
+                        interp_frame = prev_frames[-1] + j
+                        
+                        full_sequence_frames.append(interp_frame)
+                        full_sequence_coords.append((interp_x, interp_y))
+                
+                # Add the current sequence
+                full_sequence_frames.extend(curr_frames)
+                full_sequence_coords.extend(curr_coords)
+        else:
+            # Just use the single sequence
+            full_sequence_frames, full_sequence_coords = filtered_sequences[0]
+        
+        # Extract x and y coordinates
+        x_coords = [coord[0] for coord in full_sequence_coords]
+        y_coords = [coord[1] for coord in full_sequence_coords]
+        
+        # Apply a final velocity-based filter to remove any remaining jumps
+        filtered_x = []
+        filtered_y = []
+        
+        if len(x_coords) > 1:
+            # Add the first point
+            filtered_x.append(x_coords[0])
+            filtered_y.append(y_coords[0])
+            
+            # Check each subsequent point
+            for i in range(1, len(x_coords)):
+                # Calculate displacement
+                dx = x_coords[i] - filtered_x[-1]
+                dy = y_coords[i] - filtered_y[-1]
+                
+                # Calculate distance
+                distance = (dx**2 + dy**2)**0.5
+                
+                # If distance is too large (a jump), limit it
+                max_distance = 10.0  # max allowed distance in inches
+                if distance > max_distance:
+                    # Scale the movement to the maximum allowed distance
+                    scale_factor = max_distance / distance
+                    new_x = filtered_x[-1] + dx * scale_factor
+                    new_y = filtered_y[-1] + dy * scale_factor
+                    
+                    filtered_x.append(new_x)
+                    filtered_y.append(new_y)
+                else:
+                    # Point is acceptable
+                    filtered_x.append(x_coords[i])
+                    filtered_y.append(y_coords[i])
+        
+        return filtered_x, filtered_y
     
     def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None):
         """
