@@ -194,7 +194,8 @@ class GloveTracker:
 
         # Clean up
         cap.release()
-        out.release()
+        if create_video:
+            out.release()
         plt.close(fig)
 
         # Save tracking data to CSV
