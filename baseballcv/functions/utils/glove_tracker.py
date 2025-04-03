@@ -101,7 +101,7 @@ class GloveTracker:
         self.pixels_per_inch = None
 
     def track_video(self, video_path: str, output_path: Optional[str] = None,
-                    show_plot: bool = True) -> str:
+                show_plot: bool = True, create_video: bool = True) -> str:
         """
         Track objects in a video and generate visualization with 2D tracking plot.
 
@@ -138,11 +138,11 @@ class GloveTracker:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Setup output video
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video
 
         # If show_plot is True, we'll create a wider output to accommodate the plot
         out_width = width * 2 if show_plot else width
-        out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height))
+        out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height)) if create_video
 
         # Create plot for glove tracking
         fig = plt.figure(figsize=(10, 8))
@@ -183,9 +183,9 @@ class GloveTracker:
 
                     # Create combined frame with original and plot side by side
                     combined_frame = np.hstack((annotated_frame, plot_img))
-                    out.write(combined_frame)
+                    out.write(combined_frame) if create_video
                 else:
-                    out.write(annotated_frame)
+                    out.write(annotated_frame) if create_video
 
                 frame_idx += 1
                 pbar.update(1)
@@ -204,12 +204,13 @@ class GloveTracker:
         return output_path
 
     def batch_process(self, 
-                      input_folder: str, 
-                      delete_after_processing: bool = False, 
-                      skip_confirmation: bool = False,
-                      show_plot: bool = True,
-                      extensions: List[str] = ['.mp4', '.avi', '.mov', '.mkv'],
-                      max_workers: int = 1) -> str:
+                    input_folder: str, 
+                    delete_after_processing: bool = False, 
+                    skip_confirmation: bool = False,
+                    show_plot: bool = True,
+                    create_video: bool = True,
+                    extensions: List[str] = ['.mp4', '.avi', '.mov', '.mkv'],
+                    max_workers: int = 1) -> str:
         """
         Process all videos in a folder and generate a combined CSV with tracking data.
         
@@ -247,7 +248,10 @@ class GloveTracker:
         
         # Create a dataframe for all videos
         combined_df = pd.DataFrame()
-        
+
+        def _process_wrapper(video_path):
+            return self._process_single_video(video_path, show_plot, create_video)
+
         # Process sequentially or in parallel based on max_workers
         if max_workers > 1:
             self.logger.info(f"Processing videos in parallel with {max_workers} workers")
@@ -272,7 +276,7 @@ class GloveTracker:
             self.logger.info("Processing videos sequentially")
             for video_path in video_files:
                 try:
-                    video_df, output_path = self._process_single_video(video_path, show_plot)
+                    video_df, output_path = _process_wrapper(video_path
                     if video_df is not None:
                         combined_df = pd.concat([combined_df, video_df], ignore_index=True)
                         
@@ -299,16 +303,17 @@ class GloveTracker:
             return None
 
     def scrape_and_process(self, 
-                          start_date: str, 
-                          end_date: str = None,
-                          team_abbr: str = None,
-                          player: int = None,
-                          pitch_type: str = None,
-                          max_videos: int = 10,
-                          max_videos_per_game: int = None,
-                          delete_after_processing: bool = True,
-                          skip_confirmation: bool = False,
-                          show_plot: bool = True) -> str:
+                        start_date: str, 
+                        end_date: str = None,
+                        team_abbr: str = None,
+                        player: int = None,
+                        pitch_type: str = None,
+                        max_videos: int = 10,
+                        max_videos_per_game: int = None,
+                        delete_after_processing: bool = True,
+                        skip_confirmation: bool = False,
+                        show_plot: bool = True,
+                        create_video: bool = True) -> str:
         """
         Scrape videos from Baseball Savant and process them for glove tracking.
         
@@ -336,8 +341,8 @@ class GloveTracker:
         
         # Initialize the scraper
         scraper = BaseballSavVideoScraper(
-            start_date=start_date,
-            end_dt=end_date,
+            start_dt=start_date,  # Changed from start_date
+            end_dt=end_date,      # Changed from end_date
             team_abbr=team_abbr,
             player=player,
             pitch_type=pitch_type,
@@ -358,13 +363,14 @@ class GloveTracker:
             return None
         
         self.logger.info(f"Successfully scraped {num_videos} videos")
-        
-        # Process the downloaded videos
+
+        # Process the downloaded videos with create_video parameter
         result = self.batch_process(
             input_folder=download_folder,
             delete_after_processing=delete_after_processing,
             skip_confirmation=skip_confirmation,
-            show_plot=show_plot
+            show_plot=show_plot,
+            create_video=create_video  # Pass through create_video parameter
         )
         
         # If we didn't delete videos during batch processing, check if we should now
@@ -380,23 +386,29 @@ class GloveTracker:
         
         return result
 
-    def _process_single_video(self, video_path: str, show_plot: bool) -> Tuple[pd.DataFrame, str]:
+    def _process_single_video(self, video_path: str, show_plot: bool, create_video: bool = True) -> Tuple[pd.DataFrame, str]:
         """
         Process a single video file and return its tracking dataframe.
         
         Args:
             video_path (str): Path to the video file
             show_plot (bool): Whether to show plot in output video
+            create_video (bool): Whether to create output video
             
         Returns:
-            Tuple[pd.DataFrame, str]: (Tracking dataframe, output video path)
+            Tuple[pd.DataFrame, str]: (Tracking dataframe, output video path or CSV path)
         """
         try:
             # Process video
-            output_path = self.track_video(video_path, show_plot=show_plot)
+            output_path = self.track_video(video_path, show_plot=show_plot, create_video=create_video)
             
-            # Load the resulting CSV
-            csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
+            # Determine CSV path based on whether a video was created
+            if create_video:
+                csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
+            else:
+                # output_path is already the CSV path in this case
+                csv_filename = os.path.basename(output_path)
+                
             csv_path = os.path.join(self.results_dir, csv_filename)
             
             if os.path.exists(csv_path):
