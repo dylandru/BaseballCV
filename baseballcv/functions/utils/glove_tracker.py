@@ -278,7 +278,7 @@ class GloveTracker:
             self.logger.info("Processing videos sequentially")
             for video_path in video_files:
                 try:
-                    video_df, output_path = _process_wrapper(video_path
+                    video_df, output_path = _process_wrapper(video_path)
                     if video_df is not None:
                         combined_df = pd.concat([combined_df, video_df], ignore_index=True)
                         
