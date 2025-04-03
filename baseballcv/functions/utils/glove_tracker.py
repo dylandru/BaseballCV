@@ -4,17 +4,28 @@ import cv2
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple, Optional, Union
+import concurrent.futures
+from typing import Dict, List, Tuple, Optional, Union, Callable
+import glob
+from tqdm import tqdm
+import shutil
+import time
 from ultralytics import YOLO
 import supervision as sv
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from baseballcv.functions.load_tools import LoadTools
+from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 
 class GloveTracker:
     """
     Class for tracking the catcher's glove, home plate, and baseball in videos.
     
-    This class uses the YOLO model to detect and track these objects, and provides
+    This class supports multiple operational modes:
+    - Regular mode: Process individual videos passed to it
+    - Batch mode: Process multiple videos in a folder
+    - Scrape mode: Download videos using the Savant scraper and process them
+    
+    The tracker uses YOLO models to detect and track objects, and provides
     visualization and data export capabilities for analysis.
     """
     
@@ -26,6 +37,7 @@ class GloveTracker:
         confidence_threshold: float = 0.5,
         enable_filtering: bool = True,
         max_velocity_inches_per_sec: float = 120.0,
+        mode: str = "regular",
         logger: Optional[BaseballCVLogger] = None
     ):
         """
@@ -38,6 +50,7 @@ class GloveTracker:
             confidence_threshold (float): Confidence threshold for detections
             enable_filtering (bool): Whether to enable outlier filtering for glove detections
             max_velocity_inches_per_sec (float): Maximum plausible velocity for glove movement (for filtering)
+            mode (str): Operating mode - "regular", "batch", or "scrape"
             logger (BaseballCVLogger): Logger instance for logging
         """
         self.load_tools = LoadTools()
@@ -52,6 +65,12 @@ class GloveTracker:
         # Enable filtering and set velocity threshold
         self.enable_filtering = enable_filtering
         self.max_velocity_inches_per_sec = max_velocity_inches_per_sec
+        
+        # Set operating mode
+        self.mode = mode
+        if mode not in ["regular", "batch", "scrape"]:
+            self.logger.warning(f"Invalid mode '{mode}'. Defaulting to 'regular'")
+            self.mode = "regular"
         
         # Get class names from the model
         self.class_names = self.model.names
@@ -106,6 +125,11 @@ class GloveTracker:
         csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
         csv_path = os.path.join(self.results_dir, csv_filename)
 
+        # Reset tracking data for this video
+        self.tracking_data = []
+        self.home_plate_reference = None
+        self.pixels_per_inch = None
+
         # Open video
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -120,17 +144,12 @@ class GloveTracker:
         out_width = width * 2 if show_plot else width
         out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height))
 
-        # Reset tracking data
-        self.tracking_data = []
-        self.home_plate_reference = None
-        self.pixels_per_inch = None
-
         # Create plot for glove tracking
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111)
 
         # Process frames
-        progress_bar = ProgressBar(total=total_frames, desc="Processing Video")
+        progress_bar = ProgressBar(total=total_frames, desc=f"Processing video: {os.path.basename(video_path)}")
 
         frame_idx = 0
 
@@ -143,7 +162,7 @@ class GloveTracker:
                 # Run YOLO detection on the frame
                 results = self.model.predict(frame, conf=self.confidence_threshold, device=self.device, verbose=False)
 
-                # Process and extract detections - now passing fps
+                # Process and extract detections
                 detections = self._process_detections(results, frame, frame_idx, fps)
 
                 # Draw annotations on the frame
@@ -156,7 +175,7 @@ class GloveTracker:
                     # Convert matplotlib figure to image
                     fig.canvas.draw()
                     buf = fig.canvas.buffer_rgba()
-                    plot_img = np.asarray(buf)[:, :, :3]  # Convert RGBA to RGB by taking only first 3 channels
+                    plot_img = np.asarray(buf)[:, :, :3]  # Convert RGBA to RGB
                     plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
                     # Resize plot to match frame height
@@ -177,13 +196,266 @@ class GloveTracker:
         plt.close(fig)
 
         # Save tracking data to CSV
-        self._save_tracking_data(csv_path)
+        self._save_tracking_data(csv_path, video_path)
 
         self.logger.info(f"Tracking completed. Output video saved to {output_path}")
         self.logger.info(f"Tracking data saved to {csv_path}")
 
         return output_path
 
+    def batch_process(self, 
+                      input_folder: str, 
+                      delete_after_processing: bool = False, 
+                      skip_confirmation: bool = False,
+                      show_plot: bool = True,
+                      extensions: List[str] = ['.mp4', '.avi', '.mov', '.mkv'],
+                      max_workers: int = 1) -> str:
+        """
+        Process all videos in a folder and generate a combined CSV with tracking data.
+        
+        Args:
+            input_folder (str): Path to folder containing videos
+            delete_after_processing (bool): Whether to delete videos after processing
+            skip_confirmation (bool): Skip confirmation for deletion
+            show_plot (bool): Whether to show plot in output videos
+            extensions (List[str]): List of video file extensions to process
+            max_workers (int): Maximum number of parallel workers (1 = sequential)
+            
+        Returns:
+            str: Path to the combined CSV file
+        """
+        if not os.path.exists(input_folder):
+            raise FileNotFoundError(f"Input folder not found: {input_folder}")
+        
+        # Find all video files in the folder
+        video_files = []
+        for ext in extensions:
+            video_files.extend(glob.glob(os.path.join(input_folder, f"*{ext}")))
+        
+        if not video_files:
+            self.logger.warning(f"No video files found in {input_folder}")
+            return None
+        
+        self.logger.info(f"Found {len(video_files)} videos to process in {input_folder}")
+        
+        # Warn about deletion if enabled
+        if delete_after_processing and not skip_confirmation:
+            confirm = input(f"WARNING: {len(video_files)} videos will be DELETED after processing. Continue? (y/n): ")
+            if confirm.lower() != 'y':
+                self.logger.info("Batch processing cancelled")
+                return None
+        
+        # Create a dataframe for all videos
+        combined_df = pd.DataFrame()
+        
+        # Process sequentially or in parallel based on max_workers
+        if max_workers > 1:
+            self.logger.info(f"Processing videos in parallel with {max_workers} workers")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(self._process_single_video, video_path, show_plot): video_path for video_path in video_files}
+                
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(futures):
+                    video_path = futures[future]
+                    try:
+                        video_df, output_path = future.result()
+                        if video_df is not None:
+                            combined_df = pd.concat([combined_df, video_df], ignore_index=True)
+                            
+                            # Delete if enabled
+                            if delete_after_processing:
+                                os.remove(video_path)
+                                self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
+                    except Exception as e:
+                        self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
+        else:
+            self.logger.info("Processing videos sequentially")
+            for video_path in video_files:
+                try:
+                    video_df, output_path = self._process_single_video(video_path, show_plot)
+                    if video_df is not None:
+                        combined_df = pd.concat([combined_df, video_df], ignore_index=True)
+                        
+                        # Delete if enabled
+                        if delete_after_processing:
+                            os.remove(video_path)
+                            self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
+                except Exception as e:
+                    self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
+        
+        # Save combined results
+        if not combined_df.empty:
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            combined_csv_path = os.path.join(self.results_dir, f"batch_tracking_results_{timestamp}.csv")
+            combined_df.to_csv(combined_csv_path, index=False)
+            self.logger.info(f"Combined tracking results saved to {combined_csv_path}")
+            
+            # Generate summary statistics
+            self._generate_batch_summary(combined_df, os.path.join(self.results_dir, f"batch_summary_{timestamp}.csv"))
+            
+            return combined_csv_path
+        else:
+            self.logger.warning("No valid tracking data was collected")
+            return None
+
+    def scrape_and_process(self, 
+                          start_date: str, 
+                          end_date: str = None,
+                          team_abbr: str = None,
+                          player: int = None,
+                          pitch_type: str = None,
+                          max_videos: int = 10,
+                          max_videos_per_game: int = None,
+                          delete_after_processing: bool = True,
+                          skip_confirmation: bool = False,
+                          show_plot: bool = True) -> str:
+        """
+        Scrape videos from Baseball Savant and process them for glove tracking.
+        
+        Args:
+            start_date (str): Start date in YYYY-MM-DD format
+            end_date (str): End date in YYYY-MM-DD format (optional)
+            team_abbr (str): Team abbreviation (optional)
+            player (int): Player ID (optional)
+            pitch_type (str): Pitch type (optional)
+            max_videos (int): Maximum number of videos to process
+            max_videos_per_game (int): Maximum videos per game
+            delete_after_processing (bool): Whether to delete videos after processing
+            skip_confirmation (bool): Skip confirmation for deletion
+            show_plot (bool): Whether to show plot in output videos
+            
+        Returns:
+            str: Path to the combined CSV file
+        """
+        # Create a unique download folder within results directory
+        download_folder = os.path.join(self.results_dir, f"savant_videos_{time.strftime('%Y%m%d-%H%M%S')}")
+        os.makedirs(download_folder, exist_ok=True)
+        
+        # Initialize the scraper
+        scraper = BaseballSavVideoScraper(
+            start_date=start_date,
+            end_dt=end_date,
+            team_abbr=team_abbr,
+            player=player,
+            pitch_type=pitch_type,
+            download_folder=download_folder,
+            max_return_videos=max_videos,
+            max_videos_per_game=max_videos_per_game
+        )
+        
+        self.logger.info(f"Scraping videos from Baseball Savant...")
+        scraper.run_executor()
+        
+        # Get the play data
+        play_ids_df = scraper.get_play_ids_df()
+        num_videos = len(play_ids_df)
+        
+        if num_videos == 0:
+            self.logger.warning("No videos were downloaded from Baseball Savant")
+            return None
+        
+        self.logger.info(f"Successfully scraped {num_videos} videos")
+        
+        # Process the downloaded videos
+        result = self.batch_process(
+            input_folder=download_folder,
+            delete_after_processing=delete_after_processing,
+            skip_confirmation=skip_confirmation,
+            show_plot=show_plot
+        )
+        
+        # If we didn't delete videos during batch processing, check if we should now
+        if not delete_after_processing and os.path.exists(download_folder):
+            if not skip_confirmation:
+                confirm = input(f"Delete downloaded videos? (y/n): ")
+                if confirm.lower() == 'y':
+                    scraper.cleanup_savant_videos()
+                    self.logger.info(f"Deleted downloaded videos")
+            elif delete_after_processing:
+                scraper.cleanup_savant_videos()
+                self.logger.info(f"Deleted downloaded videos")
+        
+        return result
+
+    def _process_single_video(self, video_path: str, show_plot: bool) -> Tuple[pd.DataFrame, str]:
+        """
+        Process a single video file and return its tracking dataframe.
+        
+        Args:
+            video_path (str): Path to the video file
+            show_plot (bool): Whether to show plot in output video
+            
+        Returns:
+            Tuple[pd.DataFrame, str]: (Tracking dataframe, output video path)
+        """
+        try:
+            # Process video
+            output_path = self.track_video(video_path, show_plot=show_plot)
+            
+            # Load the resulting CSV
+            csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
+            csv_path = os.path.join(self.results_dir, csv_filename)
+            
+            if os.path.exists(csv_path):
+                df = pd.read_csv(csv_path)
+                
+                # Add video filename column
+                df['video_filename'] = os.path.basename(video_path)
+                
+                return df, output_path
+            else:
+                self.logger.warning(f"No tracking data generated for {os.path.basename(video_path)}")
+                return None, output_path
+        except Exception as e:
+            self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
+            raise
+
+    def _generate_batch_summary(self, combined_df: pd.DataFrame, summary_path: str) -> None:
+        """
+        Generate summary statistics from batch processing.
+        
+        Args:
+            combined_df (pd.DataFrame): Combined tracking data
+            summary_path (str): Path to save summary CSV
+        """
+        if combined_df.empty:
+            return
+        
+        # Group by video filename
+        video_groups = combined_df.groupby('video_filename')
+        
+        summary_data = []
+        for video_name, group in video_groups:
+            # Filter to glove positions
+            glove_data = group[group['glove_real_x'].notna() & group['glove_real_y'].notna()]
+            
+            if not glove_data.empty:
+                # Calculate movement
+                dx = glove_data['glove_real_x'].diff().dropna()
+                dy = glove_data['glove_real_y'].diff().dropna()
+                distances = np.sqrt(dx**2 + dy**2)
+                
+                summary = {
+                    'video_filename': video_name,
+                    'frame_count': len(group),
+                    'frames_with_glove': len(glove_data),
+                    'frames_with_baseball': group['baseball_real_x'].notna().sum(),
+                    'frames_with_homeplate': group['homeplate_center_x'].notna().sum(),
+                    'total_distance_inches': distances.sum(),
+                    'max_glove_movement_inches': distances.max() if not distances.empty else None,
+                    'avg_glove_movement_inches': distances.mean() if not distances.empty else None,
+                    'glove_x_range_inches': glove_data['glove_real_x'].max() - glove_data['glove_real_x'].min() if len(glove_data) > 1 else None,
+                    'glove_y_range_inches': glove_data['glove_real_y'].max() - glove_data['glove_real_y'].min() if len(glove_data) > 1 else None,
+                    'avg_glove_x_position': glove_data['glove_real_x'].mean() if not glove_data.empty else None,
+                    'avg_glove_y_position': glove_data['glove_real_y'].mean() if not glove_data.empty else None
+                }
+                summary_data.append(summary)
+        
+        # Create and save summary dataframe
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_csv(summary_path, index=False)
+            self.logger.info(f"Batch summary saved to {summary_path}")
 
     def _process_detections(self, results, frame, frame_idx, fps=30.0):
         """
@@ -456,12 +728,13 @@ class GloveTracker:
         return plot_img
 
 
-    def _save_tracking_data(self, csv_path):
+    def _save_tracking_data(self, csv_path, video_path=None):
         """
         Save tracking data to a CSV file.
 
         Args:
             csv_path: Path to save the CSV file
+            video_path: Path to the original video (for identification in batch mode)
         """
         if not self.tracking_data:
             self.logger.warning("No tracking data to save")
@@ -513,7 +786,7 @@ class GloveTracker:
                     baseball_real_x, baseball_real_y = detection['real_world_coords']['baseball']
 
             # Add row to CSV data
-            csv_data.append({
+            row_data = {
                 'frame_idx': frame_idx,
                 'homeplate_center_x': homeplate_center_x,
                 'homeplate_center_y': homeplate_center_y,
@@ -530,7 +803,13 @@ class GloveTracker:
                 'baseball_real_x': baseball_real_x,
                 'baseball_real_y': baseball_real_y,
                 'pixels_per_inch': self.pixels_per_inch
-            })
+            }
+            
+            # Add video path if in batch mode
+            if video_path:
+                row_data['video_filename'] = os.path.basename(video_path)
+                
+            csv_data.append(row_data)
 
         # Create DataFrame and save to CSV
         df = pd.DataFrame(csv_data)
