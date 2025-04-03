@@ -77,9 +77,10 @@ class BaseballTools:
         return results
 
     def track_glove(self, video_path: str = None, output_path: str = None, 
-                    confidence_threshold: float = 0.5, device: str = None, 
-                    show_plot: bool = True, generate_heatmap: bool = True,
-                    enable_filtering: bool = True, max_velocity_inches_per_sec: float = 120.0) -> dict:
+                confidence_threshold: float = 0.5, device: str = None, 
+                show_plot: bool = True, generate_heatmap: bool = True,
+                enable_filtering: bool = True, max_velocity_inches_per_sec: float = 120.0,
+                create_video: bool = True) -> dict:
         """
         Track the catcher's glove, home plate, and baseball in a video.
         
@@ -116,10 +117,12 @@ class BaseballTools:
         )
         
         # Track the video
+        # Pass create_video parameter
         output_video = tracker.track_video(
             video_path=video_path,
             output_path=output_path,
-            show_plot=show_plot
+            show_plot=show_plot,
+            create_video=create_video
         )
         
         # Get the CSV path
@@ -146,15 +149,16 @@ class BaseballTools:
         return results
     
     def batch_track_gloves(self, input_folder: str, 
-                          delete_after_processing: bool = False, 
-                          skip_confirmation: bool = False,
-                          confidence_threshold: float = 0.5, 
-                          device: str = None,
-                          show_plot: bool = True, 
-                          generate_heatmap: bool = True,
-                          enable_filtering: bool = True, 
-                          max_velocity_inches_per_sec: float = 120.0,
-                          max_workers: int = 1) -> dict:
+                      delete_after_processing: bool = False, 
+                      skip_confirmation: bool = False,
+                      confidence_threshold: float = 0.5, 
+                      device: str = None,
+                      show_plot: bool = True, 
+                      generate_heatmap: bool = True,
+                      enable_filtering: bool = True, 
+                      max_velocity_inches_per_sec: float = 120.0,
+                      max_workers: int = 1,
+                      create_video: bool = True) -> dict:
         """
         Batch process multiple videos to track gloves and analyze movement.
         
@@ -185,11 +189,13 @@ class BaseballTools:
         )
         
         # Run batch processing
+        # Pass create_video parameter
         combined_csv = tracker.batch_process(
             input_folder=input_folder,
             delete_after_processing=delete_after_processing,
             skip_confirmation=skip_confirmation,
             show_plot=show_plot,
+            create_video=create_video,
             max_workers=max_workers
         )
         
@@ -214,21 +220,22 @@ class BaseballTools:
         return results
     
     def scrape_and_track_gloves(self, 
-                               start_date: str, 
-                               end_date: str = None,
-                               team_abbr: str = None,
-                               player: int = None,
-                               pitch_type: str = None,
-                               max_videos: int = 10,
-                               max_videos_per_game: int = None,
-                               delete_after_processing: bool = True,
-                               skip_confirmation: bool = False,
-                               confidence_threshold: float = 0.5, 
-                               device: str = None,
-                               show_plot: bool = True, 
-                               generate_heatmap: bool = True,
-                               enable_filtering: bool = True, 
-                               max_velocity_inches_per_sec: float = 120.0) -> dict:
+                           start_date: str, 
+                           end_date: str = None,
+                           team_abbr: str = None,
+                           player: int = None,
+                           pitch_type: str = None,
+                           max_videos: int = 10,
+                           max_videos_per_game: int = None,
+                           delete_after_processing: bool = True,
+                           skip_confirmation: bool = False,
+                           confidence_threshold: float = 0.5, 
+                           device: str = None,
+                           show_plot: bool = True, 
+                           generate_heatmap: bool = True,
+                           enable_filtering: bool = True, 
+                           max_velocity_inches_per_sec: float = 120.0,
+                           create_video: bool = True) -> dict:
         """
         Scrape videos from Baseball Savant and track gloves in them.
         
@@ -267,6 +274,7 @@ class BaseballTools:
         )
         
         # Run scrape and process workflow
+        # Pass create_video parameter
         combined_csv = tracker.scrape_and_process(
             start_date=start_date,
             end_date=end_date,
@@ -277,7 +285,8 @@ class BaseballTools:
             max_videos_per_game=max_videos_per_game,
             delete_after_processing=delete_after_processing,
             skip_confirmation=skip_confirmation,
-            show_plot=show_plot
+            show_plot=show_plot,
+            create_video=create_video
         )
         
         if combined_csv:
