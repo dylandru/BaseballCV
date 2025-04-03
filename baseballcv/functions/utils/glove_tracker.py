@@ -14,7 +14,7 @@ from ultralytics import YOLO
 import supervision as sv
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from baseballcv.functions.load_tools import LoadTools
-from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
+
 
 class GloveTracker:
     """
@@ -327,6 +327,9 @@ class GloveTracker:
         Returns:
             str: Path to the combined CSV file
         """
+        # Import here to avoid circular import
+        from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
+
         # Create a unique download folder within results directory
         download_folder = os.path.join(self.results_dir, f"savant_videos_{time.strftime('%Y%m%d-%H%M%S')}")
         os.makedirs(download_folder, exist_ok=True)
