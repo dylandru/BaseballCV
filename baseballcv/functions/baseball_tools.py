@@ -1,11 +1,13 @@
 import os
 from typing import Dict, List
-from .utils import DistanceToZone
+from .utils import DistanceToZone, GloveTracker
 from baseballcv.utilities import BaseballCVLogger
 
 class BaseballTools:
     """
     Class for analyzing baseball videos with Computer Vision.
+    
+    Enhanced with multi-mode glove tracking capabilities.
     """
     def __init__(self, device: str = 'cpu', verbose: bool = True):
         """
@@ -26,9 +28,7 @@ class BaseballTools:
                          ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
                          save_csv: bool = True, csv_path: str = None) -> list:
         """
-        The DistanceToZone function calculates the distance of a pitch to the strike zone in a video, as well as
-        other information about the Play ID including the frame where the ball crosses, and the distance between the 
-        target and the estimated strike zone.
+        The DistanceToZone function calculates the distance of a pitch to the strike zone in a video.
         
         Args:
             start_date (str): Start date of the analysis
@@ -39,17 +39,18 @@ class BaseballTools:
             max_videos (int): Maximum number of videos to analyze
             max_videos_per_game (int): Maximum number of videos per game to analyze
             create_video (bool): Whether to create a video of the analysis
-            catcher_model (str): Path to the PHCDetector model, primarily used for catching (default is YOLO model 'phc_detector')
-            glove_model (str): Path to the GloveTracking model, primarily used for glove detection (default is YOLO model 'glove_tracking')
-            ball_model (str): Path to the BallTracking model, primarily used for ball detection (default is YOLO model 'ball_trackingv4')
-            zone_vertical_adjustment (float): Factor to adjust strike zone vertically as percentage of elbow-to-hip distance.
-                                             Positive values move zone toward home plate, negative away from home plate. (default is 0.5)
-            save_csv (bool): Whether to save analysis results to CSV (default is True)
-            csv_path (str): Custom path for CSV file (default is results/distance_to_zone_results.csv)
+            catcher_model (str): Path to the PHCDetector model
+            glove_model (str): Path to the GloveTracking model
+            ball_model (str): Path to the BallTracking model
+            zone_vertical_adjustment (float): Factor to adjust strike zone vertically
+            save_csv (bool): Whether to save analysis results to CSV
+            csv_path (str): Custom path for CSV file
             
         Returns:
             list: List of results from the DistanceToZone class for each video analyzed.
         """
+        from baseballcv.functions.utils import DistanceToZone
+        
         dtoz = DistanceToZone(
             device=self.device, 
             verbose=self.verbose, 
@@ -75,11 +76,10 @@ class BaseballTools:
         
         return results
 
-
     def track_glove(self, video_path: str = None, output_path: str = None, 
                     confidence_threshold: float = 0.5, device: str = None, 
                     show_plot: bool = True, generate_heatmap: bool = True,
-                    enable_filtering: bool = True, max_velocity_inches_per_sec: float = 120.0) -> Dict:
+                    enable_filtering: bool = True, max_velocity_inches_per_sec: float = 120.0) -> dict:
         """
         Track the catcher's glove, home plate, and baseball in a video.
         
@@ -89,30 +89,30 @@ class BaseballTools:
         Args:
             video_path (str): Path to the input video file
             output_path (str): Path to save the tracked output video (optional)
-            confidence_threshold (float): Confidence threshold for detections (default: 0.5)
+            confidence_threshold (float): Confidence threshold for detections
             device (str): Device to run the model on (cpu, cuda, mps)
             show_plot (bool): Whether to show the 2D tracking plot in the output video
             generate_heatmap (bool): Whether to generate a heatmap of glove positions
             enable_filtering (bool): Whether to enable filtering of outlier glove detections
-            max_velocity_inches_per_sec (float): Maximum plausible velocity (inches/sec) for filtering
+            max_velocity_inches_per_sec (float): Maximum plausible velocity for filtering
             
         Returns:
             Dict: Results containing paths to output files and movement statistics
         """
+        # Input validation
         if video_path is None or not os.path.exists(video_path):
             self.logger.error(f"Video file not found at {video_path}")
             return {"error": f"Video file not found at {video_path}"}
         
-        # Initialize GloveTracker
-        from .utils.glove_tracker import GloveTracker
-        
+        # Initialize GloveTracker in regular mode
         tracker = GloveTracker(
             model_alias='glove_tracking',
             device=device if device else self.device,
             confidence_threshold=confidence_threshold,
             enable_filtering=enable_filtering,
             max_velocity_inches_per_sec=max_velocity_inches_per_sec,
-            logger=self.logger
+            logger=self.logger,
+            mode="regular"  # Using regular mode for single video processing
         )
         
         # Track the video
@@ -122,15 +122,9 @@ class BaseballTools:
             show_plot=show_plot
         )
         
-        # Get the CSV path - FIXED: Adding "_tracking" suffix to match actual file
+        # Get the CSV path
         csv_filename = os.path.splitext(os.path.basename(output_video))[0] + "_tracking.csv"
         csv_path = os.path.join(tracker.results_dir, csv_filename)
-        
-        # Check if file exists and log it
-        if os.path.exists(csv_path):
-            self.logger.info(f"Using tracking data from {csv_path}")
-        else:
-            self.logger.warning(f"Tracking data file not found at {csv_path}")
         
         # Analyze movement
         movement_stats = tracker.analyze_glove_movement(csv_path)
@@ -148,5 +142,168 @@ class BaseballTools:
             "filtering_applied": enable_filtering,
             "max_velocity_threshold": max_velocity_inches_per_sec if enable_filtering else None
         }
+        
+        return results
+    
+    def batch_track_gloves(self, input_folder: str, 
+                          delete_after_processing: bool = False, 
+                          skip_confirmation: bool = False,
+                          confidence_threshold: float = 0.5, 
+                          device: str = None,
+                          show_plot: bool = True, 
+                          generate_heatmap: bool = True,
+                          enable_filtering: bool = True, 
+                          max_velocity_inches_per_sec: float = 120.0,
+                          max_workers: int = 1) -> dict:
+        """
+        Batch process multiple videos to track gloves and analyze movement.
+        
+        Args:
+            input_folder (str): Folder containing videos to process
+            delete_after_processing (bool): Whether to delete videos after processing
+            skip_confirmation (bool): Skip deletion confirmation dialog
+            confidence_threshold (float): Confidence threshold for detections
+            device (str): Device to run the model on (cpu, cuda, mps)
+            show_plot (bool): Whether to show the 2D tracking plot in the output videos
+            generate_heatmap (bool): Whether to generate heatmaps of glove positions
+            enable_filtering (bool): Whether to enable filtering of outlier glove detections
+            max_velocity_inches_per_sec (float): Maximum plausible velocity for filtering
+            max_workers (int): Maximum number of parallel workers (1 = sequential)
+            
+        Returns:
+            Dict: Results containing paths to output files and batch statistics
+        """
+        # Initialize GloveTracker in batch mode
+        tracker = GloveTracker(
+            model_alias='glove_tracking',
+            device=device if device else self.device,
+            confidence_threshold=confidence_threshold,
+            enable_filtering=enable_filtering,
+            max_velocity_inches_per_sec=max_velocity_inches_per_sec,
+            logger=self.logger,
+            mode="batch"  # Using batch mode for processing multiple videos
+        )
+        
+        # Run batch processing
+        combined_csv = tracker.batch_process(
+            input_folder=input_folder,
+            delete_after_processing=delete_after_processing,
+            skip_confirmation=skip_confirmation,
+            show_plot=show_plot,
+            max_workers=max_workers
+        )
+        
+        if combined_csv:
+            # Generate a combined heatmap if requested
+            combined_heatmap = None
+            if generate_heatmap:
+                combined_heatmap = tracker.plot_glove_heatmap(combined_csv)
+            
+            results = {
+                "combined_csv": combined_csv,
+                "combined_heatmap": combined_heatmap,
+                "results_dir": tracker.results_dir,
+                "num_videos_processed": sum(1 for line in open(combined_csv) if line.strip()) - 1  # Subtract header
+            }
+        else:
+            results = {
+                "error": "Batch processing failed or no valid videos were found",
+                "results_dir": tracker.results_dir
+            }
+        
+        return results
+    
+    def scrape_and_track_gloves(self, 
+                               start_date: str, 
+                               end_date: str = None,
+                               team_abbr: str = None,
+                               player: int = None,
+                               pitch_type: str = None,
+                               max_videos: int = 10,
+                               max_videos_per_game: int = None,
+                               delete_after_processing: bool = True,
+                               skip_confirmation: bool = False,
+                               confidence_threshold: float = 0.5, 
+                               device: str = None,
+                               show_plot: bool = True, 
+                               generate_heatmap: bool = True,
+                               enable_filtering: bool = True, 
+                               max_velocity_inches_per_sec: float = 120.0) -> dict:
+        """
+        Scrape videos from Baseball Savant and track gloves in them.
+        
+        This function combines the Savant scraper with glove tracking to provide
+        a complete pipeline from video acquisition to movement analysis.
+        
+        Args:
+            start_date (str): Start date in YYYY-MM-DD format
+            end_date (str): End date in YYYY-MM-DD format (optional)
+            team_abbr (str): Team abbreviation (optional)
+            player (int): Player ID (optional)
+            pitch_type (str): Pitch type (optional)
+            max_videos (int): Maximum number of videos to process
+            max_videos_per_game (int): Maximum videos per game
+            delete_after_processing (bool): Whether to delete videos after processing
+            skip_confirmation (bool): Skip confirmation for deletion
+            confidence_threshold (float): Confidence threshold for detections
+            device (str): Device to run the model on (cpu, cuda, mps)
+            show_plot (bool): Whether to show the 2D tracking plot in the output videos
+            generate_heatmap (bool): Whether to generate heatmaps of glove positions
+            enable_filtering (bool): Whether to enable filtering of outlier glove detections
+            max_velocity_inches_per_sec (float): Maximum plausible velocity for filtering
+            
+        Returns:
+            Dict: Results containing paths to output files and analysis statistics
+        """
+        # Initialize GloveTracker in scrape mode
+        tracker = GloveTracker(
+            model_alias='glove_tracking',
+            device=device if device else self.device,
+            confidence_threshold=confidence_threshold,
+            enable_filtering=enable_filtering,
+            max_velocity_inches_per_sec=max_velocity_inches_per_sec,
+            logger=self.logger,
+            mode="scrape"  # Using scrape mode for integration with BaseballSavVideoScraper
+        )
+        
+        # Run scrape and process workflow
+        combined_csv = tracker.scrape_and_process(
+            start_date=start_date,
+            end_date=end_date,
+            team_abbr=team_abbr,
+            player=player,
+            pitch_type=pitch_type,
+            max_videos=max_videos,
+            max_videos_per_game=max_videos_per_game,
+            delete_after_processing=delete_after_processing,
+            skip_confirmation=skip_confirmation,
+            show_plot=show_plot
+        )
+        
+        if combined_csv:
+            # Generate a combined heatmap if requested
+            combined_heatmap = None
+            if generate_heatmap:
+                combined_heatmap = tracker.plot_glove_heatmap(combined_csv)
+            
+            # Read CSV to get statistics
+            import pandas as pd
+            df = pd.read_csv(combined_csv)
+            
+            results = {
+                "combined_csv": combined_csv,
+                "combined_heatmap": combined_heatmap,
+                "results_dir": tracker.results_dir,
+                "num_videos_processed": len(df['video_filename'].unique()),
+                "total_frames_analyzed": len(df),
+                "frames_with_glove": df['glove_real_x'].notna().sum(),
+                "frames_with_baseball": df['baseball_real_x'].notna().sum(),
+                "statcast_data_available": any(col.startswith('statcast_') for col in df.columns)
+            }
+        else:
+            results = {
+                "error": "Scraping and processing failed or no valid videos were found",
+                "results_dir": tracker.results_dir
+            }
         
         return results
