@@ -138,11 +138,11 @@ class GloveTracker:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Setup output video
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video else None
 
         # If show_plot is True, we'll create a wider output to accommodate the plot
         out_width = width * 2 if show_plot else width
-        out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height)) if create_video
+        out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height)) if create_video else None
 
         # Create plot for glove tracking
         fig = plt.figure(figsize=(10, 8))
@@ -183,9 +183,11 @@ class GloveTracker:
 
                     # Create combined frame with original and plot side by side
                     combined_frame = np.hstack((annotated_frame, plot_img))
-                    out.write(combined_frame) if create_video
+                    if create_video:
+                        out.write(combined_frame) 
                 else:
-                    out.write(annotated_frame) if create_video
+                    if create_video:
+                        out.write(annotated_frame) 
 
                 frame_idx += 1
                 pbar.update(1)
