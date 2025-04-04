@@ -135,7 +135,7 @@ class GloveTracker:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Setup output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video else None
@@ -748,80 +748,99 @@ class GloveTracker:
 
     def _save_tracking_data(self, csv_path, video_path=None):
         """
-        Save tracking data to a CSV file.
+        Save tracking data to a CSV file, including both raw detections and processed coordinates.
 
         Args:
             csv_path: Path to save the CSV file
             video_path: Path to the original video (for identification in batch mode)
         """
-        if not self.tracking_data:
+        if not self.tracking_data and not hasattr(self, 'total_frames'):
             self.logger.warning("No tracking data to save")
             return
 
-        # Prepare data for CSV
+        # Get total frame count from video if available
+        total_frames = getattr(self, 'total_frames', None)
+        if total_frames is None and video_path and os.path.exists(video_path):
+            cap = cv2.VideoCapture(video_path)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+        
+        # If we still don't know total frames, estimate from tracking data
+        if total_frames is None and self.tracking_data:
+            total_frames = max(detection['frame_idx'] for detection in self.tracking_data) + 1
+        
+        # Generate processed coordinates using our interpolation and filtering methods
+        processed_coords = {}
+        if self.tracking_data:
+            # Get processed x, y coordinates
+            processed_x, processed_y = self._handle_missing_detections()
+            
+            # Map the processed coordinates back to frame indices
+            frame_indices = sorted(set(detection['frame_idx'] for detection in self.tracking_data))
+            if len(processed_x) == len(frame_indices):
+                for idx, frame_idx in enumerate(frame_indices):
+                    processed_coords[frame_idx] = (processed_x[idx], processed_y[idx])
+        
+        # Prepare data for CSV - create a record for every frame
         csv_data = []
-
-        for detection in self.tracking_data:
-            frame_idx = detection['frame_idx']
-
-            # Home plate data
-            homeplate_center_x = None
-            homeplate_center_y = None
-            homeplate_width = None
-            homeplate_confidence = None
-
-            if detection['homeplate'] is not None:
-                homeplate_center_x, homeplate_center_y = detection['homeplate']['center']
-                homeplate_width = detection['homeplate']['width']
-                homeplate_confidence = detection['homeplate']['confidence']
-
-            # Glove data
-            glove_center_x = None
-            glove_center_y = None
-            glove_confidence = None
-            glove_real_x = None
-            glove_real_y = None
-
-            if detection['glove'] is not None:
-                glove_center_x, glove_center_y = detection['glove']['center']
-                glove_confidence = detection['glove']['confidence']
-
-                if 'glove' in detection['real_world_coords']:
-                    glove_real_x, glove_real_y = detection['real_world_coords']['glove']
-
-            # Baseball data
-            baseball_center_x = None
-            baseball_center_y = None
-            baseball_confidence = None
-            baseball_real_x = None
-            baseball_real_y = None
-
-            if detection['baseball'] is not None:
-                baseball_center_x, baseball_center_y = detection['baseball']['center']
-                baseball_confidence = detection['baseball']['confidence']
-
-                if 'baseball' in detection['real_world_coords']:
-                    baseball_real_x, baseball_real_y = detection['real_world_coords']['baseball']
-
-            # Add row to CSV data
+        
+        # Include all frames in the range, even if no detection
+        for frame_idx in range(total_frames):
+            # Find detection for this frame if it exists
+            detection = next((d for d in self.tracking_data if d['frame_idx'] == frame_idx), None)
+            
+            # Base data - will be populated with None for missing frames
             row_data = {
                 'frame_idx': frame_idx,
-                'homeplate_center_x': homeplate_center_x,
-                'homeplate_center_y': homeplate_center_y,
-                'homeplate_width': homeplate_width,
-                'homeplate_confidence': homeplate_confidence,
-                'glove_center_x': glove_center_x,
-                'glove_center_y': glove_center_y,
-                'glove_confidence': glove_confidence,
-                'glove_real_x': glove_real_x,
-                'glove_real_y': glove_real_y,
-                'baseball_center_x': baseball_center_x,
-                'baseball_center_y': baseball_center_y,
-                'baseball_confidence': baseball_confidence,
-                'baseball_real_x': baseball_real_x,
-                'baseball_real_y': baseball_real_y,
-                'pixels_per_inch': self.pixels_per_inch
+                'homeplate_center_x': None,
+                'homeplate_center_y': None,
+                'homeplate_width': None,
+                'homeplate_confidence': None,
+                'glove_center_x': None,
+                'glove_center_y': None,
+                'glove_confidence': None,
+                'glove_real_x': None,
+                'glove_real_y': None,
+                'baseball_center_x': None,
+                'baseball_center_y': None,
+                'baseball_confidence': None,
+                'baseball_real_x': None,
+                'baseball_real_y': None,
+                'pixels_per_inch': self.pixels_per_inch,
+                # Add new columns for processed coordinates
+                'glove_processed_x': None,
+                'glove_processed_y': None,
+                'is_interpolated': True  # Default to True, will be set to False for actual detections
             }
+            
+            # If we have detection data for this frame, populate it
+            if detection:
+                # Home plate data
+                if detection['homeplate'] is not None:
+                    row_data['homeplate_center_x'], row_data['homeplate_center_y'] = detection['homeplate']['center']
+                    row_data['homeplate_width'] = detection['homeplate']['width']
+                    row_data['homeplate_confidence'] = detection['homeplate']['confidence']
+
+                # Glove data - raw detections
+                if detection['glove'] is not None:
+                    row_data['glove_center_x'], row_data['glove_center_y'] = detection['glove']['center']
+                    row_data['glove_confidence'] = detection['glove']['confidence']
+                    row_data['is_interpolated'] = False  # This is an actual detection
+
+                    if 'glove' in detection['real_world_coords']:
+                        row_data['glove_real_x'], row_data['glove_real_y'] = detection['real_world_coords']['glove']
+
+                # Baseball data
+                if detection['baseball'] is not None:
+                    row_data['baseball_center_x'], row_data['baseball_center_y'] = detection['baseball']['center']
+                    row_data['baseball_confidence'] = detection['baseball']['confidence']
+
+                    if 'baseball' in detection['real_world_coords']:
+                        row_data['baseball_real_x'], row_data['baseball_real_y'] = detection['real_world_coords']['baseball']
+            
+            # Add processed coordinates if available for this frame
+            if frame_idx in processed_coords:
+                row_data['glove_processed_x'], row_data['glove_processed_y'] = processed_coords[frame_idx]
             
             # Add video path if in batch mode
             if video_path:
@@ -834,9 +853,7 @@ class GloveTracker:
         df.to_csv(csv_path, index=False)
 
         # Logging information
-        self.logger.info(f"Tracking data saved to {csv_path}")
-        
-        # For debugging
+        self.logger.info(f"Tracking data saved to {csv_path} with {len(csv_data)} frames")
         if not os.path.exists(csv_path):
             self.logger.error(f"Failed to save CSV file at {csv_path}")
         else:
