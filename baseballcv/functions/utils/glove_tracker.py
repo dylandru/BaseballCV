@@ -135,7 +135,8 @@ class GloveTracker:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
-        self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.total_frames = total_frames  # Store total frames as an instance attribute
 
         # Setup output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video else None
