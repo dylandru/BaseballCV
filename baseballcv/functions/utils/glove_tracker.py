@@ -755,7 +755,7 @@ class GloveTracker:
             csv_path: Path to save the CSV file
             video_path: Path to the original video (for identification in batch mode)
         """
-        if not self.tracking_data and not hasattr(self, 'total_frames'):
+        if not self.tracking_data:
             self.logger.warning("No tracking data to save")
             return
 
@@ -770,17 +770,25 @@ class GloveTracker:
         if total_frames is None and self.tracking_data:
             total_frames = max(detection['frame_idx'] for detection in self.tracking_data) + 1
         
-        # Generate processed coordinates using our interpolation and filtering methods
+        # Get processed coordinates for all frames that have tracking data
+        processed_x, processed_y = self._fill_missing_detections()
+        
+        # Create a mapping from frames that have tracking data to processed coordinates
+        frame_indices = sorted(set(detection['frame_idx'] for detection in self.tracking_data))
         processed_coords = {}
-        if self.tracking_data:
-            # Get processed x, y coordinates
-            processed_x, processed_y = self._handle_missing_detections()
-            
-            # Map the processed coordinates back to frame indices
-            frame_indices = sorted(set(detection['frame_idx'] for detection in self.tracking_data))
-            if len(processed_x) == len(frame_indices):
-                for idx, frame_idx in enumerate(frame_indices):
-                    processed_coords[frame_idx] = (processed_x[idx], processed_y[idx])
+        
+        # Only map if we have both indices and coordinates
+        if len(frame_indices) > 0 and len(processed_x) > 0:
+            # Make sure they are the same length, or use the shorter length
+            min_len = min(len(frame_indices), len(processed_x))
+            for i in range(min_len):
+                processed_coords[frame_indices[i]] = (processed_x[i], processed_y[i])
+        
+        # Create a map of frames with actual detections (not interpolated)
+        frames_with_detections = set()
+        for detection in self.tracking_data:
+            if detection['glove'] is not None and 'glove' in detection['real_world_coords']:
+                frames_with_detections.add(detection['frame_idx'])
         
         # Prepare data for CSV - create a record for every frame
         csv_data = []
@@ -826,10 +834,10 @@ class GloveTracker:
                 if detection['glove'] is not None:
                     row_data['glove_center_x'], row_data['glove_center_y'] = detection['glove']['center']
                     row_data['glove_confidence'] = detection['glove']['confidence']
-                    row_data['is_interpolated'] = False  # This is an actual detection
 
                     if 'glove' in detection['real_world_coords']:
                         row_data['glove_real_x'], row_data['glove_real_y'] = detection['real_world_coords']['glove']
+                        row_data['is_interpolated'] = False  # This is an actual detection
 
                 # Baseball data
                 if detection['baseball'] is not None:
@@ -842,6 +850,11 @@ class GloveTracker:
             # Add processed coordinates if available for this frame
             if frame_idx in processed_coords:
                 row_data['glove_processed_x'], row_data['glove_processed_y'] = processed_coords[frame_idx]
+                # Mark as not interpolated if this was an actual detection
+                if frame_idx in frames_with_detections:
+                    row_data['is_interpolated'] = False
+                else:
+                    row_data['is_interpolated'] = True
             
             # Add video path if in batch mode
             if video_path:
@@ -855,6 +868,12 @@ class GloveTracker:
 
         # Logging information
         self.logger.info(f"Tracking data saved to {csv_path} with {len(csv_data)} frames")
+        
+        # For debugging
+        processed_count = sum(1 for row in csv_data if row['glove_processed_x'] is not None)
+        interpolated_count = sum(1 for row in csv_data if row['is_interpolated'] is True and row['glove_processed_x'] is not None)
+        self.logger.info(f"Processed coordinates: {processed_count} frames, Interpolated: {interpolated_count} frames")
+        
         if not os.path.exists(csv_path):
             self.logger.error(f"Failed to save CSV file at {csv_path}")
         else:
