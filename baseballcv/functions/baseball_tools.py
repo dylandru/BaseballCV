@@ -1,3 +1,10 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import glob
+import time
+import shutil
+import concurrent.futures
 import os
 from typing import Dict, List
 from .utils import DistanceToZone, GloveTracker
@@ -50,7 +57,7 @@ class BaseballTools:
         Returns:
             list: List of results from the DistanceToZone class for each video analyzed.
         """
-        from baseballcv.functions.utils import DistanceToZone
+
         
         dtoz = DistanceToZone(
             device=self.device, 
