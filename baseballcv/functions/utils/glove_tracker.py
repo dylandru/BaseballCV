@@ -29,6 +29,8 @@ class GloveTracker:
     visualization and data export capabilities for analysis.
     """
     
+# Modified GloveTracker class with improved mode handling and heatmap generation
+
     def __init__(
         self, 
         model_alias: str = 'glove_tracking',
@@ -109,6 +111,7 @@ class GloveTracker:
             video_path (str): Path to input video
             output_path (str): Path for output video (if None, auto-generated in results_dir)
             show_plot (bool): Whether to show the 2D plot in the output video
+            create_video (bool): Whether to create an output video file
 
         Returns:
             str: Path to the output video
@@ -213,6 +216,7 @@ class GloveTracker:
                     skip_confirmation: bool = False,
                     show_plot: bool = True,
                     create_video: bool = True,
+                    generate_heatmap: bool = True,
                     extensions: List[str] = ['.mp4', '.avi', '.mov', '.mkv'],
                     max_workers: int = 1) -> str:
         """
@@ -223,6 +227,8 @@ class GloveTracker:
             delete_after_processing (bool): Whether to delete videos after processing
             skip_confirmation (bool): Skip confirmation for deletion
             show_plot (bool): Whether to show plot in output videos
+            create_video (bool): Whether to create output videos
+            generate_heatmap (bool): Whether to generate heatmaps for each video
             extensions (List[str]): List of video file extensions to process
             max_workers (int): Maximum number of parallel workers (1 = sequential)
             
@@ -254,13 +260,13 @@ class GloveTracker:
         combined_df = pd.DataFrame()
 
         def _process_wrapper(video_path):
-            return self._process_single_video(video_path, show_plot, create_video)
+            return self._process_single_video(video_path, show_plot, create_video, generate_heatmap)
 
         # Process sequentially or in parallel based on max_workers
         if max_workers > 1:
             self.logger.info(f"Processing videos in parallel with {max_workers} workers")
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(self._process_single_video, video_path, show_plot): video_path for video_path in video_files}
+                futures = {executor.submit(_process_wrapper, video_path): video_path for video_path in video_files}
                 
                 # Process results as they complete
                 for future in concurrent.futures.as_completed(futures):
@@ -301,94 +307,21 @@ class GloveTracker:
             # Generate summary statistics
             self._generate_batch_summary(combined_df, os.path.join(self.results_dir, f"batch_summary_{timestamp}.csv"))
             
+            # Optionally generate a combined heatmap if requested
+            if generate_heatmap:
+                combined_heatmap_path = os.path.join(self.results_dir, f"combined_heatmap_{timestamp}.png")
+                combined_heatmap = self.plot_glove_heatmap(
+                    csv_path=combined_csv_path,
+                    output_path=combined_heatmap_path,
+                    video_name="combined_batch",
+                    generate_heatmap=generate_heatmap
+                )
+                self.logger.info(f"Combined heatmap saved to: {combined_heatmap}")
+            
             return combined_csv_path
         else:
             self.logger.warning("No valid tracking data was collected")
             return None
-
-    def scrape_and_process(self, 
-                        start_date: str, 
-                        end_date: str = None,
-                        team_abbr: str = None,
-                        player: int = None,
-                        pitch_type: str = None,
-                        max_videos: int = 10,
-                        max_videos_per_game: int = None,
-                        delete_after_processing: bool = True,
-                        skip_confirmation: bool = False,
-                        show_plot: bool = True,
-                        create_video: bool = True) -> str:
-        """
-        Scrape videos from Baseball Savant and process them for glove tracking.
-        
-        Args:
-            start_date (str): Start date in YYYY-MM-DD format
-            end_date (str): End date in YYYY-MM-DD format (optional)
-            team_abbr (str): Team abbreviation (optional)
-            player (int): Player ID (optional)
-            pitch_type (str): Pitch type (optional)
-            max_videos (int): Maximum number of videos to process
-            max_videos_per_game (int): Maximum videos per game
-            delete_after_processing (bool): Whether to delete videos after processing
-            skip_confirmation (bool): Skip confirmation for deletion
-            show_plot (bool): Whether to show plot in output videos
-            
-        Returns:
-            str: Path to the combined CSV file
-        """
-        # Import here to avoid circular import
-        from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
-
-        # Create a unique download folder within results directory
-        download_folder = os.path.join(self.results_dir, f"savant_videos_{time.strftime('%Y%m%d-%H%M%S')}")
-        os.makedirs(download_folder, exist_ok=True)
-        
-        # Initialize the scraper
-        scraper = BaseballSavVideoScraper(
-            start_dt=start_date,  # Changed from start_date
-            end_dt=end_date,      # Changed from end_date
-            team_abbr=team_abbr,
-            player=player,
-            pitch_type=pitch_type,
-            download_folder=download_folder,
-            max_return_videos=max_videos,
-            max_videos_per_game=max_videos_per_game
-        )
-        
-        self.logger.info(f"Scraping videos from Baseball Savant...")
-        scraper.run_executor()
-        
-        # Get the play data
-        play_ids_df = scraper.get_play_ids_df()
-        num_videos = len(play_ids_df)
-        
-        if num_videos == 0:
-            self.logger.warning("No videos were downloaded from Baseball Savant")
-            return None
-        
-        self.logger.info(f"Successfully scraped {num_videos} videos")
-
-        # Process the downloaded videos with create_video parameter
-        result = self.batch_process(
-            input_folder=download_folder,
-            delete_after_processing=delete_after_processing,
-            skip_confirmation=skip_confirmation,
-            show_plot=show_plot,
-            create_video=create_video  # Pass through create_video parameter
-        )
-        
-        # If we didn't delete videos during batch processing, check if we should now
-        if not delete_after_processing and os.path.exists(download_folder):
-            if not skip_confirmation:
-                confirm = input(f"Delete downloaded videos? (y/n): ")
-                if confirm.lower() == 'y':
-                    scraper.cleanup_savant_videos()
-                    self.logger.info(f"Deleted downloaded videos")
-            elif delete_after_processing:
-                scraper.cleanup_savant_videos()
-                self.logger.info(f"Deleted downloaded videos")
-        
-        return result
 
     def _process_single_video(self, video_path: str, show_plot: bool, create_video: bool = True) -> Tuple[pd.DataFrame, str]:
         """
@@ -1161,17 +1094,23 @@ class GloveTracker:
         
         return filtered_x, filtered_y
     
-    def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None):
+    def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None, 
+                        video_name: Optional[str] = None, generate_heatmap: bool = True):
         """
         Create a heatmap of glove positions.
         
         Args:
             csv_path: Path to tracking CSV file
             output_path: Path to save the heatmap image
+            video_name: Name of the video file to include in the heatmap filename
+            generate_heatmap: Whether to generate the heatmap
             
         Returns:
-            str: Path to the saved heatmap image
+            str: Path to the saved heatmap image or None if not generated
         """
+        if not generate_heatmap:
+            return None
+            
         if csv_path is not None:
             df = pd.read_csv(csv_path)
             
@@ -1213,7 +1152,12 @@ class GloveTracker:
             home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
             plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
             
-            plt.title('Glove Position Heatmap')
+            # Set title - include video name if provided
+            title = 'Glove Position Heatmap'
+            if video_name:
+                title += f' - {video_name}'
+            plt.title(title)
+            
             plt.xlabel('X Position (inches from home plate)')
             plt.ylabel('Y Position (inches from home plate)')
             plt.grid(True, alpha=0.3)
@@ -1227,7 +1171,13 @@ class GloveTracker:
             
             # Save the heatmap
             if output_path is None:
-                output_path = os.path.join(self.results_dir, "glove_heatmap.png")
+                # Create unique filename using video name if provided
+                if video_name:
+                    heatmap_filename = f"glove_heatmap_{os.path.splitext(video_name)[0]}.png"
+                else:
+                    timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    heatmap_filename = f"glove_heatmap_{timestamp}.png"
+                output_path = os.path.join(self.results_dir, heatmap_filename)
             
             plt.savefig(output_path, dpi=300, bbox_inches='tight')
             plt.close()
