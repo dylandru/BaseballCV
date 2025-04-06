@@ -4,11 +4,7 @@ import cv2
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import concurrent.futures
-from typing import Dict, List, Tuple, Optional, Union, Callable
-import glob
-from tqdm import tqdm
-import shutil
+from typing import Dict, List, Tuple, Optional, Union
 import time
 from ultralytics import YOLO
 import supervision as sv
@@ -20,17 +16,10 @@ class GloveTracker:
     """
     Class for tracking the catcher's glove, home plate, and baseball in videos.
     
-    This class supports multiple operational modes:
-    - Regular mode: Process individual videos passed to it
-    - Batch mode: Process multiple videos in a folder
-    - Scrape mode: Download videos using the Savant scraper and process them
-    
     The tracker uses YOLO models to detect and track objects, and provides
     visualization and data export capabilities for analysis.
     """
     
-# Modified GloveTracker class with improved mode handling and heatmap generation
-
     def __init__(
         self, 
         model_alias: str = 'glove_tracking',
@@ -39,7 +28,6 @@ class GloveTracker:
         confidence_threshold: float = 0.5,
         enable_filtering: bool = True,
         max_velocity_inches_per_sec: float = 120.0,
-        mode: str = "regular",
         logger: Optional[BaseballCVLogger] = None
     ):
         """
@@ -52,7 +40,6 @@ class GloveTracker:
             confidence_threshold (float): Confidence threshold for detections
             enable_filtering (bool): Whether to enable outlier filtering for glove detections
             max_velocity_inches_per_sec (float): Maximum plausible velocity for glove movement (for filtering)
-            mode (str): Operating mode - "regular", "batch", or "scrape"
             logger (BaseballCVLogger): Logger instance for logging
         """
         self.load_tools = LoadTools()
@@ -67,12 +54,6 @@ class GloveTracker:
         # Enable filtering and set velocity threshold
         self.enable_filtering = enable_filtering
         self.max_velocity_inches_per_sec = max_velocity_inches_per_sec
-        
-        # Set operating mode
-        self.mode = mode
-        if mode not in ["regular", "batch", "scrape"]:
-            self.logger.warning(f"Invalid mode '{mode}'. Defaulting to 'regular'")
-            self.mode = "regular"
         
         # Get class names from the model
         self.class_names = self.model.names
@@ -103,7 +84,8 @@ class GloveTracker:
         self.pixels_per_inch = None
 
     def track_video(self, video_path: str, output_path: Optional[str] = None,
-                show_plot: bool = True, create_video: bool = True) -> str:
+                    show_plot: bool = True, create_video: bool = True, 
+                    generate_heatmap: bool = True) -> str:
         """
         Track objects in a video and generate visualization with 2D tracking plot.
 
@@ -111,7 +93,8 @@ class GloveTracker:
             video_path (str): Path to input video
             output_path (str): Path for output video (if None, auto-generated in results_dir)
             show_plot (bool): Whether to show the 2D plot in the output video
-            create_video (bool): Whether to create an output video file
+            create_video (bool): Whether to create output videos
+            generate_heatmap (bool): Whether to generate a heatmap for this video
 
         Returns:
             str: Path to the output video
@@ -207,207 +190,22 @@ class GloveTracker:
 
         self.logger.info(f"Tracking completed. Output video saved to {output_path}")
         self.logger.info(f"Tracking data saved to {csv_path}")
+        
+        # Generate heatmap if requested
+        if generate_heatmap:
+            video_name = os.path.basename(video_path)
+            heatmap_path = self.plot_glove_heatmap(
+                csv_path=csv_path,
+                video_name=video_name,
+                generate_heatmap=True
+            )
+            if heatmap_path:
+                self.logger.info(f"Glove heatmap saved to {heatmap_path}")
 
         return output_path
 
-    def batch_process(self, 
-                    input_folder: str, 
-                    delete_after_processing: bool = False, 
-                    skip_confirmation: bool = False,
-                    show_plot: bool = True,
-                    create_video: bool = True,
-                    generate_heatmap: bool = True,
-                    extensions: List[str] = ['.mp4', '.avi', '.mov', '.mkv'],
-                    max_workers: int = 1) -> str:
-        """
-        Process all videos in a folder and generate a combined CSV with tracking data.
-        
-        Args:
-            input_folder (str): Path to folder containing videos
-            delete_after_processing (bool): Whether to delete videos after processing
-            skip_confirmation (bool): Skip confirmation for deletion
-            show_plot (bool): Whether to show plot in output videos
-            create_video (bool): Whether to create output videos
-            generate_heatmap (bool): Whether to generate heatmaps for each video
-            extensions (List[str]): List of video file extensions to process
-            max_workers (int): Maximum number of parallel workers (1 = sequential)
-            
-        Returns:
-            str: Path to the combined CSV file
-        """
-        if not os.path.exists(input_folder):
-            raise FileNotFoundError(f"Input folder not found: {input_folder}")
-        
-        # Find all video files in the folder
-        video_files = []
-        for ext in extensions:
-            video_files.extend(glob.glob(os.path.join(input_folder, f"*{ext}")))
-        
-        if not video_files:
-            self.logger.warning(f"No video files found in {input_folder}")
-            return None
-        
-        self.logger.info(f"Found {len(video_files)} videos to process in {input_folder}")
-        
-        # Warn about deletion if enabled
-        if delete_after_processing and not skip_confirmation:
-            confirm = input(f"WARNING: {len(video_files)} videos will be DELETED after processing. Continue? (y/n): ")
-            if confirm.lower() != 'y':
-                self.logger.info("Batch processing cancelled")
-                return None
-        
-        # Create a dataframe for all videos
-        combined_df = pd.DataFrame()
 
-        def _process_wrapper(video_path):
-            return self._process_single_video(video_path, show_plot, create_video, generate_heatmap)
 
-        # Process sequentially or in parallel based on max_workers
-        if max_workers > 1:
-            self.logger.info(f"Processing videos in parallel with {max_workers} workers")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_process_wrapper, video_path): video_path for video_path in video_files}
-                
-                # Process results as they complete
-                for future in concurrent.futures.as_completed(futures):
-                    video_path = futures[future]
-                    try:
-                        video_df, output_path = future.result()
-                        if video_df is not None:
-                            combined_df = pd.concat([combined_df, video_df], ignore_index=True)
-                            
-                            # Delete if enabled
-                            if delete_after_processing:
-                                os.remove(video_path)
-                                self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
-                    except Exception as e:
-                        self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
-        else:
-            self.logger.info("Processing videos sequentially")
-            for video_path in video_files:
-                try:
-                    video_df, output_path = _process_wrapper(video_path)
-                    if video_df is not None:
-                        combined_df = pd.concat([combined_df, video_df], ignore_index=True)
-                        
-                        # Delete if enabled
-                        if delete_after_processing:
-                            os.remove(video_path)
-                            self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
-                except Exception as e:
-                    self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
-        
-        # Save combined results
-        if not combined_df.empty:
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
-            combined_csv_path = os.path.join(self.results_dir, f"batch_tracking_results_{timestamp}.csv")
-            combined_df.to_csv(combined_csv_path, index=False)
-            self.logger.info(f"Combined tracking results saved to {combined_csv_path}")
-            
-            # Generate summary statistics
-            self._generate_batch_summary(combined_df, os.path.join(self.results_dir, f"batch_summary_{timestamp}.csv"))
-            
-            # Optionally generate a combined heatmap if requested
-            if generate_heatmap:
-                combined_heatmap_path = os.path.join(self.results_dir, f"combined_heatmap_{timestamp}.png")
-                combined_heatmap = self.plot_glove_heatmap(
-                    csv_path=combined_csv_path,
-                    output_path=combined_heatmap_path,
-                    video_name="combined_batch",
-                    generate_heatmap=generate_heatmap
-                )
-                self.logger.info(f"Combined heatmap saved to: {combined_heatmap}")
-            
-            return combined_csv_path
-        else:
-            self.logger.warning("No valid tracking data was collected")
-            return None
-
-    def _process_single_video(self, video_path: str, show_plot: bool, create_video: bool = True) -> Tuple[pd.DataFrame, str]:
-        """
-        Process a single video file and return its tracking dataframe.
-        
-        Args:
-            video_path (str): Path to the video file
-            show_plot (bool): Whether to show plot in output video
-            create_video (bool): Whether to create output video
-            
-        Returns:
-            Tuple[pd.DataFrame, str]: (Tracking dataframe, output video path or CSV path)
-        """
-        try:
-            # Process video
-            output_path = self.track_video(video_path, show_plot=show_plot, create_video=create_video)
-            
-            # Determine CSV path based on whether a video was created
-            if create_video:
-                csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
-            else:
-                # output_path is already the CSV path in this case
-                csv_filename = os.path.basename(output_path)
-                
-            csv_path = os.path.join(self.results_dir, csv_filename)
-            
-            if os.path.exists(csv_path):
-                df = pd.read_csv(csv_path)
-                
-                # Add video filename column
-                df['video_filename'] = os.path.basename(video_path)
-                
-                return df, output_path
-            else:
-                self.logger.warning(f"No tracking data generated for {os.path.basename(video_path)}")
-                return None, output_path
-        except Exception as e:
-            self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
-            raise
-
-    def _generate_batch_summary(self, combined_df: pd.DataFrame, summary_path: str) -> None:
-        """
-        Generate summary statistics from batch processing.
-        
-        Args:
-            combined_df (pd.DataFrame): Combined tracking data
-            summary_path (str): Path to save summary CSV
-        """
-        if combined_df.empty:
-            return
-        
-        # Group by video filename
-        video_groups = combined_df.groupby('video_filename')
-        
-        summary_data = []
-        for video_name, group in video_groups:
-            # Filter to glove positions
-            glove_data = group[group['glove_real_x'].notna() & group['glove_real_y'].notna()]
-            
-            if not glove_data.empty:
-                # Calculate movement
-                dx = glove_data['glove_real_x'].diff().dropna()
-                dy = glove_data['glove_real_y'].diff().dropna()
-                distances = np.sqrt(dx**2 + dy**2)
-                
-                summary = {
-                    'video_filename': video_name,
-                    'frame_count': len(group),
-                    'frames_with_glove': len(glove_data),
-                    'frames_with_baseball': group['baseball_real_x'].notna().sum(),
-                    'frames_with_homeplate': group['homeplate_center_x'].notna().sum(),
-                    'total_distance_inches': distances.sum(),
-                    'max_glove_movement_inches': distances.max() if not distances.empty else None,
-                    'avg_glove_movement_inches': distances.mean() if not distances.empty else None,
-                    'glove_x_range_inches': glove_data['glove_real_x'].max() - glove_data['glove_real_x'].min() if len(glove_data) > 1 else None,
-                    'glove_y_range_inches': glove_data['glove_real_y'].max() - glove_data['glove_real_y'].min() if len(glove_data) > 1 else None,
-                    'avg_glove_x_position': glove_data['glove_real_x'].mean() if not glove_data.empty else None,
-                    'avg_glove_y_position': glove_data['glove_real_y'].mean() if not glove_data.empty else None
-                }
-                summary_data.append(summary)
-        
-        # Create and save summary dataframe
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_csv(summary_path, index=False)
-            self.logger.info(f"Batch summary saved to {summary_path}")
 
     def _process_detections(self, results, frame, frame_idx, fps=30.0):
         """
@@ -813,6 +611,101 @@ class GloveTracker:
             self.logger.debug(f"CSV file saved successfully at {csv_path}")
 
         
+    def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None, 
+                         video_name: Optional[str] = None, generate_heatmap: bool = True):
+        """
+        Create a heatmap of glove positions.
+        
+        Args:
+            csv_path: Path to tracking CSV file
+            output_path: Path to save the heatmap image
+            video_name: Name of the video file to include in the heatmap filename
+            generate_heatmap: Whether to generate the heatmap
+            
+        Returns:
+            str: Path to the saved heatmap image or None if not generated
+        """
+        if not generate_heatmap:
+            return None
+            
+        if csv_path is not None:
+            df = pd.read_csv(csv_path)
+            
+            # Create filled version of the data from the CSV
+            real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
+            
+            if len(real_coords) > 1:
+                # Fill missing values by forward-filling
+                filled_df = df.copy()
+                filled_df['glove_real_x'] = filled_df['glove_real_x'].fillna(method='ffill')
+                filled_df['glove_real_y'] = filled_df['glove_real_y'].fillna(method='ffill')
+                
+                # Use the filled data
+                glove_x = filled_df['glove_real_x'].dropna().tolist()
+                glove_y = filled_df['glove_real_y'].dropna().tolist()
+            else:
+                self.logger.warning("Not enough data points in CSV for heatmap")
+                return None
+        elif self.tracking_data:
+            # Use the current tracking data with filled detections
+            glove_x, glove_y = self._fill_missing_detections()
+            
+            if not glove_x or not glove_y:
+                self.logger.warning("No valid glove tracking data available for heatmap")
+                return None
+        else:
+            self.logger.warning("No tracking data available for heatmap")
+            return None
+        
+        # Generate heatmap
+        plt.figure(figsize=(10, 8))
+        
+        # Create heatmap from glove positions
+        if len(glove_x) > 1:
+            plt.hist2d(glove_x, glove_y, bins=20, cmap='hot')
+            plt.colorbar(label='Frequency')
+            
+            # Draw home plate at origin
+            home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
+            plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
+            
+            # Set title - include video name if provided
+            title = 'Glove Position Heatmap'
+            if video_name:
+                title += f' - {video_name}'
+            plt.title(title)
+            
+            plt.xlabel('X Position (inches from home plate)')
+            plt.ylabel('Y Position (inches from home plate)')
+            plt.grid(True, alpha=0.3)
+            
+            # Set fixed axis limits
+            plt.xlim(-50, 50)
+            plt.ylim(-10, 60)
+            
+            # Force 1:1 aspect ratio
+            plt.gca().set_aspect('equal', 'box')
+            
+            # Save the heatmap
+            if output_path is None:
+                # Create unique filename using video name if provided
+                if video_name:
+                    heatmap_filename = f"glove_heatmap_{os.path.splitext(video_name)[0]}.png"
+                else:
+                    timestamp = time.strftime("%Y%m%d-%H%M%S")
+                    heatmap_filename = f"glove_heatmap_{timestamp}.png"
+                output_path = os.path.join(self.results_dir, heatmap_filename)
+            
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            self.logger.info(f"Glove heatmap saved to {output_path}")
+            return output_path
+        else:
+            self.logger.warning("Not enough glove position data for heatmap")
+            plt.close()
+            return None
+
     def analyze_glove_movement(self, csv_path: Optional[str] = None):
         """
         Analyze glove movement data and return statistics.
@@ -1094,100 +987,6 @@ class GloveTracker:
         
         return filtered_x, filtered_y
     
-    def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None, 
-                        video_name: Optional[str] = None, generate_heatmap: bool = True):
-        """
-        Create a heatmap of glove positions.
-        
-        Args:
-            csv_path: Path to tracking CSV file
-            output_path: Path to save the heatmap image
-            video_name: Name of the video file to include in the heatmap filename
-            generate_heatmap: Whether to generate the heatmap
-            
-        Returns:
-            str: Path to the saved heatmap image or None if not generated
-        """
-        if not generate_heatmap:
-            return None
-            
-        if csv_path is not None:
-            df = pd.read_csv(csv_path)
-            
-            # Create filled version of the data from the CSV
-            real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
-            
-            if len(real_coords) > 1:
-                # Fill missing values by forward-filling
-                filled_df = df.copy()
-                filled_df['glove_real_x'] = filled_df['glove_real_x'].fillna(method='ffill')
-                filled_df['glove_real_y'] = filled_df['glove_real_y'].fillna(method='ffill')
-                
-                # Use the filled data
-                glove_x = filled_df['glove_real_x'].dropna().tolist()
-                glove_y = filled_df['glove_real_y'].dropna().tolist()
-            else:
-                self.logger.warning("Not enough data points in CSV for heatmap")
-                return None
-        elif self.tracking_data:
-            # Use the current tracking data with filled detections
-            glove_x, glove_y = self._fill_missing_detections()
-            
-            if not glove_x or not glove_y:
-                self.logger.warning("No valid glove tracking data available for heatmap")
-                return None
-        else:
-            self.logger.warning("No tracking data available for heatmap")
-            return None
-        
-        # Generate heatmap
-        plt.figure(figsize=(10, 8))
-        
-        # Create heatmap from glove positions
-        if len(glove_x) > 1:
-            plt.hist2d(glove_x, glove_y, bins=20, cmap='hot')
-            plt.colorbar(label='Frequency')
-            
-            # Draw home plate at origin
-            home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
-            plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
-            
-            # Set title - include video name if provided
-            title = 'Glove Position Heatmap'
-            if video_name:
-                title += f' - {video_name}'
-            plt.title(title)
-            
-            plt.xlabel('X Position (inches from home plate)')
-            plt.ylabel('Y Position (inches from home plate)')
-            plt.grid(True, alpha=0.3)
-            
-            # Set fixed axis limits
-            plt.xlim(-50, 50)
-            plt.ylim(-10, 60)
-            
-            # Force 1:1 aspect ratio
-            plt.gca().set_aspect('equal', 'box')
-            
-            # Save the heatmap
-            if output_path is None:
-                # Create unique filename using video name if provided
-                if video_name:
-                    heatmap_filename = f"glove_heatmap_{os.path.splitext(video_name)[0]}.png"
-                else:
-                    timestamp = time.strftime("%Y%m%d-%H%M%S")
-                    heatmap_filename = f"glove_heatmap_{timestamp}.png"
-                output_path = os.path.join(self.results_dir, heatmap_filename)
-            
-            plt.savefig(output_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            self.logger.info(f"Glove heatmap saved to {output_path}")
-            return output_path
-        else:
-            self.logger.warning("Not enough glove position data for heatmap")
-            plt.close()
-            return None
         
     def _filter_glove_detection(self, prev_detection, current_detection, fps, max_velocity_inches_per_sec=120.0):
         """
