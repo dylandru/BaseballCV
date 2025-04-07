@@ -931,7 +931,8 @@ class GloveTracker:
             valid_sequences.append((current_frames, current_sequence))
         
         if not valid_sequences:
-            self.logger.warning("No valid glove detection sequences found")
+            if not self.suppress_detection_warnings: # <-- Add this check
+                self.logger.warning("No valid glove detection sequences found")
             return [], []
         
         # Post-process: Connect sequences that are close in time
