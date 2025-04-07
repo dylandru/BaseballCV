@@ -109,6 +109,7 @@ class BaseballTools:
                     player: int = None,
                     pitch_type: str = None,
                     max_videos: int = 10,
+                    suppress_detection_warnings: bool = False,
                     max_videos_per_game: int = None) -> dict:
         """
         Track the catcher's glove, home plate, and baseball in videos using one of three modes.
@@ -176,7 +177,8 @@ class BaseballTools:
             confidence_threshold=confidence_threshold,
             enable_filtering=enable_filtering,
             max_velocity_inches_per_sec=max_velocity_inches_per_sec,
-            logger=self.logger
+            logger=self.logger,
+            suppress_detection_warnings=suppress_detection_warnings
         )
         
         results_dir = tracker.results_dir

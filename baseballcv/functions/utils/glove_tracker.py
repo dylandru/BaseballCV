@@ -1,5 +1,6 @@
 # baseballcv/functions/utils/glove_tracker.py
 import os
+import sys
 import cv2
 import pandas as pd
 import numpy as np
@@ -28,7 +29,8 @@ class GloveTracker:
         confidence_threshold: float = 0.5,
         enable_filtering: bool = True,
         max_velocity_inches_per_sec: float = 120.0,
-        logger: Optional[BaseballCVLogger] = None
+        logger: Optional[BaseballCVLogger] = None,
+        suppress_detection_warnings: bool = False
     ):
         """
         Initialize the GloveTracker.
@@ -49,6 +51,8 @@ class GloveTracker:
         self.device = device if device else 'cuda' if cv2.cuda.getCudaEnabledDeviceCount() > 0 else 'cpu'
         self.confidence_threshold = confidence_threshold
         self.results_dir = results_dir
+        self.suppress_detection_warnings = suppress_detection_warnings
+
         os.makedirs(self.results_dir, exist_ok=True)
         
         # Enable filtering and set velocity threshold
@@ -136,7 +140,14 @@ class GloveTracker:
         ax = fig.add_subplot(111)
 
         # Process frames
-        progress_bar = ProgressBar(total=total_frames, desc=f"Processing video: {os.path.basename(video_path)}")
+        progress_bar = ProgressBar(
+            total=total_frames, 
+            desc=f"Processing video: {os.path.basename(video_path)}",
+            disable=False,  # Force enable the progress bar
+            color="green",
+            bar_format="Processing |{bar}| {percentage:3.0f}% [{n_fmt}/{total_fmt}] {rate_fmt} ETA: {remaining}"
+        )
+
 
         frame_idx = 0
 
@@ -178,6 +189,7 @@ class GloveTracker:
 
                 frame_idx += 1
                 pbar.update(1)
+                sys.stdout.flush()
 
         # Clean up
         cap.release()
@@ -442,6 +454,11 @@ class GloveTracker:
 
         # Use advanced method to handle missing detections
         glove_x, glove_y = self._handle_missing_detections()
+        self.logger.debug(f"Plotting glove data: {len(glove_x)} points")
+
+        # If the sequence processing finds no valid data
+        if not valid_sequences:
+            self.logger.debug(f"Detection stats: total={len(glove_coords)}, valid={sum(1 for c in glove_coords if c is not None)}")
 
         # Draw home plate at origin
         if self.home_plate_reference is not None:
@@ -853,17 +870,48 @@ class GloveTracker:
             else:
                 glove_coords.append(None)
         
-        # Find sequences of valid detections
+        # Find sequences of valid detections with improved gap handling
         valid_sequences = []
         current_sequence = []
         current_frames = []
+        last_valid_frame = -999  # Initialize with an impossible frame index
+        max_gap = 3  # Allow gaps of up to 3 frames within a sequence
         
         for i, (coords, frame_idx) in enumerate(zip(glove_coords, frame_indices)):
             if coords is not None:
-                current_sequence.append(coords)
-                current_frames.append(frame_idx)
-            elif current_sequence:
-                if len(current_sequence) >= 2:  # Need at least 2 points for a valid sequence
+                # If this is a continuation of the current sequence or a small gap
+                if not current_sequence or frame_idx - last_valid_frame <= max_gap:
+                    # Fill any gap with interpolated values
+                    if current_sequence and frame_idx - last_valid_frame > 1:
+                        # Interpolate missing frames
+                        prev_coords = current_sequence[-1]
+                        for gap_frame in range(last_valid_frame + 1, frame_idx):
+                            # Linear interpolation
+                            fraction = (gap_frame - last_valid_frame) / (frame_idx - last_valid_frame)
+                            interp_x = prev_coords[0] + (coords[0] - prev_coords[0]) * fraction
+                            interp_y = prev_coords[1] + (coords[1] - prev_coords[1]) * fraction
+                            current_sequence.append((interp_x, interp_y))
+                            current_frames.append(gap_frame)
+                    
+                    current_sequence.append(coords)
+                    current_frames.append(frame_idx)
+                    last_valid_frame = frame_idx
+                else:
+                    # Gap too large, end current sequence and start a new one
+                    if len(current_sequence) >= 2:
+                        valid_sequences.append((current_frames, current_sequence))
+                    current_sequence = [coords]
+                    current_frames = [frame_idx]
+                    last_valid_frame = frame_idx
+            elif current_sequence and i == len(glove_coords) - 1:
+                # End of data, add the current sequence if valid
+                if len(current_sequence) >= 2:
+                    valid_sequences.append((current_frames, current_sequence))
+                current_sequence = []
+                current_frames = []
+            elif current_sequence and frame_idx - last_valid_frame > max_gap:
+                # Too many missing frames, end the sequence
+                if len(current_sequence) >= 2:
                     valid_sequences.append((current_frames, current_sequence))
                 current_sequence = []
                 current_frames = []
@@ -873,86 +921,54 @@ class GloveTracker:
             valid_sequences.append((current_frames, current_sequence))
         
         if not valid_sequences:
-            self.logger.warning("No valid glove detection sequences found")
+            if not self.suppress_detection_warnings:
+                self.logger.warning("No valid glove detection sequences found")
             return [], []
         
-        # Process each valid sequence to remove outliers
-        filtered_sequences = []
-        for frames, coords in valid_sequences:
-            if len(coords) <= 3:
-                # For very short sequences, just keep them as is
-                filtered_sequences.append((frames, coords))
-            else:
-                # For longer sequences, apply moving average to smooth the trajectory
-                x_vals = [c[0] for c in coords]
-                y_vals = [c[1] for c in coords]
-                
-                # Simple moving average with window size 3
-                smoothed_x = []
-                smoothed_y = []
-                
-                for i in range(len(x_vals)):
-                    if i == 0 or i == len(x_vals) - 1:
-                        # Keep endpoints unchanged
-                        smoothed_x.append(x_vals[i])
-                        smoothed_y.append(y_vals[i])
-                    else:
-                        # Average with neighboring points
-                        smoothed_x.append((x_vals[i-1] + x_vals[i] + x_vals[i+1]) / 3)
-                        smoothed_y.append((y_vals[i-1] + y_vals[i] + y_vals[i+1]) / 3)
-                
-                smoothed_coords = list(zip(smoothed_x, smoothed_y))
-                filtered_sequences.append((frames, smoothed_coords))
-        
-        # Check if we need to interpolate between sequences
-        if len(filtered_sequences) > 1:
-            # Connect the sequences with smooth interpolation if the gaps aren't too large
-            full_sequence_frames = []
-            full_sequence_coords = []
+        # Post-process: Connect sequences that are close in time
+        if len(valid_sequences) > 1:
+            max_gap_between_sequences = 10  # Allow up to 10 frames between sequences
+            connected_sequences = []
+            current_frames, current_coords = valid_sequences[0]
             
-            # Add the first sequence
-            first_frames, first_coords = filtered_sequences[0]
-            full_sequence_frames.extend(first_frames)
-            full_sequence_coords.extend(first_coords)
-            
-            # Connect subsequent sequences with interpolation
-            for i in range(1, len(filtered_sequences)):
-                prev_frames, prev_coords = filtered_sequences[i-1]
-                curr_frames, curr_coords = filtered_sequences[i]
+            for i in range(1, len(valid_sequences)):
+                next_frames, next_coords = valid_sequences[i]
+                # Check if sequences are close enough to connect
+                frame_gap = next_frames[0] - current_frames[-1]
                 
-                # Get the gap size in frames
-                frame_gap = curr_frames[0] - prev_frames[-1]
-                
-                # Only interpolate if the gap isn't too large (less than 30 frames)
-                if 1 < frame_gap < 30:
-                    # Get the end coordinates of the previous sequence
-                    start_x, start_y = prev_coords[-1]
-                    # Get the start coordinates of the current sequence
-                    end_x, end_y = curr_coords[0]
+                if frame_gap <= max_gap_between_sequences:
+                    # Connect sequences with interpolation
+                    last_coords = current_coords[-1]
+                    first_coords = next_coords[0]
                     
-                    # Create interpolated frames and coordinates
+                    # Interpolate the gap
                     for j in range(1, frame_gap):
-                        # Linear interpolation: position = start + (end - start) * fraction
+                        gap_frame = current_frames[-1] + j
                         fraction = j / frame_gap
-                        interp_x = start_x + (end_x - start_x) * fraction
-                        interp_y = start_y + (end_y - start_y) * fraction
-                        interp_frame = prev_frames[-1] + j
-                        
-                        full_sequence_frames.append(interp_frame)
-                        full_sequence_coords.append((interp_x, interp_y))
-                
-                # Add the current sequence
-                full_sequence_frames.extend(curr_frames)
-                full_sequence_coords.extend(curr_coords)
-        else:
-            # Just use the single sequence
-            full_sequence_frames, full_sequence_coords = filtered_sequences[0]
+                        interp_x = last_coords[0] + (first_coords[0] - last_coords[0]) * fraction
+                        interp_y = last_coords[1] + (first_coords[1] - last_coords[1]) * fraction
+                        current_coords.append((interp_x, interp_y))
+                        current_frames.append(gap_frame)
+                    
+                    # Add the next sequence
+                    current_frames.extend(next_frames)
+                    current_coords.extend(next_coords)
+                else:
+                    # Gap too large, store current sequence and start new one
+                    connected_sequences.append((current_frames, current_coords))
+                    current_frames, current_coords = next_frames, next_coords
+            
+            # Add the last connected sequence
+            connected_sequences.append((current_frames, current_coords))
+            valid_sequences = connected_sequences
         
-        # Extract x and y coordinates
-        x_coords = [coord[0] for coord in full_sequence_coords]
-        y_coords = [coord[1] for coord in full_sequence_coords]
+        # Extract x and y coordinates from the first valid sequence
+        # (or we could combine all sequences if there are multiple)
+        frames, coords = valid_sequences[0]
+        x_coords = [coord[0] for coord in coords]
+        y_coords = [coord[1] for coord in coords]
         
-        # Apply a final velocity-based filter to remove any remaining jumps
+        # Apply a final velocity-based filter to remove any jumps
         filtered_x = []
         filtered_y = []
         

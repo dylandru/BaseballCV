@@ -42,7 +42,7 @@ class ProgressBar:
             colour=color,
             dynamic_ncols=True,
             leave=True,
-            disable=disable or not os.isatty(1),  # Disable in non-interactive environments
+            disable = disable or (not os.isatty(1) and not force_tty),  # Disable in non-interactive environments
             bar_format=bar_format or baseballcv_format,
             ascii=" ▏▎▍▌▋▊▉█",
             postfix=postfix,
