@@ -452,9 +452,12 @@ class GloveTracker:
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
 
-        # Use advanced method to handle missing detections
+         # Use advanced method to handle missing detections
         glove_x, glove_y = self._handle_missing_detections()
         self.logger.debug(f"Plotting glove data: {len(glove_x)} points")
+
+        # Define valid_sequences based on whether the handling returned any points
+        valid_sequences = bool(glove_x) # True if glove_x is not empty
 
         # If the sequence processing finds no valid data
         if not valid_sequences:
