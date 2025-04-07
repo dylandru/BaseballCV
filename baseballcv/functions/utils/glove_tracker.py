@@ -461,6 +461,13 @@ class GloveTracker:
 
         # If the sequence processing finds no valid data
         if not valid_sequences:
+            # Reconstruct glove_coords from tracking_data for logging stats
+            # This list will contain tuples (x, y) or None
+            glove_coords = [
+                detection['real_world_coords'].get('glove')
+                if 'real_world_coords' in detection and 'glove' in detection['real_world_coords'] else None
+                for detection in self.tracking_data
+            ]
             self.logger.debug(f"Detection stats: total={len(glove_coords)}, valid={sum(1 for c in glove_coords if c is not None)}")
 
         # Draw home plate at origin
