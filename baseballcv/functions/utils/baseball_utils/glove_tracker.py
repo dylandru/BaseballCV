@@ -123,13 +123,17 @@ class GloveTracker:
         self.pixels_per_inch = None
 
         cap = cv2.VideoCapture(video_path)
-        width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        fps, total_frames = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video else None
 
-        out_width = width * 2 if show_plot else width
-        out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height)) if create_video else None
+        out_width = int(width * 2) if show_plot else width
+        out = None
+        if create_video:
+            out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height))
 
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111)
@@ -463,9 +467,10 @@ class GloveTracker:
         fig.tight_layout()
         fig.canvas.draw()
 
-        plot_img = cv2.cvtColor(np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
-                                .reshape(fig.canvas.get_width_height()[::-1] + (4,)).astype(np.uint8), 
-                                cv2.COLOR_RGBA2RGB)
+        # Convert matplotlib figure to image
+        plot_img = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+        plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+        plot_img = cv2.cvtColor(plot_img, cv2.COLOR_RGBA2RGB)
 
         return plot_img
 
