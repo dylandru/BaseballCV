@@ -1,14 +1,12 @@
-# baseballcv/functions/utils/glove_tracker.py
 import os
 import sys
 import cv2
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple, Optional, Union
 import time
+from typing import Dict, List, Tuple, Optional
 from ultralytics import YOLO
-import supervision as sv
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from baseballcv.functions.load_tools import LoadTools
 
@@ -17,8 +15,13 @@ class GloveTracker:
     """
     Class for tracking the catcher's glove, home plate, and baseball in videos.
     
-    The tracker uses YOLO models to detect and track objects, and provides
-    visualization and data export capabilities for analysis.
+    The tracker uses YOLO models to detect and track objects in baseball videos,
+    providing real-time tracking, visualization, and data export capabilities for
+    analysis of catcher movements and positioning.
+    
+    This class handles detection, filtering of outliers, coordinate transformation
+    from pixel space to real-world measurements, and generates visualizations
+    including tracking plots and heatmaps.
     """
     
     def __init__(
@@ -30,19 +33,20 @@ class GloveTracker:
         enable_filtering: bool = True,
         max_velocity_inches_per_sec: float = 120.0,
         logger: Optional[BaseballCVLogger] = None,
-        suppress_detection_warnings: bool = False
+        suppress_detection_warnings: bool = True
     ):
         """
-        Initialize the GloveTracker.
+        Initialize the GloveTracker with model and configuration settings.
         
         Args:
-            model_alias (str): The alias of the model to use for detection
-            results_dir (str): Directory to save results
+            model_alias (str): The alias of the YOLO model to use for detection
+            results_dir (str): Directory to save tracking results, videos, and visualizations
             device (str): Device to run the model on (cpu, cuda, mps)
-            confidence_threshold (float): Confidence threshold for detections
+            confidence_threshold (float): Minimum confidence threshold for accepting detections
             enable_filtering (bool): Whether to enable outlier filtering for glove detections
-            max_velocity_inches_per_sec (float): Maximum plausible velocity for glove movement (for filtering)
-            logger (BaseballCVLogger): Logger instance for logging
+            max_velocity_inches_per_sec (float): Maximum plausible velocity for glove movement in inches/sec
+            logger (BaseballCVLogger): Logger instance for logging messages and errors
+            suppress_detection_warnings (bool): Whether to suppress warnings about missing detections
         """
         self.load_tools = LoadTools()
         self.logger = logger if logger else BaseballCVLogger.get_logger(self.__class__.__name__)
@@ -55,15 +59,12 @@ class GloveTracker:
 
         os.makedirs(self.results_dir, exist_ok=True)
         
-        # Enable filtering and set velocity threshold
         self.enable_filtering = enable_filtering
         self.max_velocity_inches_per_sec = max_velocity_inches_per_sec
         
-        # Get class names from the model
         self.class_names = self.model.names
         self.logger.info(f"Model loaded with classes: {self.class_names}")
         
-        # Define important class indices
         self.glove_class_id = next((id for id, name in self.class_names.items() if 'glove' in name.lower()), None)
         self.homeplate_class_id = next((id for id, name in self.class_names.items() if 'homeplate' in name.lower() or 'home_plate' in name.lower() or 'home plate' in name.lower()), None)
         self.baseball_class_id = next((id for id, name in self.class_names.items() if 'baseball' in name.lower() or 'ball' in name.lower()), None)
@@ -80,10 +81,7 @@ class GloveTracker:
         
         self.logger.info(f"Class IDs - Glove: {self.glove_class_id}, Home Plate: {self.homeplate_class_id}, Baseball: {self.baseball_class_id}")
         
-        # For storing tracking data
         self.tracking_data = []
-        
-        # Home plate reference (to be set during tracking)
         self.home_plate_reference = None
         self.pixels_per_inch = None
 
@@ -93,61 +91,56 @@ class GloveTracker:
         """
         Track objects in a video and generate visualization with 2D tracking plot.
 
+        Processes a video frame by frame, detecting the glove, home plate, and baseball
+        in each frame. Calculates real-world coordinates based on home plate reference,
+        filters outliers, and generates visualizations including tracking plots and heatmaps.
+
         Args:
-            video_path (str): Path to input video
+            video_path (str): Path to input video file to be processed
             output_path (str): Path for output video (if None, auto-generated in results_dir)
-            show_plot (bool): Whether to show the 2D plot in the output video
-            create_video (bool): Whether to create output videos
-            generate_heatmap (bool): Whether to generate a heatmap for this video
+            show_plot (bool): Whether to include the 2D tracking plot in the output video
+            create_video (bool): Whether to create and save output videos
+            generate_heatmap (bool): Whether to generate a heatmap visualization for this video
 
         Returns:
-            str: Path to the output video
+            str: Path to the output video file
+
+        Raises:
+            FileNotFoundError: If the input video file does not exist
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found at {video_path}")
 
-        # Create output paths if not provided
         if output_path is None:
             video_filename = os.path.basename(video_path)
             output_path = os.path.join(self.results_dir, f"tracked_{video_filename}")
 
-        # Construct the CSV path correctly
         csv_filename = os.path.splitext(os.path.basename(output_path))[0] + "_tracking.csv"
         csv_path = os.path.join(self.results_dir, csv_filename)
 
-        # Reset tracking data for this video
         self.tracking_data = []
         self.home_plate_reference = None
         self.pixels_per_inch = None
 
-        # Open video
         cap = cv2.VideoCapture(video_path)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.total_frames = total_frames  # Store total frames as an instance attribute
+        width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        fps, total_frames = cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
-        # Setup output video
         fourcc = cv2.VideoWriter_fourcc(*'mp4v') if create_video else None
 
-        # If show_plot is True, we'll create a wider output to accommodate the plot
         out_width = width * 2 if show_plot else width
         out = cv2.VideoWriter(output_path, fourcc, fps, (out_width, height)) if create_video else None
 
-        # Create plot for glove tracking
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111)
 
-        # Process frames
         progress_bar = ProgressBar(
             total=total_frames, 
             desc=f"Processing video: {os.path.basename(video_path)}",
-            disable=False,  # Force enable the progress bar
+            disable=False,
             color="green",
             bar_format="Processing |{bar}| {percentage:3.0f}% [{n_fmt}/{total_fmt}] {rate_fmt} ETA: {remaining}"
         )
-
 
         frame_idx = 0
 
@@ -157,29 +150,22 @@ class GloveTracker:
                 if not ret:
                     break
 
-                # Run YOLO detection on the frame
                 results = self.model.predict(frame, conf=self.confidence_threshold, device=self.device, verbose=False)
 
-                # Process and extract detections
                 detections = self._process_detections(results, frame, frame_idx, fps)
 
-                # Draw annotations on the frame
                 annotated_frame = self._annotate_frame(frame.copy(), detections, frame_idx)
 
-                # Create the 2D tracking plot if needed
                 if show_plot:
                     self._update_tracking_plot(ax, fig)
 
-                    # Convert matplotlib figure to image
                     fig.canvas.draw()
                     buf = fig.canvas.buffer_rgba()
                     plot_img = np.asarray(buf)[:, :, :3]  # Convert RGBA to RGB
                     plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
-                    # Resize plot to match frame height
                     plot_img = cv2.resize(plot_img, (width, height))
 
-                    # Create combined frame with original and plot side by side
                     combined_frame = np.hstack((annotated_frame, plot_img))
                     if create_video:
                         out.write(combined_frame) 
@@ -191,19 +177,16 @@ class GloveTracker:
                 pbar.update(1)
                 sys.stdout.flush()
 
-        # Clean up
         cap.release()
         if create_video:
             out.release()
         plt.close(fig)
 
-        # Save tracking data to CSV
         self._save_tracking_data(csv_path, video_path)
 
         self.logger.info(f"Tracking completed. Output video saved to {output_path}")
         self.logger.info(f"Tracking data saved to {csv_path}")
         
-        # Generate heatmap if requested
         if generate_heatmap:
             video_name = os.path.basename(video_path)
             heatmap_path = self.plot_glove_heatmap(
@@ -216,21 +199,23 @@ class GloveTracker:
 
         return output_path
 
-
-
-
-    def _process_detections(self, results, frame, frame_idx, fps=30.0):
+    def _process_detections(self, results, frame, frame_idx, fps=30.0) -> Dict:
         """
         Process YOLO detection results for the current frame with outlier filtering.
         
+        Extracts detection information from YOLO results, converts pixel coordinates
+        to real-world coordinates based on home plate reference, and applies velocity-based
+        filtering to remove physically impossible movements.
+        
         Args:
-            results: YOLO detection results
-            frame: Current video frame
-            frame_idx: Frame index
-            fps: Frames per second of the video
+            results: YOLO detection results containing bounding boxes and confidence scores
+            frame: Current video frame being processed
+            frame_idx: Index of the current frame in the video
+            fps: Frames per second of the video for velocity calculations
                 
         Returns:
-            dict: Processed detections with glove, homeplate, and baseball info
+            dict: Processed detections with glove, homeplate, and baseball information
+                  including pixel coordinates, real-world coordinates, and confidence scores
         """
         detections = {
             'frame_idx': frame_idx,
@@ -240,14 +225,12 @@ class GloveTracker:
             'real_world_coords': {}
         }
         
-        frame_height, frame_width = frame.shape[:2]
-        
         # Extract detections from results
         for result in results:
             for box_idx, box in enumerate(result.boxes):
                 cls_id = int(box.cls[0].item())
                 conf = float(box.conf[0].item())
-                xyxy = box.xyxy[0].cpu().numpy()  # Convert to numpy for easier handling
+                xyxy = box.xyxy[0].cpu().numpy()
                 
                 x1, y1, x2, y2 = map(int, xyxy)
                 center_x = (x1 + x2) / 2
@@ -322,10 +305,12 @@ class GloveTracker:
     def _fill_missing_detections(self):
         """
         Fill in missing glove detection coordinates by repeating the last known position.
-        This prevents gaps and jumps in the tracking visualization.
+        
+        Creates a continuous trajectory by filling gaps in detection with the last known
+        valid position, preventing discontinuities in the tracking visualization.
         
         Returns:
-            List[Tuple[float, float]]: Processed glove coordinates for all frames
+            Tuple[List[float], List[float]]: Lists of x and y coordinates with gaps filled
         """
         if not self.tracking_data:
             return [], []
@@ -343,22 +328,18 @@ class GloveTracker:
                 glove_coords.append(None)
         
         # Fill in missing glove coordinates
-        filled_x = []
-        filled_y = []
-        last_valid_x = None
-        last_valid_y = None
+        filled_x, filled_y = [], []
+        last_valid_x, last_valid_y = None, None
         
         for i, coords in enumerate(glove_coords):
             if coords is not None:
                 # Valid detection
                 x, y = coords
-                filled_x.append(x)
-                filled_y.append(y)
+                filled_x.append(x); filled_y.append(y)
                 last_valid_x, last_valid_y = x, y
             elif last_valid_x is not None and last_valid_y is not None:
                 # Missing detection, but we have previous valid coordinates
-                filled_x.append(last_valid_x)
-                filled_y.append(last_valid_y)
+                filled_x.append(last_valid_x); filled_y.append(last_valid_y)
             else:
                 # No valid previous coordinates to use
                 # We'll skip this frame entirely
@@ -370,65 +351,58 @@ class GloveTracker:
         """
         Annotate the frame with detections and tracking information.
         
+        Adds visual elements to the frame including bounding boxes, labels, and
+        real-world coordinate information for detected objects.
+        
         Args:
-            frame: Current video frame
-            detections: Processed detections
-            frame_idx: Frame index
+            frame: Current video frame to annotate
+            detections: Dictionary of processed detections for the current frame
+            frame_idx: Index of the current frame in the video
             
         Returns:
-            annotated_frame: Frame with annotations
+            numpy.ndarray: Annotated frame with visual elements added
         """
-        # Add frame counter
         cv2.putText(frame, f"Frame: {frame_idx}", (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         
-        # Draw home plate
         if detections['homeplate'] is not None:
             x1, y1, x2, y2 = detections['homeplate']['box']
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
             cv2.putText(frame, f"Home Plate", (x1, y1 - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
             
-            # Draw center of home plate
             center_x, center_y = detections['homeplate']['center']
             cv2.circle(frame, (int(center_x), int(center_y)), 5, (255, 255, 0), -1)
             
-            # Add home plate dimensions if pixels_per_inch is available
             if self.pixels_per_inch is not None:
                 cv2.putText(frame, f"Home Plate Width: 17.0 in", (x1, y2 + 20),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
                 cv2.putText(frame, f"Scale: {self.pixels_per_inch:.2f} px/in", (x1, y2 + 40),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
         
-        # Draw glove
         if detections['glove'] is not None:
             x1, y1, x2, y2 = detections['glove']['box']
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, f"Glove", (x1, y1 - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
-            # Draw center of glove
             center_x, center_y = detections['glove']['center']
             cv2.circle(frame, (int(center_x), int(center_y)), 5, (0, 255, 0), -1)
             
-            # Add real-world coordinates if available
             if 'glove' in detections['real_world_coords']:
                 real_x, real_y = detections['real_world_coords']['glove']
                 cv2.putText(frame, f"Pos: ({real_x:.1f}, {real_y:.1f}) in", (x1, y2 + 20),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
-        # Draw baseball
         if detections['baseball'] is not None:
             x1, y1, x2, y2 = detections['baseball']['box']
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(frame, f"Baseball", (x1, y1 - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             
-            # Draw center of baseball
             center_x, center_y = detections['baseball']['center']
             cv2.circle(frame, (int(center_x), int(center_y)), 5, (0, 0, 255), -1)
             
-            # Add real-world coordinates if available
             if 'baseball' in detections['real_world_coords']:
                 real_x, real_y = detections['real_world_coords']['baseball']
                 cv2.putText(frame, f"Pos: ({real_x:.1f}, {real_y:.1f}) in", (x1, y2 + 20),
@@ -438,31 +412,34 @@ class GloveTracker:
 
     def _update_tracking_plot(self, ax, fig):
         """
-        Update the 2D tracking plot with latest data, showing only glove movement.
+        Update the 2D tracking plot with latest glove movement data.
+
+        Creates or updates a matplotlib plot showing the glove's movement trajectory
+        in real-world coordinates (inches) relative to home plate.
 
         Args:
-            ax: Matplotlib axis
-            fig: Matplotlib figure
+            ax: Matplotlib axis object to draw the plot on
+            fig: Matplotlib figure object containing the axis
+            
+        Returns:
+            numpy.ndarray: Image representation of the updated plot
         """
         ax.clear()
-
-        # Set up the plot
         ax.set_title('Glove Movement Tracking')
         ax.set_xlabel('X Position (inches from home plate)')
         ax.set_ylabel('Y Position (inches from home plate)')
         ax.grid(True)
 
-         # Use advanced method to handle missing detections
+        # Use advanced method to handle missing detections
         glove_x, glove_y = self._handle_missing_detections()
         self.logger.debug(f"Plotting glove data: {len(glove_x)} points")
 
         # Define valid_sequences based on whether the handling returned any points
-        valid_sequences = bool(glove_x) # True if glove_x is not empty
+        valid_sequences = bool(glove_x)
 
         # If the sequence processing finds no valid data
         if not valid_sequences:
             # Reconstruct glove_coords from tracking_data for logging stats
-            # This list will contain tuples (x, y) or None
             glove_coords = [
                 detection['real_world_coords'].get('glove')
                 if 'real_world_coords' in detection and 'glove' in detection['real_world_coords'] else None
@@ -470,9 +447,7 @@ class GloveTracker:
             ]
             self.logger.debug(f"Detection stats: total={len(glove_coords)}, valid={sum(1 for c in glove_coords if c is not None)}")
 
-        # Draw home plate at origin
         if self.home_plate_reference is not None:
-            # Simplified home plate shape at the origin
             home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
             ax.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5, label='Home Plate')
 
@@ -481,36 +456,30 @@ class GloveTracker:
             ax.plot(glove_x, glove_y, 'g-', label='Glove Path')
             ax.scatter(glove_x[-1], glove_y[-1], color='green', s=100, marker='o', label='Current Glove Pos')
 
-        # Set fixed axis limits as requested
-        ax.set_xlim(-50, 50)
-        ax.set_ylim(-10, 60)
-        
-        # Force exact 1:1 aspect ratio
+        ax.set_xlim(-50, 50); ax.set_ylim(-10, 60)
         ax.set_aspect('equal', 'box')
-        
-        # Add legend
         ax.legend(loc='upper right')
         
-        # Make figure tight
         fig.tight_layout()
-
-        # Make sure the plot refreshes
         fig.canvas.draw()
 
-        # Convert matplotlib figure to image
-        plot_img = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
-        plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        plot_img = cv2.cvtColor(plot_img, cv2.COLOR_RGBA2RGB)
+        plot_img = cv2.cvtColor(np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+                                .reshape(fig.canvas.get_width_height()[::-1] + (4,)).astype(np.uint8), 
+                                cv2.COLOR_RGBA2RGB)
 
         return plot_img
 
 
     def _save_tracking_data(self, csv_path, video_path=None):
         """
-        Save tracking data to a CSV file, including both raw detections and processed coordinates.
+        Save tracking data to a CSV file with comprehensive information.
+
+        Creates a CSV file containing frame-by-frame tracking data including raw pixel
+        coordinates, real-world coordinates, detection confidence scores, and metadata
+        about interpolated vs. actual detections.
 
         Args:
-            csv_path: Path to save the CSV file
+            csv_path: Path where the CSV file will be saved
             video_path: Path to the original video (for identification in batch mode)
         """
         if not self.tracking_data:
@@ -614,20 +583,16 @@ class GloveTracker:
                 else:
                     row_data['is_interpolated'] = True
             
-            # Add video path if in batch mode
             if video_path:
                 row_data['video_filename'] = os.path.basename(video_path)
                 
             csv_data.append(row_data)
 
-        # Create DataFrame and save to CSV
         df = pd.DataFrame(csv_data)
         df.to_csv(csv_path, index=False)
 
-        # Logging information
         self.logger.info(f"Tracking data saved to {csv_path} with {len(csv_data)} frames")
         
-        # For debugging
         processed_count = sum(1 for row in csv_data if row['glove_processed_x'] is not None)
         interpolated_count = sum(1 for row in csv_data if row['is_interpolated'] is True and row['glove_processed_x'] is not None)
         self.logger.info(f"Processed coordinates: {processed_count} frames, Interpolated: {interpolated_count} frames")
@@ -635,11 +600,11 @@ class GloveTracker:
         if not os.path.exists(csv_path):
             self.logger.error(f"Failed to save CSV file at {csv_path}")
         else:
-            self.logger.debug(f"CSV file saved successfully at {csv_path}")
+            self.logger.info(f"CSV file saved successfully at {csv_path}")
 
         
     def plot_glove_heatmap(self, csv_path: Optional[str] = None, output_path: Optional[str] = None, 
-                         video_name: Optional[str] = None, generate_heatmap: bool = True):
+                         video_name: Optional[str] = None, generate_heatmap: bool = True) -> Optional[str]:
         """
         Create a heatmap of glove positions.
         
@@ -658,7 +623,6 @@ class GloveTracker:
         if csv_path is not None:
             df = pd.read_csv(csv_path)
             
-            # Create filled version of the data from the CSV
             real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
             
             if len(real_coords) > 1:
@@ -666,8 +630,6 @@ class GloveTracker:
                 filled_df = df.copy()
                 filled_df['glove_real_x'] = filled_df['glove_real_x'].fillna(method='ffill')
                 filled_df['glove_real_y'] = filled_df['glove_real_y'].fillna(method='ffill')
-                
-                # Use the filled data
                 glove_x = filled_df['glove_real_x'].dropna().tolist()
                 glove_y = filled_df['glove_real_y'].dropna().tolist()
             else:
@@ -684,38 +646,26 @@ class GloveTracker:
             self.logger.warning("No tracking data available for heatmap")
             return None
         
-        # Generate heatmap
         plt.figure(figsize=(10, 8))
         
-        # Create heatmap from glove positions
         if len(glove_x) > 1:
             plt.hist2d(glove_x, glove_y, bins=20, cmap='hot')
             plt.colorbar(label='Frequency')
             
-            # Draw home plate at origin
             home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
             plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
             
-            # Set title - include video name if provided
             title = 'Glove Position Heatmap'
             if video_name:
                 title += f' - {video_name}'
+
             plt.title(title)
-            
-            plt.xlabel('X Position (inches from home plate)')
-            plt.ylabel('Y Position (inches from home plate)')
+            plt.xlabel('X Position (inches from home plate)'); plt.ylabel('Y Position (inches from home plate)')
             plt.grid(True, alpha=0.3)
-            
-            # Set fixed axis limits
-            plt.xlim(-50, 50)
-            plt.ylim(-10, 60)
-            
-            # Force 1:1 aspect ratio
+            plt.xlim(-50, 50); plt.ylim(-10, 60)
             plt.gca().set_aspect('equal', 'box')
             
-            # Save the heatmap
             if output_path is None:
-                # Create unique filename using video name if provided
                 if video_name:
                     heatmap_filename = f"glove_heatmap_{os.path.splitext(video_name)[0]}.png"
                 else:
@@ -733,7 +683,7 @@ class GloveTracker:
             plt.close()
             return None
 
-    def analyze_glove_movement(self, csv_path: Optional[str] = None):
+    def analyze_glove_movement(self, csv_path: Optional[str] = None) -> Optional[Dict]:
         """
         Analyze glove movement data and return statistics.
         
@@ -746,13 +696,11 @@ class GloveTracker:
         if csv_path is not None:
             df = pd.read_csv(csv_path)
         elif self.tracking_data:
-            # Use the current tracking data
             return self._analyze_tracking_data()
         else:
             self.logger.warning("No tracking data available for analysis")
             return None
         
-        # Calculate movement statistics
         stats = {
             'total_frames': len(df),
             'frames_with_glove': df['glove_center_x'].notna().sum(),
@@ -762,11 +710,10 @@ class GloveTracker:
         
         # Calculate glove movement distance (in real-world units)
         if stats['frames_with_glove'] > 1:
-            # Get real-world coordinates where available
             real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
             
             if len(real_coords) > 1:
-                # Calculate the total distance travelled
+                # Calculate the total distance
                 dx = real_coords['glove_real_x'].diff()
                 dy = real_coords['glove_real_y'].diff()
                 distances = np.sqrt(dx**2 + dy**2)
@@ -795,7 +742,7 @@ class GloveTracker:
         
         return stats
     
-    def _analyze_tracking_data(self):
+    def _analyze_tracking_data(self) -> Optional[Dict]:
         """
         Analyze the current tracking data.
         
@@ -805,7 +752,6 @@ class GloveTracker:
         if not self.tracking_data:
             return None
         
-        # Convert tracking data to DataFrame for analysis
         data = []
         for detection in self.tracking_data:
             row = {
@@ -826,7 +772,6 @@ class GloveTracker:
         
         df = pd.DataFrame(data)
         
-        # Calculate statistics
         stats = {
             'total_frames': len(self.tracking_data),
             'frames_with_glove': sum(1 for d in self.tracking_data if d['glove'] is not None),
@@ -834,7 +779,6 @@ class GloveTracker:
             'frames_with_homeplate': sum(1 for d in self.tracking_data if d['homeplate'] is not None),
         }
         
-        # Calculate distances if we have real-world coordinates
         real_coords = df[df['glove_real_x'].notna() & df['glove_real_y'].notna()]
         
         if len(real_coords) > 1:
@@ -856,7 +800,7 @@ class GloveTracker:
         
         return stats
 
-    def _handle_missing_detections(self):
+    def _handle_missing_detections(self) -> Tuple[List[float], List[float]]:
         """
         Enhanced method to handle missing glove detections using multiple strategies.
         Uses a combination of interpolation, filtering, and smoothing techniques
@@ -868,7 +812,6 @@ class GloveTracker:
         if not self.tracking_data:
             return [], []
         
-        # Extract frame indices and glove coordinates
         frame_indices = []
         glove_coords = []
         
@@ -943,7 +886,6 @@ class GloveTracker:
             
             for i in range(1, len(valid_sequences)):
                 next_frames, next_coords = valid_sequences[i]
-                # Check if sequences are close enough to connect
                 frame_gap = next_frames[0] - current_frames[-1]
                 
                 if frame_gap <= max_gap_between_sequences:
@@ -987,13 +929,10 @@ class GloveTracker:
             filtered_x.append(x_coords[0])
             filtered_y.append(y_coords[0])
             
-            # Check each subsequent point
             for i in range(1, len(x_coords)):
-                # Calculate displacement
                 dx = x_coords[i] - filtered_x[-1]
                 dy = y_coords[i] - filtered_y[-1]
                 
-                # Calculate distance
                 distance = (dx**2 + dy**2)**0.5
                 
                 # If distance is too large (a jump), limit it
@@ -1007,14 +946,13 @@ class GloveTracker:
                     filtered_x.append(new_x)
                     filtered_y.append(new_y)
                 else:
-                    # Point is acceptable
                     filtered_x.append(x_coords[i])
                     filtered_y.append(y_coords[i])
         
         return filtered_x, filtered_y
     
         
-    def _filter_glove_detection(self, prev_detection, current_detection, fps, max_velocity_inches_per_sec=120.0):
+    def _filter_glove_detection(self, prev_detection, current_detection, fps, max_velocity_inches_per_sec=120.0) -> bool:
         """
         Filter out physically impossible glove movements based on velocity constraints.
         
@@ -1035,14 +973,10 @@ class GloveTracker:
         if 'glove' not in current_detection['real_world_coords']:
             return True
         
-        # Get real-world coordinates
         prev_x, prev_y = prev_detection['real_world_coords']['glove']
         curr_x, curr_y = current_detection['real_world_coords']['glove']
-        
-        # Calculate distance moved in real-world units (inches)
         distance = ((curr_x - prev_x)**2 + (curr_y - prev_y)**2)**0.5
         
-        # Calculate time between frames
         time_diff = (current_detection['frame_idx'] - prev_detection['frame_idx']) / fps
         
         # Calculate velocity in inches per second
@@ -1051,7 +985,6 @@ class GloveTracker:
         else:
             velocity = float('inf')  # Avoid division by zero
         
-        # Check if velocity exceeds maximum plausible limit
         if velocity > max_velocity_inches_per_sec:
             self.logger.debug(f"Filtered outlier at frame {current_detection['frame_idx']}: velocity={velocity:.2f} in/s > {max_velocity_inches_per_sec} in/s")
             return False
@@ -1104,7 +1037,7 @@ class GloveTracker:
             summary_df.to_csv(summary_path, index=False)
             self.logger.info(f"Batch summary saved to {summary_path}")
 
-    def _generate_combined_heatmap(self, combined_df: pd.DataFrame, output_path: str) -> str:
+    def _generate_combined_heatmap(self, combined_df: pd.DataFrame, output_path: str) -> Optional[str]:
         """
         Generate a combined heatmap from all video tracking data.
         
@@ -1119,38 +1052,26 @@ class GloveTracker:
             self.logger.warning("Empty DataFrame, cannot generate heatmap")
             return None
         
-        # Filter to valid glove positions
         glove_data = combined_df[combined_df['glove_real_x'].notna() & combined_df['glove_real_y'].notna()]
         
         if len(glove_data) < 2:
             self.logger.warning("Not enough glove position data for heatmap")
             return None
         
-        # Generate heatmap
         plt.figure(figsize=(10, 8))
         
-        # Create heatmap from glove positions
         plt.hist2d(glove_data['glove_real_x'], glove_data['glove_real_y'], bins=20, cmap='hot')
         plt.colorbar(label='Frequency')
         
-        # Draw home plate at origin
         home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
         plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
         
-        # Set title
         plt.title('Combined Glove Position Heatmap')
-        plt.xlabel('X Position (inches from home plate)')
-        plt.ylabel('Y Position (inches from home plate)')
+        plt.xlabel('X Position (inches from home plate)'); plt.ylabel('Y Position (inches from home plate)')
         plt.grid(True, alpha=0.3)
+        plt.xlim(-50, 50); plt.ylim(-10, 60)
         
-        # Set fixed axis limits
-        plt.xlim(-50, 50)
-        plt.ylim(-10, 60)
-        
-        # Force 1:1 aspect ratio
         plt.gca().set_aspect('equal', 'box')
-        
-        # Save the heatmap
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         

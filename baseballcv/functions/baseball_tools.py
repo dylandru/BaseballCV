@@ -356,7 +356,6 @@ class BaseballTools:
                 
                 self.logger.info(f"Successfully scraped {len(play_ids_df)} videos")
                 
-                # Add statcast data to the videos
                 statcast_data = {}
                 for _, row in play_ids_df.iterrows():
                     game_pk, play_id = str(row['game_pk']), str(row['play_id'])
@@ -380,7 +379,6 @@ class BaseballTools:
                     max_workers=max_workers
                 )
                 
-                # Add Statcast data to the combined CSV
                 if "combined_csv" in batch_results and os.path.exists(batch_results["combined_csv"]):
                     combined_df = pd.read_csv(batch_results["combined_csv"])
                     statcast_columns = {f'statcast_{k}': [] for k in next(iter(statcast_data.values())).keys()} if statcast_data else {}
