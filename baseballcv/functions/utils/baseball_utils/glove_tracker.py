@@ -1057,3 +1057,103 @@ class GloveTracker:
             return False
         
         return True
+    
+    def _generate_batch_summary(self, combined_df: pd.DataFrame, summary_path: str) -> None:
+        """
+        Generate summary statistics from batch processing.
+        
+        Args:
+            combined_df (pd.DataFrame): Combined tracking data
+            summary_path (str): Path to save summary CSV
+        """
+        if combined_df.empty:
+            return
+        
+        # Group by video filename
+        video_groups = combined_df.groupby('video_filename')
+        
+        summary_data = []
+        for video_name, group in video_groups:
+            # Filter to glove positions
+            glove_data = group[group['glove_real_x'].notna() & group['glove_real_y'].notna()]
+            
+            if not glove_data.empty:
+                # Calculate movement
+                dx = glove_data['glove_real_x'].diff().dropna()
+                dy = glove_data['glove_real_y'].diff().dropna()
+                distances = np.sqrt(dx**2 + dy**2)
+                
+                summary = {
+                    'video_filename': video_name,
+                    'frame_count': len(group),
+                    'frames_with_glove': len(glove_data),
+                    'frames_with_baseball': group['baseball_real_x'].notna().sum(),
+                    'frames_with_homeplate': group['homeplate_center_x'].notna().sum(),
+                    'total_distance_inches': distances.sum(),
+                    'max_glove_movement_inches': distances.max() if not distances.empty else None,
+                    'avg_glove_movement_inches': distances.mean() if not distances.empty else None,
+                    'glove_x_range_inches': glove_data['glove_real_x'].max() - glove_data['glove_real_x'].min() if len(glove_data) > 1 else None,
+                    'glove_y_range_inches': glove_data['glove_real_y'].max() - glove_data['glove_real_y'].min() if len(glove_data) > 1 else None,
+                    'avg_glove_x_position': glove_data['glove_real_x'].mean() if not glove_data.empty else None,
+                    'avg_glove_y_position': glove_data['glove_real_y'].mean() if not glove_data.empty else None
+                }
+                summary_data.append(summary)
+        
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_csv(summary_path, index=False)
+            self.logger.info(f"Batch summary saved to {summary_path}")
+
+    def _generate_combined_heatmap(self, combined_df: pd.DataFrame, output_path: str) -> str:
+        """
+        Generate a combined heatmap from all video tracking data.
+        
+        Args:
+            combined_df (pd.DataFrame): Combined tracking data
+            output_path (str): Path to save the heatmap
+            
+        Returns:
+            str: Path to the saved heatmap or None if generation failed
+        """
+        if combined_df.empty:
+            self.logger.warning("Empty DataFrame, cannot generate heatmap")
+            return None
+        
+        # Filter to valid glove positions
+        glove_data = combined_df[combined_df['glove_real_x'].notna() & combined_df['glove_real_y'].notna()]
+        
+        if len(glove_data) < 2:
+            self.logger.warning("Not enough glove position data for heatmap")
+            return None
+        
+        # Generate heatmap
+        plt.figure(figsize=(10, 8))
+        
+        # Create heatmap from glove positions
+        plt.hist2d(glove_data['glove_real_x'], glove_data['glove_real_y'], bins=20, cmap='hot')
+        plt.colorbar(label='Frequency')
+        
+        # Draw home plate at origin
+        home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
+        plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
+        
+        # Set title
+        plt.title('Combined Glove Position Heatmap')
+        plt.xlabel('X Position (inches from home plate)')
+        plt.ylabel('Y Position (inches from home plate)')
+        plt.grid(True, alpha=0.3)
+        
+        # Set fixed axis limits
+        plt.xlim(-50, 50)
+        plt.ylim(-10, 60)
+        
+        # Force 1:1 aspect ratio
+        plt.gca().set_aspect('equal', 'box')
+        
+        # Save the heatmap
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Combined heatmap saved to {output_path}")
+        return output_path
+    
