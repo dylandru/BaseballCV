@@ -1,12 +1,11 @@
+import tempfile
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import glob
 import time
 import shutil
-import concurrent.futures
 import os
 from typing import Dict, List
+import concurrent.futures
 from .utils import DistanceToZone, GloveTracker
 from baseballcv.utilities import BaseballCVLogger
 from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
@@ -34,7 +33,7 @@ class BaseballTools:
                          max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
                          catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
                          ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
-                         save_csv: bool = True, csv_path: str = None) -> list:
+                         save_csv: bool = True, csv_path: str = None) -> List:
         """
         The DistanceToZone function calculates the distance of a pitch to the strike zone in a video.
         
@@ -102,6 +101,7 @@ class BaseballTools:
                     delete_after_processing: bool = False,
                     skip_confirmation: bool = False,
                     max_workers: int = 1,
+                    generate_batch_info: bool = True,
                     # Scrape mode parameters
                     start_date: str = None,
                     end_date: str = None,
@@ -110,7 +110,7 @@ class BaseballTools:
                     pitch_type: str = None,
                     max_videos: int = 10,
                     suppress_detection_warnings: bool = False,
-                    max_videos_per_game: int = None) -> dict:
+                    max_videos_per_game: int = None) -> Dict:
         """
         Track the catcher's glove, home plate, and baseball in videos using one of three modes.
         
@@ -170,7 +170,6 @@ class BaseballTools:
             self.logger.error("start_date is required for scrape mode")
             return {"error": "start_date is required for scrape mode"}
         
-        # Initialize GloveTracker with common parameters
         tracker = GloveTracker(
             model_alias='glove_tracking',
             device=device if device else self.device,
@@ -183,9 +182,7 @@ class BaseballTools:
         
         results_dir = tracker.results_dir
         
-        # Process according to mode
         if mode == "regular":
-            # Process single video
             output_video = tracker.track_video(
                 video_path=video_path,
                 output_path=output_path,
@@ -194,15 +191,11 @@ class BaseballTools:
                 generate_heatmap=generate_heatmap
             )
             
-            # Get the CSV path
             csv_filename = os.path.splitext(os.path.basename(output_video))[0] + "_tracking.csv"
             csv_path = os.path.join(results_dir, csv_filename)
             
-            # Analyze movement
             movement_stats = tracker.analyze_glove_movement(csv_path)
             
-            # Get heatmap path if generated
-            heatmap_path = None
             if generate_heatmap:
                 video_filename = os.path.basename(video_path)
                 heatmap_filename = f"glove_heatmap_{os.path.splitext(video_filename)[0]}.png"
@@ -214,20 +207,16 @@ class BaseballTools:
                 "output_video": output_video,
                 "tracking_data": csv_path,
                 "movement_stats": movement_stats,
-                "heatmap": heatmap_path,
+                "heatmap": heatmap_path if generate_heatmap else None,
                 "filtering_applied": enable_filtering,
                 "max_velocity_threshold": max_velocity_inches_per_sec if enable_filtering else None
             }
         
         elif mode == "batch":
-            # Find all video files in the folder
-            video_files = []
-            extensions = ['.mp4', '.avi', '.mov', '.mkv']
-            for ext in extensions:
-                video_files.extend(glob.glob(os.path.join(input_folder, f"*{ext}")))
-            
+
+            video_files = sum([glob.glob(os.path.join(input_folder, f"*{ext}")) + glob.glob(os.path.join(input_folder, f"*{ext.upper()}")) for ext in ['.mp4', '.avi', '.mov', '.mkv', '.mts']], [])
             if not video_files:
-                self.logger.warning(f"No video files found in {input_folder}")
+                self.logger.error(f"No video files found in {input_folder}")
                 return {"error": f"No video files found in {input_folder}"}
             
             self.logger.info(f"Found {len(video_files)} videos to process in {input_folder}")
@@ -236,13 +225,13 @@ class BaseballTools:
             if delete_after_processing and not skip_confirmation:
                 confirm = input(f"WARNING: {len(video_files)} videos will be DELETED after processing. Continue? (y/n): ")
                 if confirm.lower() != 'y':
-                    self.logger.info("Batch processing cancelled")
+                    self.logger.error("Batch processing cancelled")
                     return {"error": "Batch processing cancelled by user"}
             
             # We'll store all results and DataFrame data
             all_results = []
             combined_df = pd.DataFrame()
-            
+
             def _process_video(video_path):
                 try:
                     # Process the video
@@ -259,17 +248,16 @@ class BaseballTools:
                     
                     if os.path.exists(csv_path):
                         df = pd.read_csv(csv_path)
-                        # Add video filename column
                         df['video_filename'] = os.path.basename(video_path)
                         
-                        # Get heatmap path if generated
-                        heatmap_path = None
                         if generate_heatmap:
                             video_filename = os.path.basename(video_path)
                             heatmap_filename = f"glove_heatmap_{os.path.splitext(video_filename)[0]}.png"
                             heatmap_path = os.path.join(results_dir, heatmap_filename)
                             if not os.path.exists(heatmap_path):
                                 heatmap_path = None
+                        else:
+                            heatmap_path = None
                         
                         result = {
                             "video_path": video_path,
@@ -288,34 +276,28 @@ class BaseballTools:
             
             # Process the videos
             if max_workers > 1:
-                import concurrent.futures
                 self.logger.info(f"Processing videos in parallel with {max_workers} workers")
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(_process_video, video_path): video_path for video_path in video_files}
+                    futures = {executor.submit(_process_video, path): path for path in video_files}
                     
                     for future in concurrent.futures.as_completed(futures):
-                        video_path = futures[future]
+                        path = futures[future]
                         try:
-                            result = future.result()
-                            if result:
+                            if result := future.result():
                                 all_results.append(result)
                                 combined_df = pd.concat([combined_df, result["dataframe"]], ignore_index=True)
                                 
-                                # Delete if enabled
                                 if delete_after_processing:
-                                    os.remove(video_path)
-                                    self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
+                                    os.remove(path)
+                                    self.logger.info(f"Deleted video: {os.path.basename(path)}")
                         except Exception as e:
-                            self.logger.error(f"Error processing {os.path.basename(video_path)}: {str(e)}")
+                            self.logger.error(f"Error processing {os.path.basename(path)}: {str(e)}")
             else:
                 self.logger.info("Processing videos sequentially")
                 for video_path in video_files:
-                    result = _process_video(video_path)
-                    if result:
+                    if result := _process_video(video_path):
                         all_results.append(result)
                         combined_df = pd.concat([combined_df, result["dataframe"]], ignore_index=True)
-                        
-                        # Delete if enabled
                         if delete_after_processing:
                             os.remove(video_path)
                             self.logger.info(f"Deleted video: {os.path.basename(video_path)}")
@@ -325,47 +307,39 @@ class BaseballTools:
                 self.logger.warning("No videos were processed successfully")
                 return {"error": "No videos were processed successfully"}
             
-            # Save combined CSV
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
-            combined_csv_path = os.path.join(results_dir, f"batch_tracking_results_{timestamp}.csv")
-            combined_df.to_csv(combined_csv_path, index=False)
-            self.logger.info(f"Combined tracking data saved to {combined_csv_path}")
-            
-            # Generate summary statistics
-            summary_path = os.path.join(results_dir, f"batch_summary_{timestamp}.csv")
-            self._generate_batch_summary(combined_df, summary_path)
-            
-            # Generate combined heatmap
-            combined_heatmap_path = None
-            if generate_heatmap and not combined_df.empty:
-                combined_heatmap_path = os.path.join(results_dir, f"combined_heatmap_{timestamp}.png")
-                self._generate_combined_heatmap(combined_df, combined_heatmap_path)
+            #Generate combos and summary if wanted
+            if generate_batch_info:
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                combined_csv_path = os.path.join(results_dir, f"batch_tracking_results_{timestamp}.csv")
+                combined_df.to_csv(combined_csv_path, index=False)
+                self.logger.info(f"Combined tracking data saved to {combined_csv_path}")
+                
+                summary_path = os.path.join(results_dir, f"batch_summary_{timestamp}.csv")
+                tracker._generate_batch_summary(combined_df, summary_path)
+                
+                combined_heatmap_path = os.path.join(results_dir, f"combined_heatmap_{timestamp}.png") if generate_heatmap and not combined_df.empty else None
+                if combined_heatmap_path:
+                    tracker._generate_combined_heatmap(combined_df, combined_heatmap_path)
             
             return {
                 "processed_videos": len(all_results),
                 "individual_results": all_results,
-                "combined_csv": combined_csv_path,
-                "summary_file": summary_path,
-                "combined_heatmap": combined_heatmap_path,
+                "combined_csv": combined_csv_path if generate_batch_info else None,
+                "summary_file": summary_path if generate_batch_info else None,
+                "combined_heatmap": combined_heatmap_path if generate_heatmap and not combined_df.empty else None,
                 "results_dir": results_dir
             }
         
         elif mode == "scrape":
-            # Import here to avoid circular import
-            # from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
-            
-            # Create a temporary directory for downloaded videos
-            import tempfile
             download_folder = tempfile.mkdtemp(prefix="savant_videos_")
-            
+    
             try:
-                # Initialize the scraper
                 scraper = BaseballSavVideoScraper(
                     start_dt=start_date,
                     end_dt=end_date,
                     team_abbr=team_abbr,  # Optional
-                    player=player,
-                    pitch_type=pitch_type,
+                    player=player,  # Optional
+                    pitch_type=pitch_type,  # Optional
                     download_folder=download_folder,
                     max_return_videos=max_videos,
                     max_videos_per_game=max_videos_per_game
@@ -374,21 +348,18 @@ class BaseballTools:
                 self.logger.info(f"Scraping videos from Baseball Savant...")
                 scraper.run_executor()
                 
-                # Get the play data
                 play_ids_df = scraper.get_play_ids_df()
-                num_videos = len(play_ids_df)
                 
-                if num_videos == 0:
-                    self.logger.warning("No videos were downloaded from Baseball Savant")
+                if len(play_ids_df) == 0:
+                    self.logger.error("No videos were downloaded from Baseball Savant")
                     return {"error": "No videos were downloaded from Baseball Savant"}
                 
-                self.logger.info(f"Successfully scraped {num_videos} videos")
+                self.logger.info(f"Successfully scraped {len(play_ids_df)} videos")
                 
                 # Add statcast data to the videos
                 statcast_data = {}
                 for _, row in play_ids_df.iterrows():
-                    game_pk = str(row['game_pk'])
-                    play_id = str(row['play_id'])
+                    game_pk, play_id = str(row['game_pk']), str(row['play_id'])
                     filename = f"{game_pk}_{play_id}.mp4"
                     statcast_data[filename] = {col: row[col] for col in row.index}
                 
@@ -409,33 +380,30 @@ class BaseballTools:
                     max_workers=max_workers
                 )
                 
-                # Enhance the CSV with Statcast data
+                # Add Statcast data to the combined CSV
                 if "combined_csv" in batch_results and os.path.exists(batch_results["combined_csv"]):
                     combined_df = pd.read_csv(batch_results["combined_csv"])
-                    
-                    # Add Statcast columns
+                    statcast_columns = {f'statcast_{k}': [] for k in next(iter(statcast_data.values())).keys()} if statcast_data else {}
+                    for col in statcast_columns:
+                        combined_df[col] = None
                     for filename, data in statcast_data.items():
-                        for key, value in data.items():
-                            combined_df.loc[combined_df['video_filename'] == filename, f'statcast_{key}'] = value
-                    
-                    # Save the enhanced CSV
+                        mask = combined_df['video_filename'] == filename
+                        for k, v in data.items():
+                            combined_df.loc[mask, f'statcast_{k}'] = v
                     combined_df.to_csv(batch_results["combined_csv"], index=False)
-                    
-                    # Replace the batch results with the enhanced data
                     batch_results["statcast_data_added"] = True
                 
                 # Clean up temp directory if it wasn't already deleted during batch processing
                 if not delete_after_processing and os.path.exists(download_folder):
                     if not skip_confirmation:
                         confirm = input(f"Delete downloaded videos? (y/n): ")
-                        if confirm.lower() == 'y':
+                        if confirm.lower() == 'y' or confirm.lower() == 'yes':
                             shutil.rmtree(download_folder)
                             self.logger.info(f"Deleted downloaded videos")
                     else:
                         shutil.rmtree(download_folder)
                         self.logger.info(f"Deleted downloaded videos")
                 
-                # Add scrape-specific info to results
                 batch_results["scrape_info"] = {
                     "start_date": start_date,
                     "end_date": end_date,
@@ -443,119 +411,16 @@ class BaseballTools:
                     "player": player,
                     "pitch_type": pitch_type,
                     "videos_requested": max_videos,
-                    "videos_downloaded": num_videos
+                    "videos_downloaded": len(play_ids_df)
                 }
                 
                 return batch_results
             
             except Exception as e:
                 self.logger.error(f"Error in scrape mode: {str(e)}")
-                # Clean up on error
                 if os.path.exists(download_folder):
                     shutil.rmtree(download_folder)
                 return {"error": f"Error in scrape mode: {str(e)}"}
         
-        # Should never reach here, but just in case
+        #Should never reach here, but just in case
         return {"error": f"Unknown error processing in mode: {mode}"}
-
-    # Helper methods for batch processing
-
-    def _generate_batch_summary(self, combined_df: pd.DataFrame, summary_path: str) -> None:
-        """
-        Generate summary statistics from batch processing.
-        
-        Args:
-            combined_df (pd.DataFrame): Combined tracking data
-            summary_path (str): Path to save summary CSV
-        """
-        if combined_df.empty:
-            return
-        
-        # Group by video filename
-        video_groups = combined_df.groupby('video_filename')
-        
-        summary_data = []
-        for video_name, group in video_groups:
-            # Filter to glove positions
-            glove_data = group[group['glove_real_x'].notna() & group['glove_real_y'].notna()]
-            
-            if not glove_data.empty:
-                # Calculate movement
-                dx = glove_data['glove_real_x'].diff().dropna()
-                dy = glove_data['glove_real_y'].diff().dropna()
-                distances = np.sqrt(dx**2 + dy**2)
-                
-                summary = {
-                    'video_filename': video_name,
-                    'frame_count': len(group),
-                    'frames_with_glove': len(glove_data),
-                    'frames_with_baseball': group['baseball_real_x'].notna().sum(),
-                    'frames_with_homeplate': group['homeplate_center_x'].notna().sum(),
-                    'total_distance_inches': distances.sum(),
-                    'max_glove_movement_inches': distances.max() if not distances.empty else None,
-                    'avg_glove_movement_inches': distances.mean() if not distances.empty else None,
-                    'glove_x_range_inches': glove_data['glove_real_x'].max() - glove_data['glove_real_x'].min() if len(glove_data) > 1 else None,
-                    'glove_y_range_inches': glove_data['glove_real_y'].max() - glove_data['glove_real_y'].min() if len(glove_data) > 1 else None,
-                    'avg_glove_x_position': glove_data['glove_real_x'].mean() if not glove_data.empty else None,
-                    'avg_glove_y_position': glove_data['glove_real_y'].mean() if not glove_data.empty else None
-                }
-                summary_data.append(summary)
-        
-        # Create and save summary dataframe
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_csv(summary_path, index=False)
-            self.logger.info(f"Batch summary saved to {summary_path}")
-
-    def _generate_combined_heatmap(self, combined_df: pd.DataFrame, output_path: str) -> str:
-        """
-        Generate a combined heatmap from all video tracking data.
-        
-        Args:
-            combined_df (pd.DataFrame): Combined tracking data
-            output_path (str): Path to save the heatmap
-            
-        Returns:
-            str: Path to the saved heatmap or None if generation failed
-        """
-        if combined_df.empty:
-            self.logger.warning("Empty DataFrame, cannot generate heatmap")
-            return None
-        
-        # Filter to valid glove positions
-        glove_data = combined_df[combined_df['glove_real_x'].notna() & combined_df['glove_real_y'].notna()]
-        
-        if len(glove_data) < 2:
-            self.logger.warning("Not enough glove position data for heatmap")
-            return None
-        
-        # Generate heatmap
-        plt.figure(figsize=(10, 8))
-        
-        # Create heatmap from glove positions
-        plt.hist2d(glove_data['glove_real_x'], glove_data['glove_real_y'], bins=20, cmap='hot')
-        plt.colorbar(label='Frequency')
-        
-        # Draw home plate at origin
-        home_plate_shape = np.array([[-8.5, 0], [8.5, 0], [0, 8.5], [-8.5, 0]])
-        plt.fill(home_plate_shape[:, 0], home_plate_shape[:, 1], color='gray', alpha=0.5)
-        
-        # Set title
-        plt.title('Combined Glove Position Heatmap')
-        plt.xlabel('X Position (inches from home plate)')
-        plt.ylabel('Y Position (inches from home plate)')
-        plt.grid(True, alpha=0.3)
-        
-        # Set fixed axis limits
-        plt.xlim(-50, 50)
-        plt.ylim(-10, 60)
-        
-        # Force 1:1 aspect ratio
-        plt.gca().set_aspect('equal', 'box')
-        
-        # Save the heatmap
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        self.logger.info(f"Combined heatmap saved to {output_path}")
-        return output_path
