@@ -1,4 +1,4 @@
 from .utils import extract_frames_from_video, check_import
-from .distance_to_zone import DistanceToZone
+from .baseball_utils import DistanceToZone, GloveTracker
 
-__all__ = ['extract_frames_from_video', 'check_import', 'DistanceToZone']
+__all__ = ['extract_frames_from_video', 'check_import', 'DistanceToZone', 'GloveTracker']
