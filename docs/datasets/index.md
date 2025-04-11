@@ -55,18 +55,23 @@ YOLO format datasets are primarily used for object detection tasks and are compa
      - Test: 426 images
      - Valid: 375 images
 
-4. **OKD_NOKD**
-   - Content: Catcher stance classification (One Knee Down vs No One Knee Down)
+4. **phc**
+   - Content: Pitcher, hitter, and catcher annotations
    - Distribution:
-     - OKD: 1,408 images
-     - NOKD: 1,408 images
+     - Train, Test, Valid splits
+   - Primary use: Player tracking and positioning analysis
 
 5. **amateur_pitcher_hitter**
    - Content: Pitchers and hitters in amateur baseball games
    - Distribution:
-     - Train: NA
-     - Test: NA
-     - Valid: NA
+     - Train, Test, Valid splits
+   - Primary use: Amateur baseball analysis
+
+6. **OKD_NOKD**
+   - Content: Catcher stance classification (One Knee Down vs No One Knee Down)
+   - Distribution:
+     - OKD: 1,408 images
+     - NOKD: 1,408 images
 
 ### COCO Format Datasets
 
@@ -87,6 +92,17 @@ COCO format datasets are ideal for training DETR and other transformer-based mod
      - Test: 408 images
      - Valid: 206 images
 
+### JSONL Format Datasets
+
+{: .note }
+JSONL format datasets are optimized for vision-language models like Florence2 and PaliGemma2.
+
+1. **amateur_hitter_pitcher_jsonl**
+   - Content: JSONL format annotations for amateur baseball players
+   - Distribution:
+     - Train, Test, Valid splits
+   - Primary use: Vision-language model training for amateur baseball analysis
+
 ### Raw Photo Datasets
 
 1. **broadcast_10k_frames**
@@ -99,18 +115,31 @@ COCO format datasets are ideal for training DETR and other transformer-based mod
    - Resolution: 1280 x 720 pixels
    - Usage: Custom annotation and model training
 
-3. **international_amateur_baseball_pitcher_photo**
+### HuggingFace Hosted Datasets
+
+1. **international_amateur_baseball_pitcher_photo**
    - Content: 10,000 unannotated international amateur baseball pitcher photos
    - Usage: Custom annotation and model training for amateur baseball pitcher detection
 
-4. **international_amateur_baseball_photos**
+2. **international_amateur_baseball_photos**
    - Content: 100,000 unannotated international amateur baseball photos
    - Usage: Custom annotation and model training for amateur baseball detection
 
-5. **international_amateur_baseball_catcher_photos**
+3. **international_amateur_baseball_catcher_photos**
    - Content: 15,000 unannotated international amateur baseball catcher photos
    - Usage: Custom annotation and model training for amateur baseball catcher detection
 
+4. **international_amateur_baseball_catcher_video**
+   - Content: Video clips of amateur baseball catchers
+   - Usage: Catcher motion analysis and detection model training
+
+5. **international_amateur_baseball_game_video**
+   - Content: Complete amateur baseball game footage
+   - Usage: Full-game analysis and player tracking
+
+6. **international_amateur_baseball_bp_video**
+   - Content: Batting practice footage from amateur baseball
+   - Usage: Swing analysis and training
 
 ## Using the Datasets
 
@@ -129,6 +158,9 @@ dataset_path = load_tools.load_dataset("baseball_rubber_home_glove")
 
 # Load raw photos for custom annotation
 raw_dataset = load_tools.load_dataset("broadcast_10k_frames")
+
+# Load a HuggingFace hosted dataset
+hf_dataset = load_tools.load_dataset("international_amateur_baseball_photos")
 ```
 
 ### Working with Different Formats
@@ -161,6 +193,21 @@ def process_coco_dataset(dataset_path):
     categories = coco.loadCats(coco.getCatIds())
 ```
 
+#### JSONL Format
+```python
+def process_jsonl_dataset(dataset_path):
+    """Process a JSONL format dataset for vision-language models"""
+    import json
+    
+    jsonl_path = os.path.join(dataset_path, "train_annotations.json")
+    with open(jsonl_path, 'r') as f:
+        for line in f:
+            entry = json.loads(line)
+            image_path = os.path.join(dataset_path, entry['image'])
+            prefix = entry['prefix']  # Usually a task token like "<OD>"
+            suffix = entry['suffix']  # Annotation text with location tags
+```
+
 ### Creating Custom Datasets
 
 BaseballCV supports creating custom datasets from video footage:
@@ -179,7 +226,7 @@ data_tools.generate_photo_dataset(
     end_date="2024-05-31"
 )
 
-# Auto-annotate using existing model w/ YOLO
+# Auto-annotate using existing model with YOLO format
 data_tools.automated_annotation(
     model_alias="ball_tracking",
     image_dir="custom_dataset",
@@ -188,8 +235,13 @@ data_tools.automated_annotation(
     mode="legacy"
 )
 
-# Auto-annotate using existing model w/ Autodistill
-ontology = { "a mitt worn by a baseball player for catching a baseball": "glove" }
+# Auto-annotate using Autodistill and natural language
+ontology = { 
+    "a mitt worn by a baseball player for catching a baseball": "glove",
+    "a baseball in flight": "baseball",
+    "the white pentagon-shaped home plate on a baseball field": "homeplate"
+}
+
 data_tools.automated_annotation(
     model_type="detection",
     image_dir="custom_dataset",
@@ -205,9 +257,9 @@ data_tools.automated_annotation(
 When working with BaseballCV datasets, consider:
 
 1. **Resolution and Quality**
-   - All datasets are derived from MLB broadcast footage
+   - Professional datasets are derived from MLB broadcast footage
    - Standard resolution: 1280x720 pixels
-   - Various lighting conditions and camera angles
+   - Amateur datasets vary in quality and camera angles
 
 2. **Annotation Consistency**
    - Ball annotations are centered on the baseball
@@ -226,7 +278,7 @@ When working with BaseballCV datasets, consider:
 ## Best Practices
 
 1. **Dataset Selection**
-   - Choose format based on model architecture (YOLO vs COCO)
+   - Choose format based on model architecture (YOLO vs COCO vs JSONL)
    - Consider using combined datasets for multi-object detection
    - Start with smaller datasets for prototyping
 
@@ -239,3 +291,8 @@ When working with BaseballCV datasets, consider:
    - Regularly validate annotations during training
    - Use visualization tools to check detection quality
    - Monitor class distribution in custom datasets
+
+4. **Domain Adaptation**
+   - When moving between professional and amateur footage, consider retraining
+   - Use transfer learning from MLB models to amateur scenarios
+   - Validate performance across different camera angles and lighting conditions
