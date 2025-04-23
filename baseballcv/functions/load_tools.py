@@ -181,10 +181,21 @@ class LoadTools:
         elif model_type == 'RFDETR':
             model_txt_path = self.rfdetr_model_aliases.get(model_alias) if use_bdl_api else model_txt_path
         else:
-            raise ValueError(f"Invalid model type: {model_type}")
+            raise ValueError(f"Invalid model type: {model_type}. Expecting: YOLO, FLORENCE2, PALIGEMMA2, DETR, RFDETR")
         
         if not model_txt_path:
-            raise ValueError(f"Invalid alias: {model_alias}")
+            self.logger.error(f"No txt file found from model_alias={model_alias} and model_type={model_type}")
+            self.logger.error(f"""Here are some valid aliases for each model type if you're using the API:
+            YOLO: {', '.join(self.yolo_model_aliases.keys())}
+
+            FLORENCE2: {', '.join(self.florence_model_aliases.keys())}
+
+            PALIGEMMA2: {', '.join(self.paligemma2_model_aliases.keys())}
+
+            DETR: {', '.join(self.detr_model_aliases.keys())}
+
+            RFDETR: {', '.join(self.rfdetr_model_aliases.keys())}""")
+            raise ValueError()
 
         base_dir = os.path.dirname(model_txt_path)
         base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
@@ -237,7 +248,10 @@ class LoadTools:
         
         txt_path = self.dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
         if not txt_path:
-            raise ValueError(f"Invalid alias or missing path: {dataset_alias}")
+            self.logger.error(f"""Invalid alias {dataset_alias}. These are the valid dataset aliases:
+            {', '.join(self.dataset_aliases.keys())}""")
+
+            raise ValueError()
         
         is_hf_dataset = txt_path.startswith("hf:")  
 

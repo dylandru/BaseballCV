@@ -26,5 +26,5 @@ roboflow==1.1.50
 rfdetr==1.0.8
 autodistill==0.1.29
 autodistill-grounded-sam==0.1.2
-git+https://github.com/Jensen-holm/statcast-era-pitches.git
+scikit-learn
 git+https://github.com/dylandru/yolov9.git
