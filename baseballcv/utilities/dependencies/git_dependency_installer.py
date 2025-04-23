@@ -33,7 +33,6 @@ def install_git_dependencies() -> bool:
     """Install Git dependencies for baseballcv."""
     logger.info("Installing Git dependencies for baseballcv...")
     git_deps = [
-        "git+https://github.com/Jensen-holm/statcast-era-pitches.git@1.1",
         "git+https://github.com/dylandru/yolov9.git"
     ]
 

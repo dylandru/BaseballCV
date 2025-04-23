@@ -23,6 +23,14 @@ class BaseballSavVideoScraper(Crawler):
         self.logger = BaseballCVLogger().get_logger(self.__class__.__name__)
         super().__init__(start_dt, end_dt, self.logger)
 
+        if (self.end_dt_date - self.start_dt_date).days >= 45:
+            _OVERSIZE_WARN_STRING = """
+            Woah, that's a hefty request you've got there. Please consider using arguments such as 
+            `team_abbr` or `player` if you are only looking for a specific team or player to make
+            queries faster. """
+
+            self.logger.warning(_OVERSIZE_WARN_STRING)
+
         self.play_ids_df = GamePlayIDScraper(start_dt, end_dt, team_abbr,
                                           player, pitch_type=pitch_type, 
                                           max_return_videos=max_return_videos, 
@@ -40,7 +48,7 @@ class BaseballSavVideoScraper(Crawler):
     def run_executor(self) -> None:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             pairs = zip(self.game_pks, self.play_ids) # Ensures these are the same order
-            for _ in tqdm(executor.map(lambda x: self._download_videos(*x), pairs), desc="Downloading Videos", total=len(self.play_ids)):
+            for _ in ProgressBar(executor.map(lambda x: self._download_videos(*x), pairs), desc="Downloading Videos", total=len(self.play_ids)):
                 pass
     
     def get_play_ids_df(self) -> pd.DataFrame:

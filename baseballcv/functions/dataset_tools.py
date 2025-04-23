@@ -9,7 +9,7 @@ import shutil
 from .load_tools import LoadTools
 from ultralytics import YOLO
 from tqdm import tqdm
-from datetime import datetime
+from datetime import date, timedelta
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from autodistill.detection import CaptionOntology
 from autodistill_grounded_sam import GroundedSAM
@@ -40,8 +40,8 @@ class DataTools:
                            max_plays: int = 10, 
                            max_num_frames: int = 6000,
                            max_videos_per_game: int = 10,
-                           start_date: str = "2024-05-22",
-                           end_date: str = "2024-07-25",
+                           start_date: str = date.strftime(date(date.today().year - 1, 4, 15), "%Y-%m-%d"),
+                           end_date: str = None,
                            delete_savant_videos: bool = True,
                            use_savant_scraper: bool = True,
                            input_video_folder: str = None,
@@ -57,8 +57,8 @@ class DataTools:
             max_plays (int): Maximum number of plays for scraper to download videos. Default is 10.
             max_num_frames (int): Maximum number of frames to extract across all videos. Default is 6000.
             max_videos_per_game (int): Max number of videos to pull for single game to increase variety. Defaults to 10.
-            start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-22".
-            end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is "2024-05-25".
+            start_date (str): Start date for video scraping in "YYYY-MM-DD" format. Default is Jackie Robinson day of the previous season.
+            end_date (str): End date for video scraping in "YYYY-MM-DD" format. Default is None.
             delete_savant_videos (bool): Whether or not to delete scraped savant videos after frames are extracted. Default is True.
             use_savant_scraper (bool): Whether to use the savant scraper to download videos. Default is True.
             input_video_folder (str): Path to folder containing videos if not using savant scraper. Default is None.
@@ -72,6 +72,8 @@ class DataTools:
         self.output_folder = output_frames_folder
         
         if use_savant_scraper:
+            self.logger.warning("Using Savant Video Scraper. This may take a while depending on the date range.")
+
             self.scraper = BaseballSavVideoScraper(start_date, end_date, download_folder=video_download_folder,
                                     max_return_videos=max_plays, max_videos_per_game=max_videos_per_game)
             
