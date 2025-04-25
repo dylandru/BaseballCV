@@ -11,38 +11,10 @@ authors = [
 ]
 description = "A collection of tools and models designed to aid in the use of Computer Vision in baseball."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9,<3.9.7 || >3.9.7,<4.0"
 classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-]
-dependencies = [
-    "bs4==0.0.2",
-    "cryptography==44.0.1",
-    "opencv-python==4.10.0.84",
-    "pip==24.0",
-    "pybaseball==2.2.7",
-    "pytest==8.3.2",
-    "ultralytics>=8.2.90,!=8.3.41,!=8.3.42",
-    "transformers==4.48.0",
-    "peft==0.13.2",
-    "streamlit==1.37.0",
-    "awscli==1.36.5",
-    "pytest-cov==6.0.0",
-    "pytest==8.3.2",
-    "supervision==0.25.1",
-    "pillow==10.3.0",
-    "tensorboard>=2.15.0",
-    "wandb==0.19.1",
-    "coco-eval==0.0.4",
-    "pytorch-lightning==2.5.0",
-    "polars==1.10.0",
-    "mediapipe==0.10.21",
-    "datasets==3.4.0",
-    "roboflow==1.1.50",
-    "rfdetr==1.0.8",
-    "autodistill==0.1.29",
-    "autodistill-grounded-sam==0.1.2"
 ]
 
 [project.urls]
@@ -53,3 +25,29 @@ Documentation = "https://baseballcv.com"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["baseballcv*"]
+
+[tool.poetry.dependencies]
+requests = "^2.32.3"
+beautifulsoup4 = "^4.13.4"
+pandas = "^2.2.3"
+polars = "^1.27.1"
+yolov9 = {git = "https://github.com/dylandru/yolov9.git"}
+huggingface-hub = "^0.30.2"
+datasets = "3.4.0"
+ultralytics = "^8.3.116"
+autodistill = "0.1.29"
+autodistill-grounded-sam = "0.1.2"
+mediapipe = "0.10.21"
+# Adding dev version to prevent numpy dependency conflict. Make sure to install 0.26.0 when released
+supervision = "0.26.0rc7" 
+coco-eval = "0.0.4"
+pytorch-lightning = "2.5.0"
+rfdetr = "1.0.8"
+dotenv = "^0.9.9"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.3.2"
+streamlit = "^1.44.1"
+streamlit-image-coordinates = "^0.2.1"
+streamlit-drawable-canvas = "^0.9.3"
+
