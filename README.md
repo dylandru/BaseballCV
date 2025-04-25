@@ -29,8 +29,9 @@ The repository can be cloned from Github with the required dependencies installe
 ```bash
 git clone https://github.com/dylandru/BaseballCV.git
 cd BaseballCV
-pip install -r requirements.txt
+poetry install
 ```
+*Note: For managing dependencies, this package uses [poetry](https://python-poetry.org). For more information on it's use for this package, please see [Contributing](#contributing)*.
 
 ### Install Package
 
@@ -483,6 +484,29 @@ If you are interested in helping maintain or add to the repository, please follo
  - Commit your changes (git commit -m 'Add YourFeature')
  - Push to the branch (git push origin feature/YourFeature)
  - Open a pull request
+
+#### Dependency Managing
+This repository uses poetry for more intuitive management of package installation. Here's how to get it set up in your environment.
+```bash
+pip install poetry==2.1.2
+```
+Once poetry is installed, it's recommended to use a virtual environment to prevent dependency conflicts. Here's how you can do it with poetry.
+
+```bash
+poetry config virtualenvs.in-project true
+poetry install # If you are contributing to a streamlit app or unit tests, add the `--with dev` flag
+source .venv/bin/actiavte
+```
+This creates a virtual environment in your project directory and the dependencies required to operate the package. If you are adding new dependencies, simply write
+```bash
+poetry add ____ # library name
+```
+The dependency is automatically updated, so you don't have to worry about adding it manually to a `requirements.txt` file. 
+If you want a specific python version:
+```bash
+poetry env use ___ # python version
+poetry run python --version
+```
 
 ### How to Contribute (for supporters)
 

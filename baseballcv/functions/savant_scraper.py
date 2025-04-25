@@ -1,6 +1,5 @@
 from baseballcv.functions.utils.savant_utils import GamePlayIDScraper, Crawler
 import concurrent.futures
-from tqdm import tqdm
 import requests
 from bs4 import BeautifulSoup
 import os
