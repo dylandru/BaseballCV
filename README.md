@@ -29,7 +29,7 @@ The repository can be cloned from Github with the required dependencies installe
 ```bash
 git clone https://github.com/dylandru/BaseballCV.git
 cd BaseballCV
-poetry install
+pip install poetry && poetry install
 ```
 *Note: For managing dependencies, this package uses [poetry](https://python-poetry.org). For more information on it's use for this package, please see [Contributing](#contributing)*.
 

@@ -12,28 +12,51 @@ jobs:
       - name: Prepare truncated release body
         id: prepare
         run: |
-          BODY="${{ github.event.release.body }}"
-          TRUNCATED_BODY="${BODY:0:1000}"
-          if [ ${#BODY} -gt 1000 ]; then
-            TRUNCATED_BODY="$TRUNCATED_BODY...\n\n*Message truncated due to length. See full release notes at the link below.*"
+          read -r -d '' BODY <<'EOF'
+          ${{ github.event.release.body }}
+          EOF
+
+          EXTRACTED_CONTENT=$(echo "$BODY" | awk '/^##[[:space:]]*.*What.s Changed/{flag=1} flag')
+
+          if [ -z "$EXTRACTED_CONTENT" ]; then
+            echo "Warning: '## What's Changed' section not found. Using full body." >&2
+            EXTRACTED_CONTENT="$BODY"
           fi
+
+          MAX_LEN=1500
+          TRUNCATED_BODY="${EXTRACTED_CONTENT:0:$MAX_LEN}"
+
+          if [ ${#EXTRACTED_CONTENT} -gt $MAX_LEN ]; then
+            NOTICE="\n\n*... Message truncated. See full release notes link.*"
+            NOTICE_LEN=${#NOTICE}
+            ALLOWED_BODY_LEN=$((MAX_LEN - NOTICE_LEN))
+            if [ $ALLOWED_BODY_LEN -lt 0 ]; then ALLOWED_BODY_LEN=0; fi
+            TRUNCATED_BODY="${EXTRACTED_CONTENT:0:$ALLOWED_BODY_LEN}${NOTICE}"
+          fi
+
+
           echo "truncated_body<<EOF" >> $GITHUB_OUTPUT
           echo "$TRUNCATED_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Discord notification
+        uses: crazy-max/ghaction-discord@v4
         env:
-          DISCORD_WEBHOOK: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
-        uses: Ilshidur/action-discord@master
+          DISCORD_WEBHOOK_URL: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
         with:
-            args: |
-              **New Package Release**
-              ${{ github.event.release.name }}
-
-              Created by: ${{ github.event.release.author.login }}
-
-              **Description:**
-              ${{ steps.prepare.outputs.truncated_body }}
-
-              **View Full Release Notes:**
-              ${{ github.event.release.html_url }}
+          embeds: |
+            [{
+              "title": "${{ github.event.release.name }}",
+              "description": "${{ steps.prepare.outputs.truncated_body }}",
+              "url": "${{ github.event.release.html_url }}",
+              "color": 5814783,
+              "author": {
+                "name": "${{ github.event.release.author.login }}",
+                "url": "${{ github.event.release.author.html_url }}",
+                "icon_url": "${{ github.event.release.author.avatar_url }}"
+              },
+              "footer": {
+                "text": "View full release notes by clicking the title link."
+              }
+            }]
