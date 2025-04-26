@@ -11,7 +11,7 @@ authors = [
 ]
 description = "A collection of tools and models designed to aid in the use of Computer Vision in baseball."
 readme = "README.md"
-requires-python = ">=3.9,<3.9.7 || >3.9.7,<4.0"
+requires-python = ">=3.9, !=3.9.7, <4.0"
 classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
