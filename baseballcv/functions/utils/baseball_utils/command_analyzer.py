@@ -4,46 +4,31 @@ import pandas as pd
 import numpy as np
 import os
 import glob
-import math # Keep for sqrt
 from typing import List, Dict, Tuple, Optional
 
-# Keep necessary utilities
-from baseballcv.utilities import BaseballCVLogger, ProgressBar # Assuming ProgressBar exists
+from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 class CommandAnalyzer:
     """
-    Analyzes pitcher command using GloveTracker CSV data and Statcast data.
-
-    - Identifies intent frame based on glove stability within the CSV data.
-    - Uses processed glove coordinates (inches relative to plate center) from the
-      CSV at the intent frame as the target proxy.
-    - Compares this target to Statcast pitch location.
-    - Does NOT require video files or perform pose estimation/target translation.
+    CSV-Focused Command Analyzer (V2):
+    - Uses GloveTracker CSVs to find intent frame based on stability.
+    - Uses processed glove coordinates (inches) from CSV at intent frame as target.
+    - Compares target to Statcast pitch location (inches).
+    - Adds checks and logging for diagnosing coordinate/deviation issues.
+    - Does NOT require video files.
     """
 
     def __init__(
         self,
-        glove_tracking_dir: str, # Directory containing GloveTracker CSVs
-        statcast_df: pd.DataFrame, # DataFrame with Statcast data for relevant pitches
+        glove_tracking_dir: str,
+        statcast_df: pd.DataFrame,
         logger: Optional[BaseballCVLogger] = None,
         verbose: bool = True
     ):
-        """
-        Initialize the CSV-Focused CommandAnalyzer.
-
-        Args:
-            glove_tracking_dir (str): Path to the directory containing GloveTracker CSV files.
-            statcast_df (pd.DataFrame): DataFrame containing Statcast pitch data.
-                                        Must include 'play_id', 'game_pk', 'plate_x', 'plate_z'.
-            logger (BaseballCVLogger, optional): Logger instance.
-            verbose (bool): Whether to print verbose logs.
-        """
         self.glove_tracking_dir = glove_tracking_dir
         self.logger = logger if logger else BaseballCVLogger.get_logger(self.__class__.__name__)
         self.verbose = verbose
         self.statcast_data = statcast_df
-
-        # No model loading needed as we rely only on CSV and Statcast
 
         if not os.path.isdir(glove_tracking_dir):
              raise FileNotFoundError(f"Glove tracking directory not found: {glove_tracking_dir}")
@@ -56,7 +41,7 @@ class CommandAnalyzer:
         self.statcast_data['play_id'] = self.statcast_data['play_id'].astype(str)
         self.statcast_data['game_pk'] = self.statcast_data['game_pk'].astype(int)
 
-        self.logger.info(f"CSV-Focused CommandAnalyzer initialized. Reading CSVs from: {glove_tracking_dir}")
+        self.logger.info(f"CSV-Focused CommandAnalyzer V2 initialized. Reading CSVs from: {glove_tracking_dir}")
         self.logger.info(f"Using provided Statcast data with {len(self.statcast_data)} rows.")
 
     # --- Helper Functions ---
@@ -78,46 +63,37 @@ class CommandAnalyzer:
 
     def _find_intent_frame_from_csv(self, df: pd.DataFrame, velocity_threshold: float = 5.0) -> Optional[int]:
         """ Identifies the 'intent frame' based on glove stability from CSV data. """
-        # (Same logic as before - uses 'glove_processed_x/y')
+        # (Same logic as previous version - finds last stable frame or min velocity frame)
         valid_glove_frames = df[
             df['glove_processed_x'].notna() &
             df['glove_processed_y'].notna() &
-            # Optionally consider is_interpolated=False if you only trust raw detections
             (df['is_interpolated'] == False)
         ].copy()
 
-        if len(valid_glove_frames) < 2:
-            # self.logger.debug("Not enough non-interpolated glove frames (<2) to calculate velocity.")
-            return None
+        if len(valid_glove_frames) < 2: return None
 
         valid_glove_frames = valid_glove_frames.sort_values(by='frame_idx').reset_index()
         valid_glove_frames['dt'] = valid_glove_frames['frame_idx'].diff().fillna(1.0)
         valid_glove_frames.loc[valid_glove_frames['dt'] <= 0, 'dt'] = 1.0
         valid_glove_frames['dx'] = valid_glove_frames['glove_processed_x'].diff().fillna(0)
         valid_glove_frames['dy'] = valid_glove_frames['glove_processed_y'].diff().fillna(0)
-        # Velocity is inches per frame here
         valid_glove_frames['velocity'] = np.sqrt(valid_glove_frames['dx']**2 + valid_glove_frames['dy']**2) / valid_glove_frames['dt']
 
         stable_frames = valid_glove_frames[valid_glove_frames['velocity'] < velocity_threshold]
 
         if not stable_frames.empty:
             intent_frame = int(stable_frames['frame_idx'].iloc[-1])
-            # self.logger.debug(f"Identified potential intent frame from CSV: {intent_frame}")
             return intent_frame
         else:
              if not valid_glove_frames.empty and 'velocity' in valid_glove_frames.columns and len(valid_glove_frames) > 1:
-                 min_vel_frame_idx = valid_glove_frames['velocity'].iloc[1:].idxmin() # Exclude first row's velocity
+                 min_vel_frame_idx = valid_glove_frames['velocity'].iloc[1:].idxmin()
                  if pd.notna(min_vel_frame_idx):
                       min_vel_frame = int(valid_glove_frames.loc[min_vel_frame_idx, 'frame_idx'])
-                      # self.logger.debug(f"Using fallback intent frame (min velocity from CSV): {min_vel_frame}")
                       return min_vel_frame
-             self.logger.debug("Could not find a stable intent frame from CSV.")
              return None
     #--- End Helpers ---
 
-
     # --- Main Analysis Logic ---
-
     def calculate_command_metrics(
         self,
         csv_path: str,
@@ -125,21 +101,20 @@ class CommandAnalyzer:
         ) -> Optional[Dict]:
         """
         Calculates command deviation for a single pitch using CSV data only.
-
-        Args:
-            csv_path (str): Path to the GloveTracker CSV file for the pitch.
-            statcast_row (pd.Series): Row from Statcast DataFrame for this pitch.
-
-        Returns:
-            Optional[Dict]: Dictionary containing command metrics or None if error.
+        Includes checks for coordinate system assumptions.
         """
         game_pk = int(statcast_row['game_pk'])
         play_id = str(statcast_row['play_id'])
 
         try:
             track_df = pd.read_csv(csv_path)
+            # Check if essential columns exist in the CSV
+            required_csv_cols = ['frame_idx', 'glove_processed_x', 'glove_processed_y', 'is_interpolated', 'pixels_per_inch']
+            if not all(col in track_df.columns for col in required_csv_cols):
+                 self.logger.warning(f"CSV {csv_path} missing required columns for analysis. Skipping.")
+                 return None
         except Exception as e:
-            self.logger.error(f"Failed to read tracking CSV {csv_path}: {e}")
+            self.logger.error(f"Failed to read/validate tracking CSV {csv_path}: {e}")
             return None
 
         # --- Find Intent Frame using CSV data ---
@@ -155,19 +130,25 @@ class CommandAnalyzer:
              return None
         intent_frame_data = intent_frame_data_rows.iloc[0]
 
-        # Use glove_processed_x/y as the target proxy (already in inches relative to plate center)
         target_x_inches = intent_frame_data['glove_processed_x']
         target_y_inches = intent_frame_data['glove_processed_y']
+        pixels_per_inch = intent_frame_data['pixels_per_inch'] # Get calibration factor used by GloveTracker
 
+        # Validate extracted target coordinates and calibration factor
         if pd.isna(target_x_inches) or pd.isna(target_y_inches):
              self.logger.warning(f"Glove target coords missing in CSV for intent frame {intent_frame_idx} in play {play_id}. Skipping.")
+             return None
+        if pd.isna(pixels_per_inch) or pixels_per_inch <= 0:
+             self.logger.warning(f"Invalid pixels_per_inch ({pixels_per_inch}) in CSV for play {play_id}. Target coords might be unreliable. Skipping.")
              return None
 
         # --- Get Actual Pitch Location (Statcast) ---
         try:
+            # Assume plate_x, plate_z are feet relative to plate center
             actual_pitch_x_ft = statcast_row['plate_x']
             actual_pitch_z_ft = statcast_row['plate_z']
             if pd.isna(actual_pitch_x_ft) or pd.isna(actual_pitch_z_ft): raise ValueError("NaN location")
+            # Convert Statcast feet to inches
             actual_pitch_x_inches = actual_pitch_x_ft * 12.0
             actual_pitch_z_inches = actual_pitch_z_ft * 12.0
         except (KeyError, TypeError, ValueError) as e:
@@ -175,18 +156,28 @@ class CommandAnalyzer:
             return None
 
         # --- Calculate Deviation ---
-        # Compare target (from CSV, inches) with actual pitch location (from Statcast, inches)
+        # Comparing inches from CSV (relative to plate center) with inches from Statcast (relative to plate center)
         dev_x = actual_pitch_x_inches - target_x_inches
-        dev_y = actual_pitch_z_inches - target_y_inches # Assumes glove_processed_y aligns vertically with plate_z
+        dev_y = actual_pitch_z_inches - target_y_inches
         deviation_inches = np.sqrt(dev_x**2 + dev_y**2)
+
+        # --- Diagnostic Logging for High Deviations ---
+        # Log details if deviation seems suspiciously large (e.g., > 36 inches)
+        if deviation_inches > 36.0 and self.verbose:
+             self.logger.warning(f"High Deviation Detected for play {play_id}: {deviation_inches:.2f} inches.")
+             self.logger.debug(f"  Intent Frame (CSV): {intent_frame_idx}")
+             self.logger.debug(f"  Target Coords (CSV, inches): x={target_x_inches:.2f}, y={target_y_inches:.2f}")
+             self.logger.debug(f"  Actual Coords (Statcast, inches): x={actual_pitch_x_inches:.2f}, z={actual_pitch_z_inches:.2f}")
+             self.logger.debug(f"  pixels_per_inch used by GloveTracker: {pixels_per_inch:.2f}")
+             # You could add more info from intent_frame_data if needed
 
         # --- Compile Results ---
         results = {
             "game_pk": game_pk,
             "play_id": play_id,
-            "intent_frame_csv": intent_frame_idx, # Note the source of the frame index
-            "target_x_inches": target_x_inches,   # Renamed for clarity
-            "target_y_inches": target_y_inches,   # Renamed for clarity
+            "intent_frame_csv": intent_frame_idx,
+            "target_x_inches": target_x_inches,
+            "target_y_inches": target_y_inches,
             "actual_pitch_x": actual_pitch_x_inches,
             "actual_pitch_z": actual_pitch_z_inches,
             "deviation_inches": deviation_inches,
@@ -199,8 +190,8 @@ class CommandAnalyzer:
                   results[col] = statcast_row[col]
         return results
 
-
-    def analyze_folder(self, output_csv: str = "command_analysis_results_csv_only.csv") -> pd.DataFrame:
+    # analyze_folder remains the same as the previous CSV-focused version
+    def analyze_folder(self, output_csv: str = "command_analysis_results_csv_only_v2.csv") -> pd.DataFrame:
         """
         Analyzes pitches based SOLELY on GloveTracker CSVs and the Statcast DataFrame.
 
@@ -221,15 +212,14 @@ class CommandAnalyzer:
              return pd.DataFrame()
 
         all_results = []
-        self.logger.info(f"Found {len(csv_files)} tracking files for CSV-based analysis.")
+        self.logger.info(f"Found {len(csv_files)} tracking files for CSV-based analysis (V2).")
 
-        for csv_path in ProgressBar(iterable=csv_files, desc="Analyzing Pitch Command (CSV Only)"):
+        for csv_path in ProgressBar(iterable=csv_files, desc="Analyzing Pitch Command (CSV Only V2)"):
             game_pk, play_id = self._extract_ids_from_filename(csv_path)
             if game_pk is None or play_id is None:
                 self.logger.warning(f"Skipping CSV due to invalid name format: {csv_path}")
                 continue
 
-            # Find corresponding Statcast row
             statcast_row_df = self.statcast_data[self.statcast_data['play_id'] == play_id]
             if statcast_row_df.empty:
                 self.logger.warning(f"Skipping play {play_id} (Game {game_pk}) - Statcast data not found in provided DF.")
@@ -242,7 +232,7 @@ class CommandAnalyzer:
                 statcast_row=statcast_row
             )
 
-            if pitch_metrics:
+            if pitch_metrics: # Appends even if only partial data (e.g., missing deviation)
                  all_results.append(pitch_metrics)
             # Skips logged within calculate_command_metrics
 
@@ -271,7 +261,7 @@ class CommandAnalyzer:
         try:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             results_df.to_csv(output_path, index=False)
-            self.logger.info(f"CSV-Only command analysis results saved to {output_path}")
+            self.logger.info(f"CSV-Only command analysis results (V2) saved to {output_path}")
         except Exception as e:
             self.logger.error(f"Failed to save results CSV to {output_path}: {e}")
 
@@ -290,10 +280,10 @@ class CommandAnalyzer:
              if not valid_group_by: return pd.DataFrame()
              group_by = valid_group_by
 
-        df_filt = results_df.dropna(subset=['deviation_inches'] + group_by) # Drop NaNs in deviation AND grouping keys
-        if df_filt.empty: self.logger.warning("No valid data for aggregation after dropping NaNs."); return pd.DataFrame()
+        results_df_filtered = results_df.dropna(subset=['deviation_inches'] + group_by)
+        if results_df_filtered.empty: self.logger.warning("No valid data for aggregation after dropping NaNs."); return pd.DataFrame()
 
-        df_filt = df_filt.copy()
+        df_filt = results_df_filtered.copy()
         df_filt['is_commanded'] = df_filt['deviation_inches'] <= cmd_threshold_inches
 
         agg_funcs = {
@@ -302,7 +292,7 @@ class CommandAnalyzer:
             'CmdPct': pd.NamedAgg(column='is_commanded', aggfunc=lambda x: x.mean() * 100 if not x.empty else 0),
             'Pitches': pd.NamedAgg(column='play_id', aggfunc='count')
         }
-        agg_metrics = df_filt.groupby(group_by, dropna=False).agg(**agg_funcs).reset_index() # dropna=False might include NaN groups if any slipped through
+        agg_metrics = df_filt.groupby(group_by, dropna=False).agg(**agg_funcs).reset_index()
 
         if 'StdDev_inches' in agg_metrics.columns: agg_metrics['StdDev_inches'] = agg_metrics['StdDev_inches'].fillna(0)
         agg_metrics.rename(columns={'CmdPct': f'Cmd%_<{cmd_threshold_inches}in'}, inplace=True)
