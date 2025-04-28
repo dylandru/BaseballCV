@@ -102,19 +102,57 @@ class CommandAnalyzer:
 
     def _fetch_statcast_for_game(self, game_pk: int) -> Optional[pd.DataFrame]:
         """Fetches Statcast pitch data for a specific game_pk."""
-        # (Keep implementation from previous response)
-        if game_pk in self.statcast_cache: return self.statcast_cache[game_pk]
+        if game_pk in self.statcast_cache:
+            # Return cached data if available (even if it's None from a previous failed attempt)
+            if self.statcast_cache[game_pk] is not None:
+                 self.logger.debug(f"Using cached Statcast data for game {game_pk}.")
+            return self.statcast_cache[game_pk]
+
         self.logger.info(f"Fetching Statcast data for game_pk: {game_pk}...")
         try:
-            temp_fetcher = GamePlayIDScraper(start_dt="2024-01-01", logger=self.logger) # Use shared logger
-            temp_fetcher.game_pks = [game_pk]; temp_fetcher.home_team = ["N/A"]; temp_fetcher.away_team = ["N/A"]
-            pl_df = temp_fetcher._get_play_ids(game_pk, "N/A", "N/A"); del temp_fetcher
+            # *** CHANGE HERE: Use a valid in-season date for initialization ***
+            # Using a date from the likely season of the game_pk is best,
+            # but a recent valid date usually works.
+            # Example: Using May 1st, 2024 as a default valid in-season date.
+            # Adjust this if analyzing games from much earlier/later seasons significantly.
+            valid_dummy_start_date = "2024-05-01"
+            temp_fetcher = GamePlayIDScraper(start_dt=valid_dummy_start_date, logger=self.logger)
+
+            # Override game_pks list to fetch only the specific game
+            temp_fetcher.game_pks = [game_pk]
+            temp_fetcher.home_team = ["N/A"] # Dummy values needed for internal call
+            temp_fetcher.away_team = ["N/A"]
+
+            # Call internal method to get data for this game
+            # This method fetches play-by-play which contains pitch data
+            pl_df = temp_fetcher._get_play_ids(game_pk, "N/A", "N/A")
+            del temp_fetcher # Clean up
+
             if pl_df is not None and not pl_df.is_empty():
-                pd_df = pl_df.to_pandas(); pd_df['play_id'] = pd_df['play_id'].astype(str)
-                self.statcast_cache[game_pk] = pd_df; self.logger.info(f"Cached {len(pd_df)} pitches for game {game_pk}.")
+                pd_df = pl_df.to_pandas()
+                # Ensure required columns exist after fetch, before caching
+                required_cols = ['play_id', 'game_pk', 'plate_x', 'plate_z']
+                if not all(col in pd_df.columns for col in required_cols):
+                     missing = [col for col in required_cols if col not in pd_df.columns]
+                     self.logger.error(f"Fetched Statcast data for game {game_pk} is missing required columns: {missing}")
+                     self.statcast_cache[game_pk] = None
+                     return None
+
+                pd_df['play_id'] = pd_df['play_id'].astype(str) # Ensure string ID
+                pd_df['game_pk'] = pd_df['game_pk'].astype(int) # Ensure int key
+                self.statcast_cache[game_pk] = pd_df # Cache successful fetch
+                self.logger.info(f"Successfully fetched and cached {len(pd_df)} pitches for game {game_pk}.")
                 return pd_df
-            else: self.logger.warning(f"No pitch data returned for game_pk: {game_pk}"); self.statcast_cache[game_pk] = None; return None
-        except Exception as e: self.logger.error(f"Error fetching Statcast for game {game_pk}: {e}"); self.statcast_cache[game_pk] = None; return None
+            else:
+                self.logger.warning(f"No pitch data returned from Statcast API for game_pk: {game_pk}")
+                self.statcast_cache[game_pk] = None # Cache failure (empty df)
+                return None
+        except Exception as e:
+            # Log the full exception trace if verbose
+            log_exc_info = self.verbose
+            self.logger.error(f"Error fetching Statcast data for game_pk {game_pk}: {e}", exc_info=log_exc_info)
+            self.statcast_cache[game_pk] = None # Cache failure (exception)
+            return None
 
     def _download_video_for_play(self, game_pk: int, play_id: str, video_output_dir: str):
         """Downloads video for a specific play using internal downloader."""
