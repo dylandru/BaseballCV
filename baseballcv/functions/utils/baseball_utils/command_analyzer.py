@@ -61,18 +61,18 @@ class CommandAnalyzer:
         if self._video_downloader_instance is None:
              # Need dummy date that has games for GamePlayIDScraper init inside scraper
              dummy_start = "2024-04-01" # Use a known valid in-season date
-             temp_dl_folder = os.path.join(temp_dir, "temp_scraper_init_video") # Unique temp folder
+             temp_dl_folder = os.path.join(temp_dir, "temp_scraper_init_video_dl") # Unique temp folder name
              try:
                  # Initialize scraper WITHOUT the logger argument
                  self._video_downloader_instance = BaseballSavVideoScraper(
                      start_dt=dummy_start,
                      download_folder=temp_dl_folder,
                      max_return_videos=1 # Minimize initial work
-                     # logger=None <-- REMOVE THIS LINE
+                     # NO logger=None argument here
                  )
                  self.logger.debug("Internal video downloader instance created.")
              except Exception as e:
-                  self.logger.error(f"Failed to create internal video downloader: {e}")
+                  self.logger.error(f"Failed to create internal video downloader: {e}", exc_info=self.verbose) # Show traceback if verbose
                   # Clean up temp dir even on failure
                   if os.path.exists(temp_dl_folder):
                       try: shutil.rmtree(temp_dl_folder)
