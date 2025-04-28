@@ -126,32 +126,58 @@ class CommandAnalyzer:
         except Exception as e: self.logger.error(f"Error fetching Statcast for game {game_pk}: {e}", exc_info=self.verbose); self.statcast_cache[game_pk] = None; return None
 
     def _download_video_for_play(self, game_pk: int, play_id: str, video_output_dir: str) -> Optional[str]:
-        """Downloads video for a specific play, returns path if successful."""
-        # (Keep implementation from previous response)
+        """Downloads video for a specific play using internal downloader."""
         os.makedirs(video_output_dir, exist_ok=True)
         output_path = os.path.join(video_output_dir, f"{game_pk}_{play_id}.mp4")
-        if os.path.exists(output_path): self.logger.debug(f"Video already exists: {output_path}"); return output_path
+        if os.path.exists(output_path):
+            self.logger.debug(f"Video already exists: {output_path}")
+            return output_path # Return path even if it exists
+
         self.logger.info(f"Downloading video for play {play_id} (Game {game_pk})...")
         try:
-            downloader = self._get_video_downloader(video_output_dir)
+            downloader = self._get_video_downloader(video_output_dir) # Gets the scraper instance
             if downloader:
-                 downloader.download_folder = video_output_dir # Set target dir
+                 downloader.download_folder = video_output_dir # Set target dir for _write_content
+
+                 # --- Logic copied/adapted from BaseballSavVideoScraper ---
                  video_page_url = downloader.SAVANT_VIDEO_URL.format(play_id)
+                 # Use the downloader's request method (handles retries, headers etc.)
                  video_page_response = downloader.requests_with_retry(video_page_url)
-                 if not video_page_response: raise ValueError("Failed video page")
-                 soup = downloader.BeautifulSoup(video_page_response.content, 'html.parser')
+                 if not video_page_response: raise ValueError("Failed to get video page")
+
+                 # *** CORRECTED BeautifulSoup USAGE HERE ***
+                 soup = BeautifulSoup(video_page_response.content, 'html.parser')
+                 # *** END CORRECTION ***
+
                  video_container = soup.find('div', class_='video-box')
-                 if not video_container: raise ValueError("No video container")
-                 source = video_container.find('video').find('source', type='video/mp4')
-                 if not source or not source.get('src'): raise ValueError("No MP4 source URL")
-                 video_url = source['src']
+                 if not video_container: raise ValueError("Video container not found on page")
+
+                 source_tag = video_container.find('video').find('source', type='video/mp4')
+                 if not source_tag or not source_tag.get('src'): raise ValueError("MP4 source URL not found")
+                 video_url = source_tag['src']
+
+                 # Ensure URL is absolute (it usually is from Savant)
+                 if not video_url.startswith(('http:', 'https:')):
+                     # This might be needed if relative URLs were ever encountered
+                     from urllib.parse import urljoin
+                     video_url = urljoin(video_page_url, video_url)
+
                  video_response = downloader.requests_with_retry(video_url, stream=True)
-                 if not video_response: raise ValueError("Failed video stream")
+                 if not video_response: raise ValueError("Failed to get video stream")
+
+                 # Use the scraper's existing method to write the file
                  downloader._write_content(game_pk, play_id, video_response)
-                 self.logger.info(f"Video downloaded: {output_path}")
+                 self.logger.info(f"Video downloaded successfully: {output_path}")
                  return output_path
-            else: self.logger.error(f"Video downloader NA for {play_id}."); return None
-        except Exception as e: self.logger.error(f"Failed video download for {play_id}: {e}"); return None
+                 # --- End copied/adapted logic ---
+            else:
+                 self.logger.error(f"Video downloader instance not available for {play_id}.")
+                 return None
+
+        except Exception as e:
+             # Log the specific exception that occurred during download attempt
+             self.logger.error(f"Failed video download for play {play_id}: {e}", exc_info=self.verbose)
+             return None # Indicate failure
 
 
     def _find_intent_frame_from_csv(self, df: pd.DataFrame, velocity_threshold: float = 5.0) -> Optional[int]:
