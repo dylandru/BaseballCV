@@ -57,15 +57,33 @@ class CommandAnalyzer:
     # --- Internal Helper Instantiation ---
     def _get_video_downloader(self, temp_dir: str) -> Optional[BaseballSavVideoScraper]:
         """Creates or returns a minimal BaseballSavVideoScraper instance for downloading."""
-        # (Keep implementation from previous response)
+        # This scraper is used ONLY for its download method, needs dummy init values
         if self._video_downloader_instance is None:
-             dummy_start = "2024-04-01"; temp_dl_folder = os.path.join(temp_dir, "temp_scraper_init")
+             # Need dummy date that has games for GamePlayIDScraper init inside scraper
+             dummy_start = "2024-04-01" # Use a known valid in-season date
+             temp_dl_folder = os.path.join(temp_dir, "temp_scraper_init_video") # Unique temp folder
              try:
-                 self._video_downloader_instance = BaseballSavVideoScraper(start_dt=dummy_start, download_folder=temp_dl_folder, max_return_videos=1, logger=None)
+                 # Initialize scraper WITHOUT the logger argument
+                 self._video_downloader_instance = BaseballSavVideoScraper(
+                     start_dt=dummy_start,
+                     download_folder=temp_dl_folder,
+                     max_return_videos=1 # Minimize initial work
+                     # logger=None <-- REMOVE THIS LINE
+                 )
                  self.logger.debug("Internal video downloader instance created.")
-             except Exception as e: self.logger.error(f"Failed to create internal video downloader: {e}"); return None
+             except Exception as e:
+                  self.logger.error(f"Failed to create internal video downloader: {e}")
+                  # Clean up temp dir even on failure
+                  if os.path.exists(temp_dl_folder):
+                      try: shutil.rmtree(temp_dl_folder)
+                      except Exception: pass # Ignore cleanup error
+                  return None
              finally:
-                  if os.path.exists(temp_dl_folder): shutil.rmtree(temp_dl_folder)
+                  # Clean up temp download folder created during init
+                  if os.path.exists(temp_dl_folder):
+                      try: shutil.rmtree(temp_dl_folder)
+                      except Exception as e_clean:
+                           self.logger.debug(f"Could not remove temp scraper init dir: {e_clean}")
         return self._video_downloader_instance
 
     # --- Helper Functions ---
