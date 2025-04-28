@@ -9,31 +9,67 @@ jobs:
   discord_notification:
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare truncated release body
+      - name: Prepare Notification Content
         id: prepare
         run: |
-          BODY="${{ github.event.release.body }}"
-          TRUNCATED_BODY="${BODY:0:1000}"
-          if [ ${#BODY} -gt 1000 ]; then
-            TRUNCATED_BODY="$TRUNCATED_BODY...\n\n*Message truncated due to length. See full release notes at the link below.*"
+          RELEASE_BODY=$(cat <<'EOF'
+          ${{ github.event.release.body || '*(No release body available - manual trigger?)*' }}
+          EOF
+          )
+          RELEASE_NAME="${{ github.event.release.name || format('Workflow Run: {0}', github.run_id) }}"
+          RELEASE_URL="${{ github.event.release.html_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}"
+          AUTHOR_LOGIN="${{ github.event.release.author.login || github.actor }}"
+          AUTHOR_URL="${{ github.event.release.author.html_url || format('{0}/{1}', github.server_url, github.actor) }}"
+          AUTHOR_AVATAR_URL="${{ github.event.release.author.avatar_url || '' }}"
+
+          EXTRACTED_CONTENT=$(echo "$RELEASE_BODY" | awk 'BEGIN{IGNORECASE=1} /^##[[:space:]]*What'\''?s[[:space:]]+Changed/{flag=1} flag')
+
+          if [ -z "$EXTRACTED_CONTENT" ]; then
+            echo "INFO: '## What's Changed' section not found or empty. Using full body." >&2
+            EXTRACTED_CONTENT="$RELEASE_BODY"
           fi
-          echo "truncated_body<<EOF" >> $GITHUB_OUTPUT
+
+          EXTRACTED_CONTENT=$(echo "$EXTRACTED_CONTENT" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+          MAX_LEN=1900
+          NOTICE="\n\n*... Message truncated. See link for full details.*"
+          TRUNCATED_BODY="$EXTRACTED_CONTENT"
+
+          if [ ${#EXTRACTED_CONTENT} -gt $MAX_LEN ]; then
+            NOTICE_LEN=${#NOTICE}
+            ALLOWED_BODY_LEN=$((MAX_LEN - NOTICE_LEN))
+            if [ $ALLOWED_BODY_LEN -lt 0 ]; then ALLOWED_BODY_LEN=0; fi
+            TRUNCATED_BODY="${EXTRACTED_CONTENT:0:$ALLOWED_BODY_LEN}${NOTICE}"
+          fi
+
+          echo "final_body<<EOF" >> $GITHUB_OUTPUT
           echo "$TRUNCATED_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          echo "release_name=$(echo "$RELEASE_NAME")" >> $GITHUB_OUTPUT
+          echo "release_url=$(echo "$RELEASE_URL")" >> $GITHUB_OUTPUT
+          echo "author_login=$(echo "$AUTHOR_LOGIN")" >> $GITHUB_OUTPUT
+          echo "author_url=$(echo "$AUTHOR_URL")" >> $GITHUB_OUTPUT
+          echo "author_avatar_url=$(echo "$AUTHOR_AVATAR_URL")" >> $GITHUB_OUTPUT
 
-      - name: Discord notification
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
+        shell: bash
+
+      - name: Send Discord notification
         uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.PACKAGE_DISCORD_WEBHOOK }}
         with:
-            args: |
-              **New Package Release**
-              ${{ github.event.release.name }}
-
-              Created by: ${{ github.event.release.author.login }}
-
-              **Description:**
-              ${{ steps.prepare.outputs.truncated_body }}
-
-              **View Full Release Notes:**
-              ${{ github.event.release.html_url }}
+          embeds: |
+            [{
+              "title": "${{ steps.prepare.outputs.release_name }}",
+              "description": ${{ toJson(steps.prepare.outputs.final_body) }},
+              "url": "${{ steps.prepare.outputs.release_url }}",
+              "color": 5814783,
+              "author": {
+                "name": "${{ steps.prepare.outputs.author_login }}",
+                "url": "${{ steps.prepare.outputs.author_url }}",
+                "icon_url": "${{ steps.prepare.outputs.author_avatar_url }}"
+              },
+              "footer": {
+                "text": "View full details by clicking the title link."
+              }
+            }]

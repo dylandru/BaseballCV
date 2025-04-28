@@ -24,6 +24,7 @@ __MACOSX/
 venv/
 myenv/
 .env
+.venv/
 
 # Ignore TF Event Files
 events.out.tfevents.*
