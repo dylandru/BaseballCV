@@ -37,7 +37,8 @@ jobs:
     - name: Run tests
       run: |
         # Run tests with environment variable to skip network-dependent tests
-        poetry run SKIP_NETWORK_TESTS=1 pytest tests/ -v --ignore=tests/test_api/ --ignore=tests/test_datasets/test_datasets_jsonl_detection.py
+        export SKIP_NETWORK_TESTS=1
+        poetry run pytest tests/ -v --ignore=tests/test_api/ --ignore=tests/test_datasets/test_datasets_jsonl_detection.py
   
 
     - name: Upload distribution to artifacts
