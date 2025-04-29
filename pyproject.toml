@@ -31,7 +31,6 @@ requests = "^2.32.3"
 beautifulsoup4 = "^4.13.4"
 pandas = "^2.2.3"
 polars = "^1.27.1"
-yolov9 = {git = "https://github.com/dylandru/yolov9.git"}
 huggingface-hub = "^0.30.2"
 datasets = "3.4.0"
 ultralytics = "^8.3.116"
