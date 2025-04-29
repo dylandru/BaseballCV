@@ -283,11 +283,8 @@ class CommandAnalyzer:
         """
         Identify the frame where the pitcher shows intent (target) via catcher's glove position.
         
-        This implementation specifically addresses the issue of catchers lowering their glove
-        after showing the target by:
-        1. Filtering out positions that are too low to be realistic targets
-        2. Prioritizing stable glove positions at reasonable heights
-        3. Examining the timing pattern of target presentation
+        This implementation specifically focuses on finding the stable glove position BEFORE 
+        the catcher lowers the glove, which is the true intent location.
         
         Args:
             df: GloveTracker CSV data as DataFrame
@@ -303,7 +300,7 @@ class CommandAnalyzer:
             (df['is_interpolated'] == False)
         ].copy()
         
-        if len(valid_data) < 3:
+        if len(valid_data) < 5:  # Need sufficient points for analysis
             self.logger.warning("Not enough valid glove data points to detect intent")
             return None
             
@@ -324,163 +321,239 @@ class CommandAnalyzer:
         ) / valid_data['dt']
         
         # Apply smoothing to velocity to reduce noise
-        if len(valid_data) >= 5:  # Need sufficient points for smoothing
-            try:
-                # Savitzky-Golay filter: window_length=5, polyorder=2
+        try:
+            # Savitzky-Golay filter: window_length, polyorder (careful with small datasets)
+            window_length = min(5, len(valid_data) - (len(valid_data) % 2 - 1))
+            polyorder = min(2, window_length - 1)
+            if window_length > 2 and polyorder > 0:
                 valid_data['velocity_smooth'] = savgol_filter(
                     valid_data['velocity'].fillna(0), 
-                    window_length=min(5, len(valid_data) - (len(valid_data) % 2 - 1)), 
-                    polyorder=min(2, min(5, len(valid_data) - (len(valid_data) % 2 - 1)) - 1)
+                    window_length=window_length, 
+                    polyorder=polyorder
                 )
-            except Exception as e:
-                self.logger.warning(f"Smoothing failed, using raw velocity: {str(e)}")
+            else:
                 valid_data['velocity_smooth'] = valid_data['velocity']
-        else:
+        except Exception as e:
+            self.logger.warning(f"Smoothing failed, using raw velocity: {str(e)}")
             valid_data['velocity_smooth'] = valid_data['velocity']
         
-        # Calculate glove height from ground for each frame
-        # glove_processed_y is in inches from plate center
-        # Convert to height from ground using plate height
-        valid_data['glove_height_from_ground'] = self.PLATE_HEIGHT_FROM_GROUND_INCHES + valid_data['glove_processed_y']
+        # Calculate height-related metrics
+        # Convert glove Y (inches from plate center) to height from ground
+        valid_data['glove_height'] = self.PLATE_HEIGHT_FROM_GROUND_INCHES + valid_data['glove_processed_y']
         
-        # Find stable frames at reasonable heights
-        # A realistic target is:
-        # 1. Stable (low velocity)
-        # 2. At a reasonable height (not too close to ground)
-        velocity_threshold = 2.5  # inches per frame
+        # Calculate vertical movement (change in height)
+        valid_data['height_diff'] = valid_data['glove_height'].diff()
+        
+        # Define metrics for detection
+        velocity_threshold = 2.0  # Max inches per frame to be considered "stable"
+        min_height = self.MIN_TARGET_HEIGHT_FROM_GROUND
+        max_height = self.MAX_TARGET_HEIGHT_FROM_GROUND
+        significant_drop = -2.0  # Threshold for significant downward movement (negative)
+        
+        # Mark stable frames at reasonable heights
         valid_data['is_stable'] = valid_data['velocity_smooth'] < velocity_threshold
         valid_data['is_reasonable_height'] = (
-            (valid_data['glove_height_from_ground'] >= self.MIN_TARGET_HEIGHT_FROM_GROUND) &
-            (valid_data['glove_height_from_ground'] <= self.MAX_TARGET_HEIGHT_FROM_GROUND)
+            (valid_data['glove_height'] >= min_height) & 
+            (valid_data['glove_height'] <= max_height)
         )
         valid_data['is_valid_target'] = valid_data['is_stable'] & valid_data['is_reasonable_height']
         
-        # If ball crossing frame is known, look for target presentation before it
-        if ball_crossing_frame is not None:
-            # Look back from ball crossing, within reasonable window
-            window_start = max(0, ball_crossing_frame - self.MAX_FRAMES_BEFORE_CROSSING)
-            in_window = (valid_data['frame_idx'] >= window_start) & (valid_data['frame_idx'] <= ball_crossing_frame)
-            search_data = valid_data[in_window].copy()
-            
-            if not search_data.empty:
-                # First try to find a valid target in this window
-                target_frames = search_data[search_data['is_valid_target']]
-                
-                if not target_frames.empty:
-                    # Find the longest sequence of valid target frames
-                    target_frames['group'] = (target_frames['frame_idx'].diff() != 1).cumsum()
-                    grouped = target_frames.groupby('group')
-                    longest_group = grouped.size().idxmax()
-                    longest_sequence = target_frames[target_frames['group'] == longest_group]
-                    
-                    if len(longest_sequence) >= self.MIN_STABILITY_DURATION_FRAMES:
-                        # Use middle frame of longest stable sequence as intent
-                        middle_idx = len(longest_sequence) // 2
-                        intent_frame = int(longest_sequence.iloc[middle_idx]['frame_idx'])
-                        self.logger.debug(f"Found intent frame {intent_frame} in stable sequence "
-                                         f"at height {longest_sequence.iloc[middle_idx]['glove_height_from_ground']:.1f} in")
-                        return intent_frame
-                
-                # If no valid target found, look for pattern of glove lowering
-                # This detects when the catcher shows target then lowers glove
-                if len(search_data) > 5:
-                    # Calculate height derivatives to find where glove starts moving down
-                    search_data['height_diff'] = search_data['glove_height_from_ground'].diff()
-                    
-                    # Find significant downward movements (negative height_diff)
-                    # after periods of stability
-                    stable_then_down = search_data[
-                        (search_data['is_stable'].shift(1) == True) &
-                        (search_data['height_diff'] < -2.0)  # Significant downward movement
-                    ]
-                    
-                    if not stable_then_down.empty:
-                        # Get the frame before the downward movement started
-                        # This is likely when catcher was showing the target
-                        earliest_down_idx = stable_then_down.index[0]
-                        if earliest_down_idx > 0:
-                            target_frame_idx = earliest_down_idx - 1
-                            intent_frame = int(search_data.iloc[target_frame_idx]['frame_idx'])
-                            
-                            # Verify this is at a reasonable height
-                            height = search_data.iloc[target_frame_idx]['glove_height_from_ground']
-                            if (height >= self.MIN_TARGET_HEIGHT_FROM_GROUND and 
-                                height <= self.MAX_TARGET_HEIGHT_FROM_GROUND):
-                                self.logger.debug(f"Found intent frame {intent_frame} before glove lowering "
-                                                 f"at height {height:.1f} in")
-                                return intent_frame
+        # Mark significant downward movements
+        valid_data['is_dropping'] = valid_data['height_diff'] < significant_drop
         
-        # If we don't have a crossing frame or couldn't find intent relative to it,
-        # look for the most stable sequence at a reasonable height in entire video
-        valid_targets = valid_data[valid_data['is_valid_target']]
+        # --- APPROACH 1: Find "target→drop" pattern ---
+        # This searches for the specific sequence where the catcher shows target then lowers glove
         
-        if not valid_targets.empty:
-            # Group consecutive valid frames
-            valid_targets['group'] = (valid_targets['frame_idx'].diff() != 1).cumsum()
-            grouped = valid_targets.groupby('group')
-            group_counts = grouped.size()
-            
-            # Find groups with sufficient consecutive frames
-            valid_groups = group_counts[group_counts >= self.MIN_STABILITY_DURATION_FRAMES].index.tolist()
-            
-            if valid_groups:
-                # For each valid group, calculate average height and stability
-                group_metrics = []
-                for group in valid_groups:
-                    group_data = valid_targets[valid_targets['group'] == group]
-                    avg_velocity = group_data['velocity_smooth'].mean()
-                    avg_height = group_data['glove_height_from_ground'].mean()
-                    duration = len(group_data)
+        # Look for stable periods followed by drops
+        valid_data['stable_run'] = (
+            (~valid_data['is_stable'].shift(1, fill_value=False) & valid_data['is_stable']) | 
+            (valid_data['is_stable'] & valid_data['is_stable'].shift(1, fill_value=False))
+        ).cumsum()
+        
+        # Group by stable runs to find sequences
+        stable_runs = valid_data[valid_data['is_stable']].groupby('stable_run')
+        stable_sequences = []
+        
+        for run_id, run_frames in stable_runs:
+            # Check if this is a valid target sequence (reasonable height, sufficient duration)
+            if (run_frames['is_reasonable_height'].all() and 
+                len(run_frames) >= self.MIN_STABILITY_DURATION_FRAMES):
+                
+                # Check if this stable sequence is followed by a drop
+                last_frame_idx = run_frames['frame_idx'].iloc[-1]
+                next_frames = valid_data[valid_data['frame_idx'] > last_frame_idx]
+                
+                if (not next_frames.empty and 
+                    next_frames['is_dropping'].iloc[0]):
+                    # Found a stable sequence followed by drop!
                     
-                    # Rank groups by a combination of stability and typical target height
-                    # Prefer heights around typical strike zone center (~30 inches from ground)
-                    ideal_height = 30.0
-                    height_score = 1.0 - (abs(avg_height - ideal_height) / 30.0)
-                    stability_score = 1.0 - (avg_velocity / velocity_threshold)
+                    # For better stability, use the midpoint of the stable sequence
+                    # but prioritize the later portion (where the catcher is holding)
+                    third_quartile_idx = int(len(run_frames) * 0.75)
+                    target_frame = int(run_frames.iloc[third_quartile_idx]['frame_idx'])
+                    target_height = run_frames.iloc[third_quartile_idx]['glove_height']
                     
-                    # Combined score prioritizes stability and reasonable height
-                    score = (0.6 * stability_score) + (0.3 * height_score) + (0.1 * (duration / 10.0))
+                    # Add frame and quality score (higher is better)
+                    avg_velocity = run_frames['velocity_smooth'].mean()
+                    duration = len(run_frames)
+                    sequence_score = (
+                        (20 * (1 - avg_velocity/velocity_threshold)) + # Stability (0-20)
+                        (10 * duration/10) +                           # Duration (0-10+)
+                        (5 * (1 - abs(target_height - 30)/15))         # Height quality (0-5)
+                    )
                     
-                    group_metrics.append({
-                        'group': group,
-                        'score': score,
+                    # Bonus for being before ball crossing (if known)
+                    if ball_crossing_frame is not None:
+                        if target_frame < ball_crossing_frame:
+                            frames_before_crossing = ball_crossing_frame - target_frame
+                            if frames_before_crossing <= self.MAX_FRAMES_BEFORE_CROSSING:
+                                # Add bonus for being in the sweet spot before crossing
+                                sequence_score += 15
+                    
+                    stable_sequences.append({
+                        'frame': target_frame,
+                        'score': sequence_score,
+                        'height': target_height,
                         'duration': duration,
-                        'avg_height': avg_height,
-                        'avg_velocity': avg_velocity
+                        'distance_from_crossing': ball_crossing_frame - target_frame if ball_crossing_frame else None,
+                        'method': 'stable_then_drop',
+                        'run_id': run_id
                     })
+        
+        # --- APPROACH 2: Window-based search relative to ball crossing ---
+        if ball_crossing_frame is not None:
+            # Define window relative to ball crossing
+            window_start = max(0, ball_crossing_frame - self.MAX_FRAMES_BEFORE_CROSSING)
+            window_end = ball_crossing_frame
+            
+            window_data = valid_data[
+                (valid_data['frame_idx'] >= window_start) & 
+                (valid_data['frame_idx'] <= window_end)
+            ]
+            
+            # Find good stable periods in this window
+            good_targets = window_data[
+                window_data['is_valid_target'] & 
+                (window_data['glove_height'] >= 15)  # Higher minimum for target presentation
+            ]
+            
+            if not good_targets.empty:
+                # Group consecutive frames
+                good_targets['group'] = (good_targets['frame_idx'].diff() != 1).cumsum()
+                target_groups = good_targets.groupby('group')
                 
-                if group_metrics:
-                    # Sort by combined score, descending
-                    best_group = sorted(group_metrics, key=lambda x: x['score'], reverse=True)[0]
-                    best_group_data = valid_targets[valid_targets['group'] == best_group['group']]
+                for group_id, group_frames in target_groups:
+                    if len(group_frames) >= 2:  # Require at least 2 consecutive frames
+                        # Score this group based on multiple factors
+                        group_score = (
+                            (15 * (1 - group_frames['velocity_smooth'].mean()/velocity_threshold)) +
+                            (10 * len(group_frames)/8) +
+                            (5 * (1 - abs(group_frames['glove_height'].mean() - 30)/15)) +
+                            # Timing bonus - prefer earlier in the sequence
+                            (10 * (window_end - group_frames['frame_idx'].max()) / self.MAX_FRAMES_BEFORE_CROSSING)
+                        )
+                        
+                        # Use 75% point in sequence (later part of stable period)
+                        quarter_idx = int(len(group_frames) * 0.75)
+                        target_frame = int(group_frames.iloc[quarter_idx]['frame_idx'])
+                        
+                        stable_sequences.append({
+                            'frame': target_frame,
+                            'score': group_score,
+                            'height': group_frames.iloc[quarter_idx]['glove_height'],
+                            'duration': len(group_frames),
+                            'distance_from_crossing': ball_crossing_frame - target_frame,
+                            'method': 'crossing_window',
+                            'group_id': group_id
+                        })
+        
+        # --- APPROACH 3: Detect last stable position before any significant drops ---
+        # Find all periods of significant drops
+        significant_drops = valid_data[valid_data['is_dropping']]
+        
+        if not significant_drops.empty:
+            # For each significant drop, look for stable period immediately before it
+            for _, drop_row in significant_drops.iterrows():
+                drop_frame = drop_row['frame_idx']
+                
+                # Look for stable period before this drop
+                pre_drop = valid_data[
+                    (valid_data['frame_idx'] < drop_frame) &
+                    (valid_data['frame_idx'] >= drop_frame - 10)  # Look at most 10 frames back
+                ]
+                
+                if not pre_drop.empty:
+                    stable_before_drop = pre_drop[pre_drop['is_stable'] & pre_drop['is_reasonable_height']]
                     
-                    # Take middle frame of best group
-                    middle_idx = len(best_group_data) // 2
-                    intent_frame = int(best_group_data.iloc[middle_idx]['frame_idx'])
-                    self.logger.debug(f"Found intent frame {intent_frame} in best scored group "
-                                     f"at height {best_group['avg_height']:.1f} in")
-                    return intent_frame
+                    if not stable_before_drop.empty:
+                        # Use the last stable frame before the drop
+                        target_frame = int(stable_before_drop['frame_idx'].max())
+                        target_idx = stable_before_drop['frame_idx'].idxmax()
+                        target_height = stable_before_drop.loc[target_idx, 'glove_height']
+                        
+                        # Calculate score based on proximity to drop and other factors
+                        drop_proximity_score = 10 * (1 - (drop_frame - target_frame)/10)
+                        height_score = 5 * (1 - abs(target_height - 30)/15)
+                        
+                        sequence_score = drop_proximity_score + height_score
+                        
+                        # Bonus for being before ball crossing (if known)
+                        if ball_crossing_frame is not None:
+                            if target_frame < ball_crossing_frame:
+                                frames_before_crossing = ball_crossing_frame - target_frame
+                                if frames_before_crossing <= self.MAX_FRAMES_BEFORE_CROSSING:
+                                    sequence_score += 5
+                        
+                        stable_sequences.append({
+                            'frame': target_frame,
+                            'score': sequence_score,
+                            'height': target_height,
+                            'duration': 1,  # May only be a single frame
+                            'distance_from_crossing': ball_crossing_frame - target_frame if ball_crossing_frame else None,
+                            'method': 'pre_drop',
+                            'drop_frame': drop_frame
+                        })
         
-        # Last resort - if still no good target found, use the frame with:
-        # 1. Minimum velocity
-        # 2. Reasonable height
-        reasonable_height_frames = valid_data[valid_data['is_reasonable_height']]
+        # --- FINAL SELECTION ---
+        # Choose the best sequence based on scores and logical priorities
+        if stable_sequences:
+            # Sort by score (descending)
+            sorted_sequences = sorted(stable_sequences, key=lambda x: x['score'], reverse=True)
+            
+            # Prioritize "stable_then_drop" pattern if any exists with reasonable score
+            stable_drop_candidates = [seq for seq in sorted_sequences if seq['method'] == 'stable_then_drop']
+            
+            if stable_drop_candidates and stable_drop_candidates[0]['score'] > 20:
+                best_sequence = stable_drop_candidates[0]
+                self.logger.debug(f"Selected intent frame {best_sequence['frame']} using stable→drop pattern "
+                                f"(score: {best_sequence['score']:.1f}, height: {best_sequence['height']:.1f}\")")
+                return best_sequence['frame']
+            
+            # Otherwise, choose the best overall
+            best_sequence = sorted_sequences[0]
+            self.logger.debug(f"Selected intent frame {best_sequence['frame']} using {best_sequence['method']} "
+                            f"(score: {best_sequence['score']:.1f}, height: {best_sequence['height']:.1f}\")")
+            return best_sequence['frame']
         
-        if not reasonable_height_frames.empty:
-            min_vel_idx = reasonable_height_frames['velocity_smooth'].idxmin()
-            intent_frame = int(reasonable_height_frames.loc[min_vel_idx, 'frame_idx'])
-            height = reasonable_height_frames.loc[min_vel_idx, 'glove_height_from_ground']
-            self.logger.debug(f"Using minimum velocity frame {intent_frame} "
-                             f"at height {height:.1f} in as fallback")
-            return intent_frame
+        # --- FALLBACK APPROACHES ---
+        # If no good sequences found, try simpler approaches
         
-        # If all else fails, just use minimum velocity frame regardless of height
+        # Method 1: Find frame with minimum velocity at reasonable height
+        reasonable_heights = valid_data[valid_data['is_reasonable_height']]
+        if not reasonable_heights.empty:
+            min_vel_idx = reasonable_heights['velocity_smooth'].idxmin()
+            frame = int(reasonable_heights.loc[min_vel_idx, 'frame_idx'])
+            self.logger.debug(f"Fallback: Using minimum velocity frame {frame} at "
+                            f"height {reasonable_heights.loc[min_vel_idx, 'glove_height']:.1f}\"")
+            return frame
+        
+        # Method 2: Last resort - just use the minimum velocity frame
         if not valid_data.empty:
             min_vel_idx = valid_data['velocity_smooth'].idxmin()
-            intent_frame = int(valid_data.loc[min_vel_idx, 'frame_idx'])
-            self.logger.warning(f"Using minimum velocity frame {intent_frame} as last resort "
-                               f"(height: {valid_data.loc[min_vel_idx, 'glove_height_from_ground']:.1f} in)")
-            return intent_frame
+            frame = int(valid_data.loc[min_vel_idx, 'frame_idx'])
+            self.logger.warning(f"Last resort: Using minimum velocity frame {frame} at "
+                            f"height {valid_data.loc[min_vel_idx, 'glove_height']:.1f}\"")
+            return frame
         
         self.logger.warning("Could not determine a reliable intent frame")
         return None
