@@ -48,9 +48,13 @@ class CommandAnalyzer:
     # Pitcher release point is ~60 feet, 6 inches (MLB mound distance), or 726 inches from the plate
     TYPICAL_RELEASE_POINT_DISTANCE = 726.0  
     
-    # Timing constants for intent detection (these will be tuned in the new implementation)
+    # Timing constants for intent detection
     MAX_FRAMES_BEFORE_CROSSING = 24  # Approx max frames to look backwards from crossing
     MIN_STABILITY_DURATION_FRAMES = 3  # Min number of frames glove should be stable
+    
+    # Constants for filtering out unrealistic target positions
+    MIN_TARGET_HEIGHT_FROM_GROUND = 12.0  # Minimum plausible target height in inches from ground
+    MAX_TARGET_HEIGHT_FROM_GROUND = 60.0  # Maximum plausible target height in inches from ground
     
     def __init__(
         self,
@@ -279,10 +283,11 @@ class CommandAnalyzer:
         """
         Identify the frame where the pitcher shows intent (target) via catcher's glove position.
         
-        This improved implementation looks for:
-        1. A stable period of glove positioning
-        2. That occurs before the ball crossing or within a reasonable timeframe
-        3. With additional smoothing to reduce noise
+        This implementation specifically addresses the issue of catchers lowering their glove
+        after showing the target by:
+        1. Filtering out positions that are too low to be realistic targets
+        2. Prioritizing stable glove positions at reasonable heights
+        3. Examining the timing pattern of target presentation
         
         Args:
             df: GloveTracker CSV data as DataFrame
@@ -333,78 +338,149 @@ class CommandAnalyzer:
         else:
             valid_data['velocity_smooth'] = valid_data['velocity']
         
-        # Find all periods of glove stability (velocity below threshold)
-        threshold = 2.5  # Lower threshold for better stability detection
-        valid_data['is_stable'] = valid_data['velocity_smooth'] < threshold
+        # Calculate glove height from ground for each frame
+        # glove_processed_y is in inches from plate center
+        # Convert to height from ground using plate height
+        valid_data['glove_height_from_ground'] = self.PLATE_HEIGHT_FROM_GROUND_INCHES + valid_data['glove_processed_y']
         
-        # Now find potential intent frames based on the context
-        potential_frames = []
+        # Find stable frames at reasonable heights
+        # A realistic target is:
+        # 1. Stable (low velocity)
+        # 2. At a reasonable height (not too close to ground)
+        velocity_threshold = 2.5  # inches per frame
+        valid_data['is_stable'] = valid_data['velocity_smooth'] < velocity_threshold
+        valid_data['is_reasonable_height'] = (
+            (valid_data['glove_height_from_ground'] >= self.MIN_TARGET_HEIGHT_FROM_GROUND) &
+            (valid_data['glove_height_from_ground'] <= self.MAX_TARGET_HEIGHT_FROM_GROUND)
+        )
+        valid_data['is_valid_target'] = valid_data['is_stable'] & valid_data['is_reasonable_height']
         
-        # Logic paths:
-        # 1. If ball crossing is known, search for stable frames before it
-        # 2. If no ball crossing, look for stable frames in the middle section of video
-        
+        # If ball crossing frame is known, look for target presentation before it
         if ball_crossing_frame is not None:
-            # Find stable frames before ball crossing, within reasonable window
-            search_frames = valid_data[
-                (valid_data['frame_idx'] <= ball_crossing_frame) & 
-                (valid_data['frame_idx'] >= ball_crossing_frame - self.MAX_FRAMES_BEFORE_CROSSING)
-            ]
+            # Look back from ball crossing, within reasonable window
+            window_start = max(0, ball_crossing_frame - self.MAX_FRAMES_BEFORE_CROSSING)
+            in_window = (valid_data['frame_idx'] >= window_start) & (valid_data['frame_idx'] <= ball_crossing_frame)
+            search_data = valid_data[in_window].copy()
             
-            if not search_frames.empty:
-                # Find the longest stretch of stable frames in this window
-                stable_stretches = []
-                current_stretch = []
+            if not search_data.empty:
+                # First try to find a valid target in this window
+                target_frames = search_data[search_data['is_valid_target']]
                 
-                for idx, row in search_frames.iterrows():
-                    if row['is_stable']:
-                        current_stretch.append(int(row['frame_idx']))
-                    elif current_stretch:
-                        if len(current_stretch) >= self.MIN_STABILITY_DURATION_FRAMES:
-                            stable_stretches.append(current_stretch)
-                        current_stretch = []
+                if not target_frames.empty:
+                    # Find the longest sequence of valid target frames
+                    target_frames['group'] = (target_frames['frame_idx'].diff() != 1).cumsum()
+                    grouped = target_frames.groupby('group')
+                    longest_group = grouped.size().idxmax()
+                    longest_sequence = target_frames[target_frames['group'] == longest_group]
+                    
+                    if len(longest_sequence) >= self.MIN_STABILITY_DURATION_FRAMES:
+                        # Use middle frame of longest stable sequence as intent
+                        middle_idx = len(longest_sequence) // 2
+                        intent_frame = int(longest_sequence.iloc[middle_idx]['frame_idx'])
+                        self.logger.debug(f"Found intent frame {intent_frame} in stable sequence "
+                                         f"at height {longest_sequence.iloc[middle_idx]['glove_height_from_ground']:.1f} in")
+                        return intent_frame
                 
-                # Add last stretch if exists and stable
-                if current_stretch and len(current_stretch) >= self.MIN_STABILITY_DURATION_FRAMES:
-                    stable_stretches.append(current_stretch)
+                # If no valid target found, look for pattern of glove lowering
+                # This detects when the catcher shows target then lowers glove
+                if len(search_data) > 5:
+                    # Calculate height derivatives to find where glove starts moving down
+                    search_data['height_diff'] = search_data['glove_height_from_ground'].diff()
+                    
+                    # Find significant downward movements (negative height_diff)
+                    # after periods of stability
+                    stable_then_down = search_data[
+                        (search_data['is_stable'].shift(1) == True) &
+                        (search_data['height_diff'] < -2.0)  # Significant downward movement
+                    ]
+                    
+                    if not stable_then_down.empty:
+                        # Get the frame before the downward movement started
+                        # This is likely when catcher was showing the target
+                        earliest_down_idx = stable_then_down.index[0]
+                        if earliest_down_idx > 0:
+                            target_frame_idx = earliest_down_idx - 1
+                            intent_frame = int(search_data.iloc[target_frame_idx]['frame_idx'])
+                            
+                            # Verify this is at a reasonable height
+                            height = search_data.iloc[target_frame_idx]['glove_height_from_ground']
+                            if (height >= self.MIN_TARGET_HEIGHT_FROM_GROUND and 
+                                height <= self.MAX_TARGET_HEIGHT_FROM_GROUND):
+                                self.logger.debug(f"Found intent frame {intent_frame} before glove lowering "
+                                                 f"at height {height:.1f} in")
+                                return intent_frame
+        
+        # If we don't have a crossing frame or couldn't find intent relative to it,
+        # look for the most stable sequence at a reasonable height in entire video
+        valid_targets = valid_data[valid_data['is_valid_target']]
+        
+        if not valid_targets.empty:
+            # Group consecutive valid frames
+            valid_targets['group'] = (valid_targets['frame_idx'].diff() != 1).cumsum()
+            grouped = valid_targets.groupby('group')
+            group_counts = grouped.size()
+            
+            # Find groups with sufficient consecutive frames
+            valid_groups = group_counts[group_counts >= self.MIN_STABILITY_DURATION_FRAMES].index.tolist()
+            
+            if valid_groups:
+                # For each valid group, calculate average height and stability
+                group_metrics = []
+                for group in valid_groups:
+                    group_data = valid_targets[valid_targets['group'] == group]
+                    avg_velocity = group_data['velocity_smooth'].mean()
+                    avg_height = group_data['glove_height_from_ground'].mean()
+                    duration = len(group_data)
+                    
+                    # Rank groups by a combination of stability and typical target height
+                    # Prefer heights around typical strike zone center (~30 inches from ground)
+                    ideal_height = 30.0
+                    height_score = 1.0 - (abs(avg_height - ideal_height) / 30.0)
+                    stability_score = 1.0 - (avg_velocity / velocity_threshold)
+                    
+                    # Combined score prioritizes stability and reasonable height
+                    score = (0.6 * stability_score) + (0.3 * height_score) + (0.1 * (duration / 10.0))
+                    
+                    group_metrics.append({
+                        'group': group,
+                        'score': score,
+                        'duration': duration,
+                        'avg_height': avg_height,
+                        'avg_velocity': avg_velocity
+                    })
                 
-                # If we found stable stretches, use the middle frame of the longest one
-                if stable_stretches:
-                    longest_stretch = max(stable_stretches, key=len)
-                    intent_frame = longest_stretch[len(longest_stretch) // 2]
+                if group_metrics:
+                    # Sort by combined score, descending
+                    best_group = sorted(group_metrics, key=lambda x: x['score'], reverse=True)[0]
+                    best_group_data = valid_targets[valid_targets['group'] == best_group['group']]
+                    
+                    # Take middle frame of best group
+                    middle_idx = len(best_group_data) // 2
+                    intent_frame = int(best_group_data.iloc[middle_idx]['frame_idx'])
+                    self.logger.debug(f"Found intent frame {intent_frame} in best scored group "
+                                     f"at height {best_group['avg_height']:.1f} in")
                     return intent_frame
         
-        # Fallback: if we didn't find intent frame based on ball crossing,
-        # look for the longest stable period across all frames
-        if not potential_frames:
-            # Group consecutive stable frames
-            runs = []
-            current_run = []
-            for idx, row in valid_data.iterrows():
-                if row['is_stable']:
-                    current_run.append((idx, int(row['frame_idx'])))
-                elif current_run:
-                    if len(current_run) >= self.MIN_STABILITY_DURATION_FRAMES:
-                        runs.append(current_run)
-                    current_run = []
-            
-            # Add final run if exists
-            if current_run and len(current_run) >= self.MIN_STABILITY_DURATION_FRAMES:
-                runs.append(current_run)
-            
-            # Find the longest stable period
-            if runs:
-                longest_run = max(runs, key=len)
-                # Take the middle frame of the longest stable period
-                mid_idx = len(longest_run) // 2
-                _, frame_idx = longest_run[mid_idx]
-                return frame_idx
-                
-        # Last resort: just use the frame with minimal velocity
-        if not potential_frames and len(valid_data) > 1:
+        # Last resort - if still no good target found, use the frame with:
+        # 1. Minimum velocity
+        # 2. Reasonable height
+        reasonable_height_frames = valid_data[valid_data['is_reasonable_height']]
+        
+        if not reasonable_height_frames.empty:
+            min_vel_idx = reasonable_height_frames['velocity_smooth'].idxmin()
+            intent_frame = int(reasonable_height_frames.loc[min_vel_idx, 'frame_idx'])
+            height = reasonable_height_frames.loc[min_vel_idx, 'glove_height_from_ground']
+            self.logger.debug(f"Using minimum velocity frame {intent_frame} "
+                             f"at height {height:.1f} in as fallback")
+            return intent_frame
+        
+        # If all else fails, just use minimum velocity frame regardless of height
+        if not valid_data.empty:
             min_vel_idx = valid_data['velocity_smooth'].idxmin()
-            if not pd.isna(min_vel_idx):
-                return int(valid_data.loc[min_vel_idx, 'frame_idx'])
+            intent_frame = int(valid_data.loc[min_vel_idx, 'frame_idx'])
+            self.logger.warning(f"Using minimum velocity frame {intent_frame} as last resort "
+                               f"(height: {valid_data.loc[min_vel_idx, 'glove_height_from_ground']:.1f} in)")
+            return intent_frame
         
         self.logger.warning("Could not determine a reliable intent frame")
         return None
@@ -451,6 +527,8 @@ class CommandAnalyzer:
         """
         Transform GloveTracker and Statcast coordinates to a common system.
         
+        Important: Corrects for the reversed x-axis in Statcast data.
+        
         Args:
             target_x_inches: Horizontal target position from plate center (inches)
             target_y_inches: Vertical target position from plate center (inches)
@@ -464,7 +542,8 @@ class CommandAnalyzer:
             All in a compatible coordinate system
         """
         # Convert feet to inches for Statcast values
-        actual_x_inches = actual_x_ft * 12.0
+        # IMPORTANT: Apply -1 multiplier to Statcast X to correct for reversed axis
+        actual_x_inches = -1.0 * actual_x_ft * 12.0  # Reverse x-axis direction
         actual_z_inches = actual_z_ft * 12.0
         
         # Get strike zone info to help with coordinate transformation
@@ -498,7 +577,8 @@ class CommandAnalyzer:
             self.logger.debug(f"  Target X: {target_x_inches:.2f}\" (from plate center)")
             self.logger.debug(f"  Target Y: {target_y_inches:.2f}\" (from plate center)")
             self.logger.debug(f"  Transformed to Z: {target_z_inches:.2f}\" (from ground)")
-            self.logger.debug(f"  Actual X: {actual_x_inches:.2f}\" (from plate center)")
+            self.logger.debug(f"  Raw Statcast X: {actual_x_ft:.2f} ft (reversed)")
+            self.logger.debug(f"  Actual X: {actual_x_inches:.2f}\" (from plate center, direction corrected)")
             self.logger.debug(f"  Actual Z: {actual_z_inches:.2f}\" (from ground)")
             self.logger.debug(f"  Plate center height: {plate_center_height:.2f}\" (from ground)")
             if sz_center_from_ground is not None:
@@ -699,6 +779,9 @@ class CommandAnalyzer:
                 deviation_inches
             )
         
+        # Calculate glove height for additional validation
+        glove_height_from_ground = self.PLATE_HEIGHT_FROM_GROUND_INCHES + target_y_inches
+        
         # Assemble result dictionary
         result = {
             # Core Info
@@ -713,6 +796,7 @@ class CommandAnalyzer:
             "target_x_inches": target_x_inches,
             "target_y_inches": target_y_inches,
             "target_z_inches": target_z,
+            "glove_height_from_ground": glove_height_from_ground,
             
             # Actual (where pitch went)
             "actual_x_inches": actual_x,
@@ -795,6 +879,9 @@ class CommandAnalyzer:
                     valid_data['dy'] = valid_data['glove_processed_y'].diff()
                     valid_data['velocity'] = np.sqrt(valid_data['dx']**2 + valid_data['dy']**2)
                 
+                # Calculate glove height from ground
+                valid_data['glove_height'] = self.PLATE_HEIGHT_FROM_GROUND_INCHES + valid_data['glove_processed_y']
+                
                 # Create velocity plot
                 plt.figure(figsize=(10, 6))
                 plt.plot(valid_data['frame_idx'], valid_data['velocity'], 'b-', label='Glove Velocity')
@@ -804,12 +891,38 @@ class CommandAnalyzer:
                 if crossing_frame is not None:
                     plt.axvline(x=crossing_frame, color='r', linestyle='--', label=f'Crossing Frame ({crossing_frame})')
                 
+                # Add height threshold references
+                plt.axhline(y=2.5, color='gray', linestyle=':', label=f'Velocity Threshold')
+                
                 plt.title(f'Glove Velocity Analysis - Play {play_id}')
                 plt.xlabel('Frame')
                 plt.ylabel('Velocity (inches/frame)')
                 plt.legend()
                 plt.grid(True)
                 plt.savefig(os.path.join(play_debug_dir, f'velocity_analysis.png'), dpi=100)
+                plt.close()
+                
+                # Create height plot
+                plt.figure(figsize=(10, 6))
+                plt.plot(valid_data['frame_idx'], valid_data['glove_height'], 'b-', label='Glove Height')
+                
+                # Add markers for key frames
+                plt.axvline(x=intent_frame, color='g', linestyle='--', label=f'Intent Frame ({intent_frame})')
+                if crossing_frame is not None:
+                    plt.axvline(x=crossing_frame, color='r', linestyle='--', label=f'Crossing Frame ({crossing_frame})')
+                
+                # Add height threshold references
+                plt.axhline(y=self.MIN_TARGET_HEIGHT_FROM_GROUND, color='orange', linestyle=':', 
+                            label=f'Min Height ({self.MIN_TARGET_HEIGHT_FROM_GROUND} in)')
+                plt.axhline(y=self.MAX_TARGET_HEIGHT_FROM_GROUND, color='orange', linestyle=':', 
+                            label=f'Max Height ({self.MAX_TARGET_HEIGHT_FROM_GROUND} in)')
+                
+                plt.title(f'Glove Height Analysis - Play {play_id}')
+                plt.xlabel('Frame')
+                plt.ylabel('Height from Ground (inches)')
+                plt.legend()
+                plt.grid(True)
+                plt.savefig(os.path.join(play_debug_dir, f'height_analysis.png'), dpi=100)
                 plt.close()
                 
                 # Create position trace plot
@@ -980,6 +1093,13 @@ class CommandAnalyzer:
                    
         y_pos += 25
         cv2.putText(panel, f"Pitch: {pitch_type}",
+                   (plot_margin, y_pos),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                   
+        # Add glove height info
+        y_pos += 25
+        glove_height = analysis_results.get('glove_height_from_ground', 0)
+        cv2.putText(panel, f"Target Height: {glove_height:.1f} in",
                    (plot_margin, y_pos),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
                    
