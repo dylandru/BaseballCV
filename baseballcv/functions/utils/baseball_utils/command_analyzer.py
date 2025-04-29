@@ -1,4 +1,3 @@
-# Proposed location: baseballcv/functions/utils/baseball_utils/command_analyzer.py
 
 import pandas as pd
 import numpy as np
@@ -9,6 +8,7 @@ import re
 import shutil
 import cv2 # Needed for video processing & drawing
 from typing import List, Dict, Tuple, Optional
+from bs4 import BeautifulSoup  # Required for video page parsing
 
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
@@ -23,6 +23,14 @@ class CommandAnalyzer:
     Core analysis uses CSV-based intent frame finding and target coordinates.
     """
     PLAY_ID_REGEX = re.compile(r'([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})')
+    
+    # Constants for coordinate system conversion
+    # Average height of home plate center from ground in inches (MLB standard)
+    PLATE_HEIGHT_FROM_GROUND_INCHES = 17.0  # ~17 inches (includes half of the 17" plate height)
+    
+    # Standard strike zone reference values
+    STANDARD_SZ_TOP_INCHES = 42.0    # Average top of strike zone ~3.5 feet from ground
+    STANDARD_SZ_BOTTOM_INCHES = 18.0 # Average bottom of strike zone ~1.5 feet from ground
 
     def __init__(
         self,
@@ -89,15 +97,14 @@ class CommandAnalyzer:
     # --- Helper Functions ---
     def _extract_ids_from_filename(self, filename: str) -> Tuple[Optional[int], Optional[str]]:
         """Extracts game_pk and play_id (UUID) from CSV filename."""
-        # (Keep implementation from previous response)
-        basename = os.path.basename(filename);
+        basename = os.path.basename(filename)
         match = re.search(r'tracked_(\d+)_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})', basename)
         if match:
             try: return int(match.group(1)), str(match.group(2))
             except (ValueError, IndexError): pass
         play_id_match = self.PLAY_ID_REGEX.search(basename)
         if play_id_match:
-             play_id = str(play_id_match.group(1));
+             play_id = str(play_id_match.group(1))
              try:
                  prefix = basename.split(play_id)[0]; game_pk_match = re.findall(r'\d+', prefix)
                  if game_pk_match: return int(game_pk_match[-1]), play_id
@@ -107,7 +114,6 @@ class CommandAnalyzer:
 
     def _fetch_statcast_for_game(self, game_pk: int) -> Optional[pd.DataFrame]:
         """Fetches Statcast pitch data for a specific game_pk."""
-        # (Keep implementation from previous response)
         if game_pk in self.statcast_cache: return self.statcast_cache[game_pk]
         self.logger.info(f"Fetching Statcast data for game_pk: {game_pk}...")
         try:
@@ -145,9 +151,8 @@ class CommandAnalyzer:
                  video_page_response = downloader.requests_with_retry(video_page_url)
                  if not video_page_response: raise ValueError("Failed to get video page")
 
-                 # *** CORRECTED BeautifulSoup USAGE HERE ***
+                 # Parse with BeautifulSoup
                  soup = BeautifulSoup(video_page_response.content, 'html.parser')
-                 # *** END CORRECTION ***
 
                  video_container = soup.find('div', class_='video-box')
                  if not video_container: raise ValueError("Video container not found on page")
@@ -182,8 +187,7 @@ class CommandAnalyzer:
 
     def _find_intent_frame_from_csv(self, df: pd.DataFrame, velocity_threshold: float = 5.0) -> Optional[int]:
         """ Identifies the 'intent frame' based on glove stability from CSV data. """
-        # (Keep the exact same implementation as previous CSV-Focused V2 version)
-        valid_glove_frames=df[df['glove_processed_x'].notna()&df['glove_processed_y'].notna()&(df['is_interpolated']==False)].copy();
+        valid_glove_frames=df[df['glove_processed_x'].notna()&df['glove_processed_y'].notna()&(df['is_interpolated']==False)].copy()
         if len(valid_glove_frames)<2: return None
         valid_glove_frames=valid_glove_frames.sort_values(by='frame_idx').reset_index();valid_glove_frames['dt']=valid_glove_frames['frame_idx'].diff().fillna(1.0)
         valid_glove_frames.loc[valid_glove_frames['dt']<=0,'dt']=1.0;valid_glove_frames['dx']=valid_glove_frames['glove_processed_x'].diff().fillna(0)
@@ -192,7 +196,7 @@ class CommandAnalyzer:
         if not stable_frames.empty: return int(stable_frames['frame_idx'].iloc[-1])
         else:
             if not valid_glove_frames.empty and 'velocity' in valid_glove_frames.columns and len(valid_glove_frames)>1:
-                min_vel_idx=valid_glove_frames['velocity'].iloc[1:].idxmin();
+                min_vel_idx=valid_glove_frames['velocity'].iloc[1:].idxmin()
                 if pd.notna(min_vel_idx): return int(valid_glove_frames.loc[min_vel_idx,'frame_idx'])
             return None
 
@@ -232,6 +236,40 @@ class CommandAnalyzer:
 
     # --- End Helpers ---
 
+    def _transform_glove_height_to_statcast_z(self, glove_y_inches: float, statcast_row: pd.Series) -> float:
+        """
+        Transforms GloveTracker's glove Y (from plate center) to Statcast Z (from ground) coordinate system.
+        
+        This is crucial for correctly calculating the deviation between target and actual location.
+        
+        Args:
+            glove_y_inches: Target glove Y position in inches from plate center
+            statcast_row: Statcast data row with optional sz_top/sz_bot values
+            
+        Returns:
+            float: Transformed glove height in the Statcast Z coordinate system (inches from ground)
+        """
+        # Get batter-specific strike zone if available from Statcast
+        sz_top = statcast_row.get('sz_top')
+        sz_bot = statcast_row.get('sz_bot')
+        
+        # Convert to inches if values are present and valid
+        sz_top_inches = sz_top * 12.0 if pd.notna(sz_top) else self.STANDARD_SZ_TOP_INCHES
+        sz_bot_inches = sz_bot * 12.0 if pd.notna(sz_bot) else self.STANDARD_SZ_BOTTOM_INCHES
+        
+        # Calculate strike zone center in inches from ground
+        sz_center_from_ground = (sz_top_inches + sz_bot_inches) / 2.0
+        
+        # Calculate plate center height from ground
+        # Either use a fixed value or calculate based on strike zone
+        plate_height_from_ground = self.PLATE_HEIGHT_FROM_GROUND_INCHES
+        
+        # Transform: glove_y is inches from plate center; convert to inches from ground
+        # Positive Y in GloveTracker is upward from plate center
+        # Z in Statcast is height from ground
+        transformed_z_inches = plate_height_from_ground + glove_y_inches
+        
+        return transformed_z_inches
 
     # --- Main Analysis Logic ---
     def calculate_command_metrics(
@@ -259,7 +297,8 @@ class CommandAnalyzer:
         if intent_frame_data_rows.empty: self.logger.warning(f"Intent frame {intent_frame_idx} not found CSV {play_id}."); return None
         intent_frame_data = intent_frame_data_rows.iloc[0]
 
-        target_x_inches = intent_frame_data['glove_processed_x']; target_y_inches = intent_frame_data['glove_processed_y']
+        target_x_inches = intent_frame_data['glove_processed_x'] 
+        target_y_inches = intent_frame_data['glove_processed_y']
         # Get plate info *from the intent frame* for coordinate conversion
         plate_cx_intent_px = intent_frame_data['homeplate_center_x']
         plate_cy_intent_px = intent_frame_data['homeplate_center_y']
@@ -269,14 +308,33 @@ class CommandAnalyzer:
         if pd.isna(ppi_intent) or ppi_intent <= 0: self.logger.warning(f"Invalid PPI ({ppi_intent}) in CSV intent frame for {play_id}."); return None
         if pd.isna(plate_cx_intent_px) or pd.isna(plate_cy_intent_px): self.logger.warning(f"Plate center missing in CSV intent frame for {play_id}."); return None
 
+        try: 
+            actual_pitch_x_ft = statcast_row['plate_x']
+            actual_pitch_z_ft = statcast_row['plate_z']
+        except KeyError: 
+            self.logger.warning(f"Missing plate_x/z in Statcast for {play_id}")
+            return None
+            
+        if pd.isna(actual_pitch_x_ft) or pd.isna(actual_pitch_z_ft): 
+            self.logger.warning(f"NaN Statcast loc for {play_id}.")
+            return None
+            
+        actual_pitch_x_inches = actual_pitch_x_ft * 12.0
+        actual_pitch_z_inches = actual_pitch_z_ft * 12.0
 
-        try: actual_pitch_x_ft = statcast_row['plate_x']; actual_pitch_z_ft = statcast_row['plate_z'];
-        except KeyError: self.logger.warning(f"Missing plate_x/z in Statcast for {play_id}"); return None
-        if pd.isna(actual_pitch_x_ft) or pd.isna(actual_pitch_z_ft): self.logger.warning(f"NaN Statcast loc for {play_id}."); return None
-        actual_pitch_x_inches = actual_pitch_x_ft*12.0; actual_pitch_z_inches = actual_pitch_z_ft*12.0
-
-        dev_x = actual_pitch_x_inches-target_x_inches; dev_y = actual_pitch_z_inches-target_y_inches
+        # Transform GloveTracker Y to Statcast Z coordinate system
+        target_z_inches = self._transform_glove_height_to_statcast_z(target_y_inches, statcast_row)
+        
+        # Calculate deviation in inches using correctly aligned coordinate systems
+        dev_x = actual_pitch_x_inches - target_x_inches
+        dev_y = actual_pitch_z_inches - target_z_inches  # Now comparing comparable Z-heights
         deviation_inches = np.sqrt(dev_x**2 + dev_y**2)
+
+        # --- Log coordinate transformation for debugging ---
+        self.logger.debug(f"Coordinate Transform - Play {play_id}:")
+        self.logger.debug(f"  Target: GloveTracker Y={target_y_inches:.1f}\" → Statcast Z={target_z_inches:.1f}\"")
+        self.logger.debug(f"  Actual: Statcast X={actual_pitch_x_inches:.1f}\", Z={actual_pitch_z_inches:.1f}\"")
+        self.logger.debug(f"  Deviation: {deviation_inches:.1f}\"")
 
         # --- Calculate Pixel Coordinates for Overlay ---
         target_px = self._convert_inches_to_pixels(
@@ -293,26 +351,43 @@ class CommandAnalyzer:
              plate_cx_cross_px, plate_cy_cross_px, ppi_cross, crossing_frame_idx = plate_cx_intent_px, plate_cy_intent_px, ppi_intent, intent_frame_idx
              self.logger.debug(f"Using intent frame {crossing_frame_idx} plate data for actual pitch pixel conversion (no ball crossing found).")
 
+        # For visualization, we'll use the GloveTracker coordinate system
+        # Convert actual pitch coordinates back to GloveTracker system for visualization
+        actual_y_glove_tracker = actual_pitch_z_inches - self.PLATE_HEIGHT_FROM_GROUND_INCHES
+        
         actual_px = self._convert_inches_to_pixels(
-            actual_pitch_x_inches, actual_pitch_z_inches, plate_cx_cross_px, plate_cy_cross_px, ppi_cross
+            actual_pitch_x_inches, actual_y_glove_tracker, plate_cx_cross_px, plate_cy_cross_px, ppi_cross
         )
         # Use intent frame index if crossing frame couldn't be determined from ball data
         if crossing_frame_idx is None: crossing_frame_idx = intent_frame_idx
 
-
-        results={# Core Info
-                 "game_pk":game_pk,"play_id":play_id,
-                 # Analysis Results
-                 "intent_frame_csv":intent_frame_idx, "target_x_inches":target_x_inches,"target_y_inches":target_y_inches,"actual_pitch_x":actual_pitch_x_inches,"actual_pitch_z":actual_pitch_z_inches,"deviation_inches":deviation_inches,"deviation_vector_x":dev_x,"deviation_vector_y":dev_y,
-                 # Overlay Info
-                 "target_px": target_px, # Tuple (x, y) or None
-                 "actual_px": actual_px, # Tuple (x, y) or None
-                 "crossing_frame_est": crossing_frame_idx, # Best guess frame for crossing
-                 "plate_center_at_intent": (plate_cx_intent_px, plate_cy_intent_px),
-                 "ppi_at_intent": ppi_intent
-                 }
-        for col in ['pitcher','pitch_type','p_throws','stand','balls','strikes','outs_when_up']:
+        results = {
+            # Core Info
+            "game_pk": game_pk,
+            "play_id": play_id,
+            # Analysis Results 
+            "intent_frame_csv": intent_frame_idx,
+            "target_x_inches": target_x_inches,
+            "target_y_inches": target_y_inches,
+            "target_z_inches": target_z_inches,  # Add transformed Z coordinate
+            "actual_pitch_x": actual_pitch_x_inches,
+            "actual_pitch_z": actual_pitch_z_inches,
+            "deviation_inches": deviation_inches,
+            "deviation_vector_x": dev_x,
+            "deviation_vector_y": dev_y,
+            # Overlay Info
+            "target_px": target_px, # Tuple (x, y) or None
+            "actual_px": actual_px, # Tuple (x, y) or None
+            "crossing_frame_est": crossing_frame_idx, # Best guess frame for crossing
+            "plate_center_at_intent": (plate_cx_intent_px, plate_cy_intent_px),
+            "ppi_at_intent": ppi_intent,
+            # Coordinate transform info for reference
+            "plate_height_from_ground": self.PLATE_HEIGHT_FROM_GROUND_INCHES,
+        }
+        
+        for col in ['pitcher', 'pitch_type', 'p_throws', 'stand', 'balls', 'strikes', 'outs_when_up', 'sz_top', 'sz_bot']:
             if col in statcast_row.index: results[col] = statcast_row[col]
+        
         return results
 
     def _create_overlay_video(self, video_path: str, analysis_results: Dict, overlay_output_path: str):
@@ -361,7 +436,7 @@ class CommandAnalyzer:
 
         # Draw target and actual points on panel if available
         target_panel_px = inches_to_panel_pixels(analysis_results['target_x_inches'], analysis_results['target_y_inches'])
-        actual_panel_px = inches_to_panel_pixels(analysis_results['actual_pitch_x'], analysis_results['actual_pitch_z'])
+        actual_panel_px = inches_to_panel_pixels(analysis_results['actual_pitch_x'], analysis_results['actual_pitch_z'] - analysis_results.get('plate_height_from_ground', self.PLATE_HEIGHT_FROM_GROUND_INCHES))
 
         if target_panel_px and actual_panel_px:
              # Draw vector line
@@ -490,7 +565,6 @@ class CommandAnalyzer:
 
 
         # --- Finalize ---
-        # (Same as previous version: create DF, merge, save)
         if not all_results: self.logger.warning("No pitches analyzed."); return pd.DataFrame()
         results_df = pd.DataFrame(all_results)
         if self.statcast_cache:
@@ -500,20 +574,33 @@ class CommandAnalyzer:
                  if len(cols_to_merge)>1:
                      merge_statcast=full_statcast[cols_to_merge].drop_duplicates(subset=['play_id']);merge_statcast['play_id']=merge_statcast['play_id'].astype(str);results_df['play_id']=results_df['play_id'].astype(str)
                      results_df=pd.merge(results_df,merge_statcast,on='play_id',how='left',suffixes=('', '_statcast'));results_df=results_df[[col for col in results_df.columns if not col.endswith('_statcast')]]
-        output_path = os.path.join(self.csv_input_dir, output_csv);
-        try:os.makedirs(os.path.dirname(output_path),exist_ok=True);results_df.to_csv(output_path,index=False);self.logger.info(f"Analysis results saved to {output_path}")
-        except Exception as e:self.logger.error(f"Failed to save results CSV: {e}")
+        output_path = os.path.join(self.csv_input_dir, output_csv)
+        try: 
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            results_df.to_csv(output_path, index=False)
+            self.logger.info(f"Analysis results saved to {output_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save results CSV: {e}")
         return results_df
 
-    # calculate_aggregate_metrics remains the same
     def calculate_aggregate_metrics(self, results_df: pd.DataFrame, group_by: List[str] = ['pitcher'], cmd_threshold_inches: float = 6.0) -> pd.DataFrame:
-        # (Keep the exact same implementation as previous versions)
+        """
+        Calculate aggregate metrics such as average deviation and commanded pitch percentage.
+        
+        Args:
+            results_df: DataFrame with deviation_inches column
+            group_by: List of columns to group by (e.g., ['pitcher', 'pitch_type'])
+            cmd_threshold_inches: Threshold in inches to consider a pitch "commanded"
+            
+        Returns:
+            DataFrame with aggregated metrics
+        """
         if results_df is None or results_df.empty: self.logger.error("Input DF empty"); return pd.DataFrame()
         if 'deviation_inches' not in results_df.columns: self.logger.error("Missing 'deviation_inches'"); return pd.DataFrame()
-        valid_group_by=[col for col in group_by if col in results_df.columns];
+        valid_group_by=[col for col in group_by if col in results_df.columns]
         if len(valid_group_by)!=len(group_by):missing=[col for col in group_by if col not in valid_group_by];self.logger.error(f"Grouping cols not found: {missing}");group_by=valid_group_by
         if not group_by: return pd.DataFrame()
-        df_filt=results_df.dropna(subset=['deviation_inches']+group_by);
+        df_filt=results_df.dropna(subset=['deviation_inches']+group_by)
         if df_filt.empty: self.logger.warning("No valid data for aggregation after dropping NaNs."); return pd.DataFrame()
         df_filt=df_filt.copy();df_filt['is_commanded']=df_filt['deviation_inches']<=cmd_threshold_inches
         agg_funcs={'AvgDev_inches': pd.NamedAgg(column='deviation_inches',aggfunc='mean'),'StdDev_inches': pd.NamedAgg(column='deviation_inches',aggfunc='std'),'CmdPct': pd.NamedAgg(column='is_commanded',aggfunc=lambda x: x.mean()*100 if not x.empty else 0),'Pitches': pd.NamedAgg(column='play_id',aggfunc='count')}
