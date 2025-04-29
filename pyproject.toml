@@ -50,3 +50,6 @@ streamlit = "^1.44.1"
 streamlit-image-coordinates = "^0.2.1"
 streamlit-drawable-canvas = "^0.9.3"
 
+
+[tool.poetry.group.extras.dependencies]
+yolov9 = {git = "https://github.com/dylandru/yolov9.git"}
