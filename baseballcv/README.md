@@ -88,7 +88,7 @@ dt.automated_annotation(
 ### 4. Baseball Savant Integration
 
 ```python
-from baseballcv import BaseballSavVideoScraper
+from baseballcv.functions import BaseballSavVideoScraper
 
 # Scrape game videos
 scraper = BaseballSavVideoScraper('2024-04-10', '2024-05-10', download_folder='videos')

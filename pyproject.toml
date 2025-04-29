@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "baseballcv"
-version = "0.1.21"
+version = "0.1.22"
 authors = [
     { name="Dylan Drummey", email="dylandrummey22@gmail.com" },
     { name="Carlos Marcano", email="c.marcano@balldatalab.com" }
