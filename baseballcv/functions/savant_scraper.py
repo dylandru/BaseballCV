@@ -47,7 +47,7 @@ class BaseballSavVideoScraper(Crawler):
     def run_executor(self) -> None:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             pairs = zip(self.game_pks, self.play_ids) # Ensures these are the same order
-            for _ in ProgressBar(executor.map(lambda x: self._download_videos(*x), pairs), desc="Downloading Videos", total=len(self.play_ids)):
+            for _ in ProgressBar(executor.map(lambda x: self._download_video(*x), pairs), desc="Downloading Videos", total=len(self.play_ids)):
                 pass
     
     def get_play_ids_df(self) -> pd.DataFrame:
@@ -60,7 +60,7 @@ class BaseballSavVideoScraper(Crawler):
         return self.play_ids_df.to_pandas()
 
 
-    def _download_videos(self, game_pk: int, play_id: str) -> None:
+    def _download_video(self, game_pk: int, play_id: str) -> None:
         """
         Function that downloads each video query and writes it to the `download_folder`
         using the `_write_content` function.
@@ -74,6 +74,10 @@ class BaseballSavVideoScraper(Crawler):
         """
         self.rate_limiter()
         video_response = self.requests_with_retry(self.SAVANT_VIDEO_URL.format(play_id))
+
+        if video_response is None:
+            self.logger.info('Could not download video %s', play_id)
+            return # Skip the remaining code since the download was unsuccessful
 
         soup = BeautifulSoup(video_response.content, 'html.parser')
 
