@@ -102,7 +102,8 @@ class TestDatasetTools:
                 output_dir=annotation_dir if value != "autodistill" else f"{annotation_dir}_autodistill",
                 conf=0.5,
                 mode=value,
-                ontology=ontology
+                ontology=ontology,
+                batch_size=100
             )
             assert os.path.exists(annotation_dir)
 
