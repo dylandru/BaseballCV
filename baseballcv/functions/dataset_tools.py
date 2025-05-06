@@ -188,7 +188,8 @@ class DataTools:
                              device: str = 'cpu',
                              mode: str = 'autodistill',
                              ontology: dict = None,
-                             extension: str = '.jpg') -> str:
+                             extension: str = '.jpg',
+                             batch_size: int = 100) -> str:
         """
         Automatically annotates images using pre-trained YOLO model from BaseballCV repo. The annotated output
         consists of image files in the output directory, and label files in the subfolder "annotations" to 
@@ -206,6 +207,7 @@ class DataTools:
             mode (str): Mode to use for annotation. Default is 'autodistill'.
             ontology (dict): Ontology to use for annotation. Default is None.
             extension (str): Extension of images to annotate. Default is '.jpg'.
+            batch_size (int): Number of images to process in each batch. Default is 100.
 
         Returns:
             None: Saves annotated images and labels to the output directory.
@@ -218,12 +220,29 @@ class DataTools:
             if ontology is not None:
                 self.logger.info(f"Using Autodistill mode with ontology: {ontology}")
                 self.logger.info(f"This may take a while...")
-                auto_model= GroundedSAM(ontology=CaptionOntology(ontology))
-                auto_model.label(
-                    input_folder=str(image_dir),
-                    output_folder=str(output_dir),
-                    extension=extension
-                )
+                auto_model = GroundedSAM(ontology=CaptionOntology(ontology))
+                all_images = [f for f in os.listdir(image_dir) if f.endswith(extension)]
+                total_images = len(all_images)
+                self.logger.info(f"Found {total_images} images to process")
+                
+                total_batches = (total_images + batch_size - 1) // batch_size
+                with ProgressBar(total=total_batches, desc="Processing image batches") as pbar:
+                    for i in range(0, total_images, batch_size):
+                        batch_images = all_images[i:i+batch_size]
+                        
+                        temp_input_dir = os.path.join(image_dir, f"temp_batch_{i//batch_size}")
+                        os.makedirs(temp_input_dir, exist_ok=True)                      
+                        for img in batch_images: shutil.copy(os.path.join(image_dir, img), os.path.join(temp_input_dir, img))
+                        
+                        auto_model.label(
+                            input_folder=str(temp_input_dir),
+                            output_folder=str(output_dir),
+                            extension=extension
+                        )
+                        
+                        shutil.rmtree(temp_input_dir)
+                        pbar.update(1)
+                
                 self.logger.info("Annotation process complete.")
                 return output_dir
             else:

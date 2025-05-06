@@ -35,7 +35,7 @@ Key function(s):
 Key function(s):
 - `generate_photo_dataset(max_plays=5000, max_num_frames=10000, max_videos_per_game=10, start_date="2024-05-01", end_date="2024-07-31", delete_savant_videos=True)`: Generates a photo dataset from a diverse set of baseball videos from Savant.
 
-- `automated_annotation(model_alias: str = None, model_type: str = 'detection', image_dir: str = "cv_dataset", output_dir: str = "labeled_dataset", conf: float = .80, device: str = 'cpu', mode: str = 'autodistill', ontology: dict = None, extension: str = '.jpg') -> str`: Automatically annotates images using pre-trained YOLO model from BaseballCV repo or Autodistill library depending on the mode specified. The annotated output consists of image files in the output directory, and label files in the subfolder "annotations" to work with annotation tools.
+- `automated_annotation(model_alias: str = None, model_type: str = 'detection', image_dir: str = "cv_dataset", output_dir: str = "labeled_dataset", conf: float = .80, device: str = 'cpu', mode: str = 'autodistill', ontology: dict = None, extension: str = '.jpg', batch_size: int = 100) -> str`: Automatically annotates images using pre-trained YOLO model from BaseballCV repo or Autodistill library depending on the mode specified. The annotated output consists of image files in the output directory, and label files in the subfolder "annotations" to work with annotation tools.
 
 ### savant_scraper.py
 
