@@ -29,3 +29,6 @@ myenv/
 # Ignore TF Event Files
 events.out.tfevents.*
 
+
+# Ignore pytorch files
+*.pt

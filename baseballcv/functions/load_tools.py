@@ -151,7 +151,10 @@ class LoadTools:
             with open(txt_path, 'r') as file:
                 return file.read().strip()
 
-    def load_model(self, model_alias: str = None, model_type: Optional[str] = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
+    def load_model(self, model_alias: str = None, model_type: Optional[str] = 'YOLO', 
+                   use_bdl_api: Optional[bool] = True, 
+                   model_txt_path: Optional[str] = None,
+                   output_dir: Optional[str] = None) -> str:
         '''
         Loads a given baseball computer vision model into the repository.
 
@@ -161,6 +164,7 @@ class LoadTools:
             use_bdl_api (Optional[bool]): Whether to use the BallDataLab API.
             model_txt_path (Optional[str]): Path to .txt file containing download link to model weights. 
                                             Only used if use_bdl_api is specified as False.
+            output_dir (Optional[str]): Path to the location of the model file.
 
         Returns:
             model_weights_path (str):  Path to where the model weights are saved within the repo.
@@ -195,9 +199,13 @@ class LoadTools:
             DETR: {', '.join(self.detr_model_aliases.keys())}
 
             RFDETR: {', '.join(self.rfdetr_model_aliases.keys())}""")
-            raise ValueError()
+            return
 
-        base_dir = os.path.dirname(model_txt_path)
+        if output_dir:
+            base_dir = output_dir
+        else:
+            base_dir = os.path.dirname(model_txt_path)
+            
         base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
         os.makedirs(base_dir, exist_ok=True)
 
@@ -251,7 +259,7 @@ class LoadTools:
             self.logger.error(f"""Invalid alias {dataset_alias}. These are the valid dataset aliases:
             {', '.join(self.dataset_aliases.keys())}""")
 
-            raise ValueError()
+            return
         
         is_hf_dataset = txt_path.startswith("hf:")  
 
