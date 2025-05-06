@@ -1,1 +1,1 @@
-from .yolo import YOLOInference
+from .inference_models import YOLOInference
