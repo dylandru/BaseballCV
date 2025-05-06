@@ -1,14 +1,10 @@
 import streamlit as st
-from app_utils import YOLOInference
+from app_utils import YOLOInference, File, DatasetCreator
 import os
-from typing import Literal
-from baseballcv.functions import DataTools
 
-# TODO: Make the app run on mp4 video plus multiple images, also create tool to make custom dataset, 
+# TODO: Add some more models
 # Check to see what file types we want to use for inference
 # Need to add download and clear functionality
-# Use this as an example: https://www.youtube.com/watch?v=tdqpPKYKl_g
-
 
 class InferenceApp:
     def __init__(self):
@@ -17,6 +13,12 @@ class InferenceApp:
         }
 
         self.app_files = []
+        
+        if 'click_count' not in st.session_state:
+            st.session_state.click_count = 0
+        
+        self.file = File()
+        self.dataset_creator = DatasetCreator()
 
     def _dropdown(self):
         alias_model_type_dict = {
@@ -27,6 +29,22 @@ class InferenceApp:
                      list(alias_model_type_dict.keys()))
         self.alias = st.sidebar.selectbox('Model Alias',
                          alias_model_type_dict.get(self.model))
+        
+    def _create_random_video(self):
+        if st.session_state.click_count < 4:
+            self.dataset_creator.generate_video(self.file.videos_dir)
+            st.session_state.click_count += 1
+
+            video_file = self.file.videos_dir
+
+            video_file = os.path.join(video_file, os.listdir(video_file)[0])
+
+            with open(video_file, 'rb') as video:
+                st.sidebar.download_button("Download Video Here", video.read(), file_name="random_sample_video.mp4", mime="video/mp4")
+            self.file.clear()
+
+        else:
+            st.error("Sorry, Max Downloads exceeded")
         
     def _css_styling(self) -> None:
         st.markdown("""
@@ -49,18 +67,28 @@ class InferenceApp:
         </style>
         """, unsafe_allow_html=True)
 
-    def _run_inference(self, files, is_video, model_type, confidence):
+    def _get_model(self, model_type, confidence):
         model_alias = self.acceptable_alias.get(self.alias)
+        model = None
 
         if model_type == 'YOLO':
-            model = YOLOInference(model_alias, confidence)
+            model = YOLOInference(model_alias, confidence, self.file.models_dir_path)
 
+        return model
 
-        if is_video:
-            return model.infer_video(files)
-        else:
-            return model.infer_image(files)
-        
+    def _check_structure(self):
+        all_images = all(file.name.endswith(('.jpg', '.jpeg', '.png')) for file in self.app_files)
+        all_videos = all(file.name.endswith('.mp4') for file in self.app_files)
+
+        if not (all_videos or all_images):
+            st.error('All uploaded files must be an Image OR Video (in .mp4 format), not both')
+
+        if all_videos and len(self.app_files) > 1:
+            st.warning("We are only supporting 1 video")
+            self.app_files = self.app_files[0]
+        elif all_images and len(self.app_files) > 10:
+            st.warning("We are only supporting 10 images")
+            self.app_files = self.app_files[:10]
 
     def run(self):
         st.set_page_config(
@@ -73,6 +101,9 @@ class InferenceApp:
 
         st.sidebar.header("Model Configuration")
 
+        if st.sidebar.button("Download Random Video"):
+            self._create_random_video()
+            
         self._dropdown()
 
         files = st.sidebar.file_uploader(label='Upload File', accept_multiple_files=True, type=['jpg', 'jpeg', 'png', 'mp4'])
@@ -82,33 +113,38 @@ class InferenceApp:
         self.app_files.extend(files)
        
         if files:
-            all_images = all(file.name.endswith(('.jpg', '.jpeg', '.png')) for file in self.app_files)
-            all_videos = all(file.name.endswith('.mp4') for file in self.app_files)
+            self._check_structure()
 
-            if not (all_videos or all_images):
-                st.error('All uploaded files must be an Image OR Video (in .mp4 format), not both')
-
-            if all_videos and len(self.app_files) > 1:
-                st.warning("We are only supporting 1 video")
-                self.app_files = self.app_files[0]
-            elif all_images and len(self.app_files) > 10:
-                st.warning("We are only supporting 10 images")
-                self.app_files = self.app_files[:10]
-
-
+        random_frames = st.sidebar.radio('Generate Random Frames from Video?', ['Yes', 'No'], index=1)
+    
         if st.sidebar.button("Run Model"):
             try:
-                is_video = self.app_files[0].name.endswith('.mp4') # True for video, false for image
 
-                annot_obj = self._run_inference(self.app_files, is_video, self.model, confidence)
+                is_video = self.app_files[0].name.endswith('.mp4') and random_frames == 'No' # True for video, false for image
+
+                model = self._get_model(self.model, confidence)
 
                 if is_video:
-                    st.video(annot_obj)
-                    os.remove(annot_obj)
+                    out, cap, length = self.file.write_video(self.app_files[0])
+                    model.infer_video(out, cap, length)
+                    st.video(self.file.annot_video_path)
 
                 else:
-                    for img in annot_obj:
-                        st.image(img)
+                    if random_frames == 'Yes':
+                        _, cap, length = self.file.write_video(self.app_files[0], False)
+                        self.dataset_creator.generate_example_images(self.file.imgs_dir, cap, length)
+                        self.app_files.clear()
+
+                        self.app_files = [
+                                            os.path.join(self.file.imgs_dir, item)
+                                            for item in os.listdir(self.file.imgs_dir)
+                                        ]
+
+                    for img in self.app_files:
+                        st.image(model.infer_image(img))
+                
+                self.file.clear()
+
             except Exception as e:
                 st.error(f"Error. Most Likely you didn't upload a file before running. {e}")
         

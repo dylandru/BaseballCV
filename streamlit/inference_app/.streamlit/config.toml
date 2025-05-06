@@ -1,1 +1,5 @@
 # Used to customize streamlit app, will edit this later.
+
+[client]
+showErrorDetails = "full"
+
