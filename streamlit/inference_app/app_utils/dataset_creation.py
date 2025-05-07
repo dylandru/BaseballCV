@@ -5,7 +5,6 @@ import random
 from datetime import date
 import streamlit as st
 
-# Take one random video and save 5 random images
 class DatasetCreator:
     def __init__(self):
          pass
@@ -18,15 +17,10 @@ class DatasetCreator:
             ]
         
         random_team = random.choice(teams)
-
         random_date = date.strftime(date(random.randint(2021, 2024), random.randint(4, 8), random.randint(1, 25)), '%Y-%m-%d')
-
-        try:
-            BaseballSavVideoScraper(random_date, download_folder=output_video, team_abbr=random_team, max_return_videos=1).run_executor()
         
-        except Exception:
-            st.error("Failed to find a game date for that team, sorry. Please try again.")
-
+        BaseballSavVideoScraper(random_date, download_folder=output_video, team_abbr=random_team, max_return_videos=1).run_executor()
+        
 
     def generate_example_images(self, img_file, cap: cv2.VideoCapture, length: int):
         random_index = random.sample(range(0, length), 3)
