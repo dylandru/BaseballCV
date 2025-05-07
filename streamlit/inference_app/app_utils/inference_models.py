@@ -23,6 +23,7 @@ class YOLOInference(InferenceModel):
     def __init__(self, model_alias, confidence, dir):
         super().__init__()
         self.confidence = confidence
+        st.warning("Loading Model. This may take a moment.")
         self.model = YOLO(self.tools.load_model(model_alias, 'YOLO', output_dir=dir))
     
     def infer_image(self, file):

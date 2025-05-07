@@ -1,6 +1,9 @@
 import streamlit as st
 from app_utils import YOLOInference, File, DatasetCreator
 import os
+import zipfile
+import io
+from PIL import Image
 
 # TODO: Add some more models
 # Check to see what file types we want to use for inference
@@ -32,16 +35,19 @@ class InferenceApp:
         
     def _create_random_video(self):
         if st.session_state.click_count < 4:
-            self.dataset_creator.generate_video(self.file.videos_dir)
-            st.session_state.click_count += 1
+            try:
+                self.dataset_creator.generate_video(self.file.videos_dir)
+                st.session_state.click_count += 1
 
-            video_file = self.file.videos_dir
+                video_file = self.file.videos_dir
 
-            video_file = os.path.join(video_file, os.listdir(video_file)[0])
+                video_file = os.path.join(video_file, os.listdir(video_file)[0])
 
-            with open(video_file, 'rb') as video:
-                st.sidebar.download_button("Download Video Here", video.read(), file_name="random_sample_video.mp4", mime="video/mp4")
-            self.file.clear()
+                video_bytes = open(video_file, 'rb').read()
+                st.sidebar.download_button("Download Video Here", video_bytes, file_name="random_sample_video.mp4", mime="video/mp4")
+                self.file.clear()
+            except Exception: 
+                st.error("Failed to get video. Please try again.")
 
         else:
             st.error("Sorry, Max Downloads exceeded")
@@ -63,7 +69,35 @@ class InferenceApp:
                 float: right;
                 padding-top: 0;
             }
-
+            .main {
+                background-color: #000000;
+                color: #FFFFFF;
+            }
+            body {
+                background-color: #000000;
+                color: #FFFFFF;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                color: #FFFFFF;
+            }
+            .stButton>button {
+                color: #FFFFFF;
+                background-color: #FFA500;
+                border: 1px solid #FFA500;
+            }
+            .stDownloadButton>button {
+                color: #FFFFFF;
+                background-color: #FFA500;
+                border: 1px solid #FFA500;
+            }
+            .stTextInput>div>div>input {
+                 background-color: #333333;
+                 color: #FFFFFF;
+            }
+             .stTextArea>div>div>textarea {
+                 background-color: #333333;
+                 color: #FFFFFF;
+            }
         </style>
         """, unsafe_allow_html=True)
 
@@ -119,6 +153,7 @@ class InferenceApp:
     
         if st.sidebar.button("Run Model"):
             try:
+                col1, col2 = st.columns([4, 1], gap='medium')
 
                 is_video = self.app_files[0].name.endswith('.mp4') and random_frames == 'No' # True for video, false for image
 
@@ -127,21 +162,42 @@ class InferenceApp:
                 if is_video:
                     out, cap, length = self.file.write_video(self.app_files[0])
                     model.infer_video(out, cap, length)
-                    st.video(self.file.annot_video_path)
+                    video_file = self.file.annot_video_path
+                    col1.video(video_file)
+
+                    video_bytes = open(video_file, 'rb').read()
+
+                    col2.download_button("Download Video", data=video_bytes,
+                                         file_name="processed_video.mp4", mime="video/mp4",
+                                         icon=":material/download:")
 
                 else:
                     if random_frames == 'Yes':
                         _, cap, length = self.file.write_video(self.app_files[0], False)
                         self.dataset_creator.generate_example_images(self.file.imgs_dir, cap, length)
-                        self.app_files.clear()
+                        self.app_files.clear() # Clear out the .mp4 file
 
-                        self.app_files = [
-                                            os.path.join(self.file.imgs_dir, item)
-                                            for item in os.listdir(self.file.imgs_dir)
-                                        ]
+                        self.app_files = [os.path.join(self.file.imgs_dir, item) 
+                                          for item in os.listdir(self.file.imgs_dir)]
 
-                    for img in self.app_files:
-                        st.image(model.infer_image(img))
+                    processed_img = []
+                    for i, img in enumerate(self.app_files):
+                        pred = model.infer_image(img)
+                        col1.image(pred)
+                        processed_img.append((f"processed_img{i+1}.png", Image.fromarray(pred, mode="RGB")))
+
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zip_file:
+                        for filename, img in processed_img:
+                            img_bytes = io.BytesIO()
+                            img.save(img_bytes, format="PNG")
+                            zip_file.writestr(filename, img_bytes.getvalue())
+
+                    zip_buffer.seek(0)
+                    col2.download_button("Download Images", data=zip_buffer, 
+                                         file_name="processed_img.zip", 
+                                         mime="application/zip", icon=":material/download:")
+                    
                 
                 self.file.clear()
 
