@@ -49,6 +49,8 @@ pytest = "8.3.2"
 streamlit = "^1.44.1"
 streamlit-image-coordinates = "^0.2.1"
 streamlit-drawable-canvas = "^0.9.3"
+google = "3.0.0"
+google-generativeai = "0.8.5"
 
 
 [tool.poetry.group.extras.dependencies]
