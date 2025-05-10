@@ -115,7 +115,7 @@ JSONL format datasets are optimized for vision-language models like Florence2 an
    - Resolution: 1280 x 720 pixels
    - Usage: Custom annotation and model training
 
-### HuggingFace Hosted Datasets
+### HuggingFace Hosted CV Datasets
 
 1. **international_amateur_baseball_pitcher_photo**
    - Content: 10,000 unannotated international amateur baseball pitcher photos
@@ -140,6 +140,12 @@ JSONL format datasets are optimized for vision-language models like Florence2 an
 6. **international_amateur_baseball_bp_video**
    - Content: Batting practice footage from amateur baseball
    - Usage: Swing analysis and training
+
+### HuggingFace Hosted Numerical Datasets
+
+1. **mlb_glove_tracking_april_2024**
+   - Content: Over 100,000 plays worth of data for Glove Tracking throughout Pitch
+   - Usage: Command Estimation, Catcher Training
 
 ## Using the Datasets
 
