@@ -1,0 +1,2 @@
+baseballcv==0.1.22
+ultralytics

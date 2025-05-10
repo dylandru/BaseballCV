@@ -1,4 +1,5 @@
 from pathlib import Path
+from sys import call_tracing
 import requests
 import os
 from tqdm import tqdm
@@ -6,9 +7,10 @@ import zipfile
 import io
 from typing import Optional, Union
 import shutil
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download, hf_hub_download
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from datasets import load_dataset
+import polars as pl
 
 class LoadTools:
     """
@@ -32,10 +34,19 @@ class LoadTools:
     """
 
     def __init__(self):
+
+        """
+        Initialize the LoadTools class while providing the necessary API endpoints and aliases.
+
+        Most are BDL API endpoints contained in text files, but some are HF API endpoints (which are denoted by the 'hf:' prefix). For the HF models, it's just the HF repo ID. 
+        For the HF datasets, it's the url of the download file for the dataset (due to problems with hf_hub_download)
+        """
         self.session = requests.Session()
         self.chunk_size = 1024
         self.BDL_MODEL_API = "https://balldatalab.com/api/models/"
         self.BDL_DATASET_API = "https://balldatalab.com/api/datasets/"
+        self.HF_NUMERICAL_DATASET_API = "https://huggingface.co/datasets/"
+
         self.yolo_model_aliases = {
             'phc_detector': 'models/od/YOLO/pitcher_hitter_catcher_detector/model_weights/pitcher_hitter_catcher_detector_v4.txt',
             'bat_tracking': 'models/od/YOLO/bat_tracking/model_weights/bat_tracking.txt',
@@ -58,6 +69,7 @@ class LoadTools:
         self.rfdetr_model_aliases = {
             'rfdetr_glove_tracking': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt'
         }
+
         self.dataset_aliases = {
             'okd_nokd': 'datasets/yolo/OKD_NOKD.txt',
             'baseball_rubber_home_glove': 'datasets/yolo/baseball_rubber_home_glove.txt',
@@ -75,12 +87,14 @@ class LoadTools:
             'international_amateur_baseball_photos': 'hf:dyland222/international_amateur_baseball_photos_dataset',
             'international_amateur_baseball_game_video': 'hf:dyland222/international_amateur_baseball_game_videos',
             'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
-            'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset'
+            'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset',
+            'mlb_glove_tracking_april_2024': 'hf:camarcano/glove_tracking_MLB_april_2024/resolve/main/glove_tracking_april_2024_csv.zip'
         }
+
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
 
-    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> None:
+    def _download_files(self, url: str, dest: Union[str, os.PathLike], is_folder: bool = False, is_labeled: bool = False) -> str:
         response = self.session.get(url, stream=True)
         if response.status_code == 200:
             total_size = int(response.headers.get('content-length', 0))
@@ -133,6 +147,7 @@ class LoadTools:
                     shutil.rmtree(temp_dir)
                 
                 self.logger.info(f"Dataset downloaded and extracted to {dest}")
+                return dest
             else:
                 with open(dest, 'wb') as file:
                     for data in response.iter_content(chunk_size=self.chunk_size):
@@ -141,17 +156,24 @@ class LoadTools:
                 
                 progress_bar.close()
                 self.logger.info(f"Model downloaded to {dest}")
+                return dest
         else:
             self.logger.error(f"Download failed. STATUS: {response.status_code}")
+            return None
 
-    def _get_url(self, alias: str, txt_path: str, use_bdl_api: bool, api_endpoint: str) -> str:
+    def _get_url(self, alias: str = None, txt_path: str = None, use_bdl_api: bool = False, api_endpoint: str = None, use_hf_api: bool = False) -> str:
         if use_bdl_api:
             return f"{api_endpoint}{alias}"
+        elif use_hf_api:
+            return f"{self.HF_NUMERICAL_DATASET_API}{txt_path}"
         else:
             with open(txt_path, 'r') as file:
                 return file.read().strip()
 
-    def load_model(self, model_alias: str = None, model_type: Optional[str] = 'YOLO', use_bdl_api: Optional[bool] = True, model_txt_path: Optional[str] = None) -> str:
+    def load_model(self, model_alias: str = None, model_type: Optional[str] = 'YOLO', 
+                   use_bdl_api: Optional[bool] = True, 
+                   model_txt_path: Optional[str] = None,
+                   output_dir: Optional[str] = None) -> str:
         '''
         Loads a given baseball computer vision model into the repository.
 
@@ -161,6 +183,7 @@ class LoadTools:
             use_bdl_api (Optional[bool]): Whether to use the BallDataLab API.
             model_txt_path (Optional[str]): Path to .txt file containing download link to model weights. 
                                             Only used if use_bdl_api is specified as False.
+            output_dir (Optional[str]): Path to the location of the model file.
 
         Returns:
             model_weights_path (str):  Path to where the model weights are saved within the repo.
@@ -195,9 +218,13 @@ class LoadTools:
             DETR: {', '.join(self.detr_model_aliases.keys())}
 
             RFDETR: {', '.join(self.rfdetr_model_aliases.keys())}""")
-            raise ValueError()
+            raise ValueError(f"No txt file found from model_alias={model_alias} and model_type={model_type}")
 
-        base_dir = os.path.dirname(model_txt_path)
+        if output_dir:
+            base_dir = output_dir
+        else:
+            base_dir = os.path.dirname(model_txt_path)
+            
         base_name = os.path.splitext(os.path.basename(model_txt_path))[0]
         os.makedirs(base_dir, exist_ok=True)
 
@@ -250,44 +277,62 @@ class LoadTools:
         if not txt_path:
             self.logger.error(f"""Invalid alias {dataset_alias}. These are the valid dataset aliases:
             {', '.join(self.dataset_aliases.keys())}""")
-
             raise ValueError()
         
-        is_hf_dataset = txt_path.startswith("hf:")  
+        is_hf_dataset = txt_path.startswith("hf:") 
+        is_numerical_dataset = txt_path.endswith(".zip")
+        is_cv_dataset = not is_numerical_dataset
 
         if is_hf_dataset: #HF datasets
             repo_id = txt_path[3:]  
             
-            if os.path.exists(dataset_alias):
-                self.logger.info(f"Dataset found at {dataset_alias}")
-                return Path(dataset_alias)
+            if is_cv_dataset: #CV datasets``
+                if os.path.exists(dataset_alias):
+                    self.logger.info(f"Dataset found at {dataset_alias}")
+                    return Path(dataset_alias)
+                    
+                self.logger.info(f"Processing dataset from HF w/ alias: {dataset_alias}...")
+                try:
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=dataset_alias,
+                        repo_type="dataset",
+                        token=None,
+                        ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
+                    )
+
+                    dataset = load_dataset(repo_id, split="train")
+
+                    for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
+                        image, filename = example["image"], example["filename"]
+                        base_path = f"{dataset_alias}/train/"
+                        image.save(f"{base_path}/{filename}")
+
+                    [os.remove(os.path.join(root, file)) for root, dirs, files in os.walk(dataset_alias) for file in files if file.endswith('.parquet')]
+
+                    self.logger.info(f"Successfully downloaded dataset from Hugging Face to {base_path}")
+                    return Path(base_path)
                 
-            self.logger.info(f"Processing dataset from HF w/ alias: {dataset_alias}...")
-            try:
-                snapshot_download(
-                    repo_id=repo_id,
-                    local_dir=dataset_alias,
-                    repo_type="dataset",
-                    token=None,
-                    ignore_patterns=["*.md", "*.gitattributes", "*.gitignore"]
-                )
+                except Exception as e:
+                    self.logger.error(f"Error downloading from Hugging Face: {e}")
+                    raise ValueError()
 
-                dataset = load_dataset(repo_id, split="train")
+            elif is_numerical_dataset: #Numerical datasets
+                self.logger.info(f"Processing Numerical Dataset from HF w/ alias: {dataset_alias}...")
 
-                for i, example in tqdm(enumerate(dataset["train"]), total=len(dataset["train"])):
-                    image, filename = example["image"], example["filename"]
-                    base_path = f"{dataset_alias}/train/"
-                    image.save(f"{base_path}/{filename}")
-
-                [os.remove(os.path.join(root, file)) for root, dirs, files in os.walk(dataset_alias) for file in files if file.endswith('.parquet')]
-
-                self.logger.info(f"Successfully downloaded dataset from Hugging Face to {base_path}")
-                return Path(base_path)
-             
-            except Exception as e:
-                self.logger.error(f"Error downloading from Hugging Face: {e}")
-                raise
-
+                try:
+                    os.makedirs(dataset_alias, exist_ok=True)
+                    url = self._get_url(txt_path=repo_id, use_hf_api=True)
+                    dest = self._download_files(url, dataset_alias, is_folder=True)
+                    csv = next((f for root, dirs, files in os.walk(dest) for f in files if f.endswith('.csv')), dest)
+                    csv_path = os.path.join(dest, csv)
+                    self.logger.info(f"Successfully downloaded and extracted numerical dataset to {dest}")
+                    
+                    return csv_path
+                except Exception as e:
+                    self.logger.error(f"Error downloading or extracting numerical dataset: {e}")
+                    raise ValueError()
+                        
         else: #Non-HF datasets
             base = os.path.splitext(os.path.basename(txt_path))[0]
             dir_name = "unlabeled_" + base if 'raw_photos' in base or 'frames' in base or 'frames' in dataset_alias else base
@@ -320,5 +365,4 @@ class LoadTools:
                 if os.path.exists(redundant_dir):
                     os.rmdir(redundant_dir)
                 self.logger.info(f"Successfully processed dataset {dataset_alias}.")
-
             return Path(dir_name)
