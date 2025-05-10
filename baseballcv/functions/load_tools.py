@@ -1,4 +1,5 @@
 from pathlib import Path
+from sys import call_tracing
 import requests
 import os
 from tqdm import tqdm
@@ -217,7 +218,7 @@ class LoadTools:
             DETR: {', '.join(self.detr_model_aliases.keys())}
 
             RFDETR: {', '.join(self.rfdetr_model_aliases.keys())}""")
-            return
+            raise ValueError(f"No txt file found from model_alias={model_alias} and model_type={model_type}")
 
         if output_dir:
             base_dir = output_dir
@@ -270,15 +271,13 @@ class LoadTools:
 
         Returns:
             dir_name (str): Path to the folder containing the dataset.
-            csv_path (str): Path to the CSV file containing the dataset.
         '''
         
         txt_path = self.dataset_aliases.get(dataset_alias) if use_bdl_api else file_txt_path
         if not txt_path:
             self.logger.error(f"""Invalid alias {dataset_alias}. These are the valid dataset aliases:
             {', '.join(self.dataset_aliases.keys())}""")
-
-            return
+            raise ValueError()
         
         is_hf_dataset = txt_path.startswith("hf:") 
         is_numerical_dataset = txt_path.endswith(".zip")
@@ -316,7 +315,7 @@ class LoadTools:
                 
                 except Exception as e:
                     self.logger.error(f"Error downloading from Hugging Face: {e}")
-                    raise 
+                    raise ValueError()
 
             elif is_numerical_dataset: #Numerical datasets
                 self.logger.info(f"Processing Numerical Dataset from HF w/ alias: {dataset_alias}...")
@@ -332,7 +331,7 @@ class LoadTools:
                     return csv_path
                 except Exception as e:
                     self.logger.error(f"Error downloading or extracting numerical dataset: {e}")
-                    raise 
+                    raise ValueError()
                         
         else: #Non-HF datasets
             base = os.path.splitext(os.path.basename(txt_path))[0]
@@ -366,5 +365,4 @@ class LoadTools:
                 if os.path.exists(redundant_dir):
                     os.rmdir(redundant_dir)
                 self.logger.info(f"Successfully processed dataset {dataset_alias}.")
-
             return Path(dir_name)
