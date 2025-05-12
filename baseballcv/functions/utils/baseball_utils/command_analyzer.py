@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
-from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
-from baseballcv.functions.utils.savant_utils import GamePlayIDScraper
+#from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
+#from baseballcv.functions.utils.savant_utils import GamePlayIDScraper
 
 class CommandAnalyzer:
     """
@@ -140,6 +140,8 @@ class CommandAnalyzer:
         Returns:
             DataFrame containing Statcast data or None if unsuccessful
         """
+        from baseballcv.functions.utils.savant_utils import GamePlayIDScraper
+
         # Return cached data if available
         if game_pk in self.statcast_cache:
             return self.statcast_cache[game_pk]
@@ -204,6 +206,8 @@ class CommandAnalyzer:
         Returns:
             Path to the downloaded video or None if unsuccessful
         """
+        from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
+
         os.makedirs(video_output_dir, exist_ok=True)
         output_path = os.path.join(video_output_dir, f"{game_pk}_{play_id}.mp4")
         
