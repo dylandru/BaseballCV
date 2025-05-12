@@ -4,9 +4,9 @@ import glob
 import time
 import shutil
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional # Added Optional
 import concurrent.futures
-from .utils import DistanceToZone, GloveTracker
+from .utils import DistanceToZone, GloveTracker, CommandAnalyzer # Import CommandAnalyzer
 from baseballcv.utilities import BaseballCVLogger
 from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 
@@ -14,7 +14,7 @@ class BaseballTools:
     """
     Class for analyzing baseball videos with Computer Vision.
     
-    Enhanced with multi-mode glove tracking capabilities.
+    Enhanced with multi-mode glove tracking and command analysis capabilities.
     """
     def __init__(self, device: str = 'cpu', verbose: bool = True):
         """
@@ -28,10 +28,10 @@ class BaseballTools:
         self.verbose = verbose
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
 
-    def distance_to_zone(self, start_date: str = "2024-05-01", end_date: str = "2024-05-01", team_abbr: str = None, 
+    def distance_to_zone(self, start_date: str = "2024-05-01", end_date: str = "2024-05-01", team_abbr: str = None,
                          pitch_type: str = None, player: int = None,
-                         max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True, 
-                         catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking', 
+                         max_videos: int = None, max_videos_per_game: int = None, create_video: bool = True,
+                         catcher_model: str = 'phc_detector', glove_model: str = 'glove_tracking',
                          ball_model: str = 'ball_trackingv4', zone_vertical_adjustment: float = 0.5,
                          save_csv: bool = True, csv_path: str = None) -> List:
         """
@@ -59,23 +59,23 @@ class BaseballTools:
 
         
         dtoz = DistanceToZone(
-            device=self.device, 
-            verbose=self.verbose, 
-            catcher_model=catcher_model, 
-            glove_model=glove_model, 
+            device=self.device,
+            verbose=self.verbose,
+            catcher_model=catcher_model,
+            glove_model=glove_model,
             ball_model=ball_model,
             zone_vertical_adjustment=zone_vertical_adjustment,
             logger=self.logger
         )
         
         results = dtoz.analyze(
-            start_date=start_date, 
-            end_date=end_date, 
-            team_abbr=team_abbr, 
+            start_date=start_date,
+            end_date=end_date,
+            team_abbr=team_abbr,
             player=player,
-            pitch_type=pitch_type, 
-            max_videos=max_videos, 
-            max_videos_per_game=max_videos_per_game, 
+            pitch_type=pitch_type,
+            max_videos=max_videos,
+            max_videos_per_game=max_videos_per_game,
             create_video=create_video,
             save_csv=save_csv,
             csv_path=csv_path
@@ -83,12 +83,12 @@ class BaseballTools:
         
         return results
 
-    def track_gloves(self, 
-                    mode: str = "regular",  # Mode: "regular", "batch", or "scrape"
+    def track_gloves(self,
+                    mode: str = "regular",
                     # Common parameters
                     device: str = None,
                     confidence_threshold: float = 0.5,
-                    enable_filtering: bool = True, 
+                    enable_filtering: bool = True,
                     max_velocity_inches_per_sec: float = 120.0,
                     show_plot: bool = True,
                     generate_heatmap: bool = True,
@@ -337,9 +337,9 @@ class BaseballTools:
                 scraper = BaseballSavVideoScraper(
                     start_dt=start_date,
                     end_dt=end_date,
-                    team_abbr=team_abbr,  # Optional
-                    player=player,  # Optional
-                    pitch_type=pitch_type,  # Optional
+                    team_abbr=team_abbr,
+                    player=player,
+                    pitch_type=pitch_type,
                     download_folder=download_folder,
                     max_return_videos=max_videos,
                     max_videos_per_game=max_videos_per_game
@@ -362,13 +362,11 @@ class BaseballTools:
                     filename = f"{game_pk}_{play_id}.mp4"
                     statcast_data[filename] = {col: row[col] for col in row.index}
                 
-                # Process the downloaded videos using batch logic
-                # Reuse the batch logic by calling this method recursively with mode='batch'
                 batch_results = self.track_gloves(
                     mode="batch",
                     input_folder=download_folder,
-                    delete_after_processing=delete_after_processing,
-                    skip_confirmation=skip_confirmation,
+                    delete_after_processing=delete_after_processing, # Keep original value
+                    skip_confirmation=skip_confirmation, # Keep original value
                     confidence_threshold=confidence_threshold,
                     device=device,
                     show_plot=show_plot,
@@ -379,7 +377,7 @@ class BaseballTools:
                     max_workers=max_workers
                 )
                 
-                if "combined_csv" in batch_results and os.path.exists(batch_results["combined_csv"]):
+                if "combined_csv" in batch_results and batch_results["combined_csv"] and os.path.exists(batch_results["combined_csv"]):
                     combined_df = pd.read_csv(batch_results["combined_csv"])
                     statcast_columns = {f'statcast_{k}': [] for k in next(iter(statcast_data.values())).keys()} if statcast_data else {}
                     for col in statcast_columns:
@@ -391,17 +389,19 @@ class BaseballTools:
                     combined_df.to_csv(batch_results["combined_csv"], index=False)
                     batch_results["statcast_data_added"] = True
                 
-                # Clean up temp directory if it wasn't already deleted during batch processing
                 if not delete_after_processing and os.path.exists(download_folder):
                     if not skip_confirmation:
-                        confirm = input(f"Delete downloaded videos? (y/n): ")
+                        confirm = input(f"Delete downloaded videos from temp folder {download_folder}? (y/n): ")
                         if confirm.lower() == 'y' or confirm.lower() == 'yes':
                             shutil.rmtree(download_folder)
-                            self.logger.info(f"Deleted downloaded videos")
+                            self.logger.info(f"Deleted downloaded videos from temp folder.")
                     else:
                         shutil.rmtree(download_folder)
-                        self.logger.info(f"Deleted downloaded videos")
-                
+                        self.logger.info(f"Deleted downloaded videos from temp folder.")
+                elif delete_after_processing and os.path.exists(download_folder): # Already deleted by batch processor
+                     self.logger.info(f"Temp folder {download_folder} was already deleted by batch processor.")
+
+
                 batch_results["scrape_info"] = {
                     "start_date": start_date,
                     "end_date": end_date,
@@ -419,6 +419,75 @@ class BaseballTools:
                 if os.path.exists(download_folder):
                     shutil.rmtree(download_folder)
                 return {"error": f"Error in scrape mode: {str(e)}"}
-        
-        #Should never reach here, but just in case
+
         return {"error": f"Unknown error processing in mode: {mode}"}
+
+    def analyze_pitcher_command(self,
+                                csv_input_dir: str,
+                                output_csv: str = "command_analysis_results.csv",
+                                create_overlay: bool = False,
+                                video_output_dir: Optional[str] = None,
+                                debug_mode: bool = False,
+                                group_by_agg: List[str] = ['pitcher'],
+                                cmd_threshold_inches: float = 6.0
+                                ) -> pd.DataFrame:
+        """
+        Analyzes pitcher command by comparing intended target (from catcher's glove)
+        to actual pitch location (from Statcast), using CommandAnalyzer.
+
+        Args:
+            csv_input_dir (str): Directory containing GloveTracker CSV files.
+            output_csv (str): Filename for the output CSV with analysis results.
+            create_overlay (bool): Whether to create overlay videos showing target vs. actual.
+            video_output_dir (Optional[str]): Directory for video output.
+                                            If None, uses a subdirectory of csv_input_dir.
+            debug_mode (bool): Enable additional debugging features from CommandAnalyzer.
+            group_by_agg (List[str]): List of columns to group by for aggregate metrics.
+            cmd_threshold_inches (float): Threshold in inches to be considered "commanded".
+
+        Returns:
+            pd.DataFrame: DataFrame with analysis results, including aggregate metrics.
+        """
+        self.logger.info(f"Initializing Command Analysis for directory: {csv_input_dir}")
+
+        command_analyzer = CommandAnalyzer(
+            csv_input_dir=csv_input_dir,
+            logger=self.logger,
+            verbose=self.verbose,
+            device=self.device,
+            debug_mode=debug_mode
+        )
+
+        # Perform the main analysis
+        results_df = command_analyzer.analyze_folder(
+            output_csv=output_csv, # This will be saved by analyze_folder
+            create_overlay=create_overlay,
+            video_output_dir=video_output_dir
+        )
+
+        if results_df.empty:
+            self.logger.warning("Command analysis did not produce any results.")
+            return pd.DataFrame()
+
+        # Calculate and append aggregate metrics
+        aggregate_df = command_analyzer.calculate_aggregate_metrics(
+            results_df=results_df,
+            group_by=group_by_agg,
+            cmd_threshold_inches=cmd_threshold_inches
+        )
+
+        if not aggregate_df.empty:
+            self.logger.info("Aggregate command metrics calculated.")
+            # For now, just return the detailed results_df.
+            # You might want to decide how to best combine or present these.
+            # For example, saving aggregate_df to a separate CSV:
+            agg_csv_path = os.path.join(csv_input_dir, f"aggregate_{output_csv}")
+            try:
+                aggregate_df.to_csv(agg_csv_path, index=False)
+                self.logger.info(f"Aggregate command metrics saved to {agg_csv_path}")
+            except Exception as e:
+                 self.logger.error(f"Failed to save aggregate command metrics: {str(e)}")
+        else:
+            self.logger.warning("Could not calculate aggregate command metrics.")
+
+        return results_df
