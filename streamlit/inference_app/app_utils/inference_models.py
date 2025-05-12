@@ -31,7 +31,13 @@ class YOLOInference(InferenceModel):
         pred = self.model(img, conf=self.confidence)[0].plot()
         return pred
     
-    def infer_video(self, out: cv2.VideoWriter, cap: cv2.VideoCapture, length: int):
+    def infer_video(self, out: cv2.VideoWriter, cap: cv2.VideoCapture, length: int, *args):
+        for arg in args:
+            if callable(arg):
+                styling = arg
+                styling()
+                break
+
         progress_bar = st.progress(0)
         for i in range(length):
             read, frame = cap.read()

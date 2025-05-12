@@ -22,7 +22,13 @@ class DatasetCreator:
         BaseballSavVideoScraper(random_date, download_folder=output_video, team_abbr=random_team, max_return_videos=1).run_executor()
         
 
-    def generate_example_images(self, img_file, cap: cv2.VideoCapture, length: int):
+    def generate_example_images(self, img_file, cap: cv2.VideoCapture, length: int, *args):
+        for arg in args:
+            if callable(arg):
+                styling = arg
+                styling()
+                break
+            
         random_index = random.sample(range(0, length), 3)
 
         i = 0
