@@ -2,9 +2,9 @@ import os
 from typing import Dict, List, Optional, Union
 from baseballcv.functions.utils import check_import 
 from baseballcv.model.utils import ModelFunctionUtils
-from yolov9 import detect_dual as detect, train_dual as train, val_dual as val
 from pkg_resources import resource_filename
 from baseballcv.utilities import BaseballCVLogger
+
 class YOLOv9:
     def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c') -> None: 
         """
@@ -16,6 +16,7 @@ class YOLOv9:
             cfg_path (str, optional): Path to model config. Defaults to 'models/detect/yolov9-c.yaml'.
             name (str, optional): Name of the model. Defaults to 'yolov9-c'.
         """
+        from yolov9 import detect_dual as detect, train_dual as train, val_dual as val #lazy load to prevent wandb message on module import
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
         self.logger.info("Initializing YOLOv9 model...")
 

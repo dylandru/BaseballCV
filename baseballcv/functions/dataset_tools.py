@@ -12,7 +12,6 @@ from tqdm import tqdm
 from datetime import date, timedelta
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 from autodistill.detection import CaptionOntology
-from autodistill_grounded_sam import GroundedSAM
 
 class DataTools:
     '''
@@ -220,6 +219,8 @@ class DataTools:
             if ontology is not None:
                 self.logger.info(f"Using Autodistill mode with ontology: {ontology}")
                 self.logger.info(f"This may take a while...")
+                from autodistill_grounded_sam import GroundedSAM #lazy load to prevent GroundingDINO warning
+                
                 auto_model = GroundedSAM(ontology=CaptionOntology(ontology))
                 all_images = [f for f in os.listdir(image_dir) if f.endswith(extension)]
                 total_images = len(all_images)
