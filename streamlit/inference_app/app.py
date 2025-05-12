@@ -7,7 +7,6 @@ from PIL import Image
 
 # TODO: Add some more models
 # Check to see what file types we want to use for inference
-# Need to add download and clear functionality
 
 class InferenceApp:
     def __init__(self):
@@ -69,6 +68,13 @@ class InferenceApp:
                 float: right;
                 padding-top: 0;
             }
+            [data-testid='stFileUploader'] section > button {
+                color: #FFFFFF;
+                background-color: #FFA500;
+                border: 1px solid #FFA500;
+            }
+                    
+
             .main {
                 background-color: #000000;
                 color: #FFFFFF;
@@ -98,8 +104,51 @@ class InferenceApp:
                  background-color: #333333;
                  color: #FFFFFF;
             }
+            .stExpander summary:hover svg {
+                fill: #FFA500; 
+            }
+            .stExpander summary:hover {
+                color: #FFA500;
+                cursor: pointer;
+            }
+            .stExpander code {
+                color: #FFA500;
+            }
+            div[data-baseweb="progress-bar"][role="progressbar"] > div > div > div {
+                background-color: #FFA500 !important;
+            }
         </style>
         """, unsafe_allow_html=True)
+
+    def _display_instructions(self) -> None:
+        with st.expander("How to use this App"):
+            st.markdown("""
+                        Welcome to the **Baseball Inference Tool**. This is an app dedicated to 
+                        allow you to play around with various computer vision tools incorporated in 
+                        the `baseballcv` package. There are different ways to use this app.
+
+                        ### Model Selection
+                        On the sidebar, you have the choice of picking the different models you can use.
+                        Based on the type of model, the corresponding alias will pop up to make selecting easier.
+
+                        ### Uploading File
+                        You have the ability to upload you own files for images (png, jpeg, jpg) or videos (mp4). You are limited
+                        to 10 images and 1 video per inference. If you don't have a video or image, you can extract one by selecting
+                        the `Download Random Video` button on the sidebar. You are limited to 4 videos to extract. **Note**: The sizes of the
+                        files must be less than 200 MB.
+
+                        ### Generate Random Frames From Video
+                        This feature is used if you don't have any images to use and don't want to use up time to inference an entire
+                        video. Simply select yes, and the model will pick 3 random frames of the video and output their inferences.
+
+                        ### Run the Model
+                        When you are ready and have the configuration you want, simply select this button and it will run the inference
+                        on the file you uploaded. Once it's ran, you will have the option to download the desired image or video, and then
+                        you can show it off to your peers.
+
+                        **Note**: On every session instance, running the model may require installation of the model which can take an extra
+                        minute so please be patient when running an inference. 
+                        """)
 
     def _get_model(self, model_type, confidence):
         model_alias = self.acceptable_alias.get(self.alias)
@@ -137,7 +186,9 @@ class InferenceApp:
 
         if st.sidebar.button("Download Random Video"):
             self._create_random_video()
-            
+        
+        self._display_instructions()
+
         self._dropdown()
 
         files = st.sidebar.file_uploader(label='Upload File', accept_multiple_files=True, type=['jpg', 'jpeg', 'png', 'mp4'])
@@ -161,7 +212,7 @@ class InferenceApp:
 
                 if is_video:
                     out, cap, length = self.file.write_video(self.app_files[0])
-                    model.infer_video(out, cap, length)
+                    model.infer_video(out, cap, length, self._css_styling)
                     video_file = self.file.annot_video_path
                     col1.video(video_file)
 
@@ -174,7 +225,7 @@ class InferenceApp:
                 else:
                     if random_frames == 'Yes':
                         _, cap, length = self.file.write_video(self.app_files[0], False)
-                        self.dataset_creator.generate_example_images(self.file.imgs_dir, cap, length)
+                        self.dataset_creator.generate_example_images(self.file.imgs_dir, cap, length, self._css_styling)
                         self.app_files.clear() # Clear out the .mp4 file
 
                         self.app_files = [os.path.join(self.file.imgs_dir, item) 
