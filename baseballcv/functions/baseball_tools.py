@@ -6,7 +6,7 @@ import shutil
 import os
 from typing import Dict, List, Optional # Added Optional
 import concurrent.futures
-from .utils import DistanceToZone, GloveTracker, CommandAnalyzer, 
+from .utils import DistanceToZone, GloveTracker, CommandAnalyzer, EventDetector
 from baseballcv.utilities import BaseballCVLogger
 from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
 
