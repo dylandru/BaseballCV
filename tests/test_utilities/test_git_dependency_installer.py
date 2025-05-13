@@ -1,6 +1,6 @@
 import pytest
 import subprocess
-from pathlib import Path
+import pkg_resources
 from unittest.mock import patch, MagicMock
 from baseballcv.utilities.dependencies.git_dependency_installer import (
     is_package_installed,
@@ -31,20 +31,19 @@ class TestGitDependencyInstaller:
         (package_name, expected_name, False),
         ("yolov9", "yolov9", True),
         ("yolov9", "yolov9", False),
-        (package_name, expected_name, True),
-        (package_name, expected_name, False),
     ])
     def test_is_package_installed(self, mock_pkg_resources, package_name, expected_name, is_installed):
         """Test checking if a package is installed with various inputs."""
+        mock_pkg_resources.reset_mock()
+        
         if is_installed:
             mock_pkg_resources.return_value = MagicMock()
         else:
-            mock_pkg_resources.side_effect = Exception("Package not found")
+            mock_pkg_resources.side_effect = pkg_resources.DistributionNotFound("Package not found")
 
         result = is_package_installed(package_name)
         assert result is is_installed
-        mock_pkg_resources.assert_called_with(expected_name)
-
+        mock_pkg_resources.assert_called_once_with(expected_name)
 
     @pytest.mark.parametrize("package_name,install_success,check_call_raises", [
         (package_name, True, None),
