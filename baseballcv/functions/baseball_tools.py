@@ -491,3 +491,54 @@ class BaseballTools:
             self.logger.warning("Could not calculate aggregate command metrics.")
 
         return results_df
+
+    def cut_video_on_pitch_flight(self,
+                                  video_path: str,
+                                  output_path: str,
+                                  model_alias: str = 'glove_tracking', # Model good for ball and glove
+                                  pre_release_padding_frames: int = 10,
+                                  post_arrival_padding_frames: int = 5,
+                                  confidence_ball: float = 0.3,
+                                  confidence_glove: float = 0.3,
+                                  **kwargs) -> Dict:
+        """
+        Cuts a video to show the pitched ball flight, from release to arrival at the glove,
+        with customizable frame padding.
+
+        Args:
+            video_path (str): Path to the input video file.
+            output_path (str): Path to save the cropped video.
+            model_alias (str): Alias of the model to use for ball and glove detection.
+                               'glove_tracking' is recommended as it detects both.
+            pre_release_padding_frames (int): Number of frames to include before detected ball release.
+            post_arrival_padding_frames (int): Number of frames to include after detected ball arrival.
+            confidence_ball (float): Minimum confidence for ball detection.
+            confidence_glove (float): Minimum confidence for glove detection.
+            **kwargs: Additional parameters for the EventDetector.
+
+        Returns:
+            Dict: Results including the path to the cropped video, and detected event frame numbers.
+        """
+        self.logger.info(f"Initializing pitch flight detection for video: {video_path}")
+
+        if not os.path.exists(video_path):
+            self.logger.error(f"Input video not found: {video_path}")
+            return {"error": "Input video not found", "cropped_video_path": None}
+
+        event_detector_tool = EventDetector(
+            model_alias=model_alias,
+            logger=self.logger,
+            verbose=self.verbose,
+            device=self.device,
+            confidence_ball=confidence_ball,
+            confidence_glove=confidence_glove
+        )
+
+        results = event_detector_tool.extract_pitch_flight_segment(
+            video_path=video_path,
+            output_path=output_path,
+            pre_release_padding_frames=pre_release_padding_frames,
+            post_arrival_padding_frames=post_arrival_padding_frames,
+            **kwargs
+        )
+        return results
