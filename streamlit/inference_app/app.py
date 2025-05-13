@@ -1,17 +1,41 @@
 import streamlit as st
-from app_utils import YOLOInference, File, DatasetCreator
+from app_utils import (File, 
+                       DatasetCreator, 
+                       YOLOInference, 
+                       YOLOv9Inference,
+                       RFDETRInference, 
+                       PaligemmaInference, 
+                       FlorenceInference)
 import os
 import zipfile
 import io
 from PIL import Image
 
-# TODO: Add some more models
-# Check to see what file types we want to use for inference
+# TODO: Check to see what file types we want to use for inference
+# Need to go fix the model implementation and possibly file management
 
 class InferenceApp:
     def __init__(self):
-        self.acceptable_alias = {
-            'Pitcher Hitter Catcher Detector': 'phc_detector'
+        self.options = {
+            'YOLO': {
+                'Pitcher Hitter Catcher Detector': 'phc_detector',
+                'Bat Tracking' : 'bat_tracking',
+                'Ball Tracking' : 'ball_tracking',
+                'Ball Tracking v4' : 'ball_trackingv4',
+                'Glove Tracking' : 'glove_tracking'
+            },
+            'RF-DETR': {
+                'Glove Tracking' : 'rfdetr_glove_tracking'
+            },
+            'YOLOv9': {
+                'Homeplate Tracking' : 'homeplate_tracking'
+            },
+            'Paligemma': {
+                'Ball Tracking' : 'paligemma2_ball_tracking'
+            },
+            'Florence': {
+                'Ball Tracking' : 'florence_ball_tracking'
+            }
         }
 
         self.app_files = []
@@ -21,16 +45,6 @@ class InferenceApp:
         
         self.file = File()
         self.dataset_creator = DatasetCreator()
-
-    def _dropdown(self):
-        alias_model_type_dict = {
-            'YOLO' : ['Pitcher Hitter Catcher Detector'],
-            'RFDTER': ['Hello', 'Hi']
-        }
-        self.model = st.sidebar.selectbox('Type of Model',
-                     list(alias_model_type_dict.keys()))
-        self.alias = st.sidebar.selectbox('Model Alias',
-                         alias_model_type_dict.get(self.model))
         
     def _create_random_video(self):
         if st.session_state.click_count < 4:
@@ -72,9 +86,7 @@ class InferenceApp:
                 color: #FFFFFF;
                 background-color: #FFA500;
                 border: 1px solid #FFA500;
-            }
-                    
-
+            }      
             .main {
                 background-color: #000000;
                 color: #FFFFFF;
@@ -150,12 +162,23 @@ class InferenceApp:
                         minute so please be patient when running an inference. 
                         """)
 
-    def _get_model(self, model_type, confidence):
-        model_alias = self.acceptable_alias.get(self.alias)
+    def _get_model(self, model_type, alias, **kwargs):
         model = None
 
         if model_type == 'YOLO':
-            model = YOLOInference(model_alias, confidence, self.file.models_dir_path)
+            model = YOLOInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+
+        elif model_type == 'RF-DETR':
+            model = RFDETRInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+
+        elif model_type == 'Paligemma':
+            model = PaligemmaInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+        
+        elif model_type == 'YOLOv9':
+            model = YOLOv9Inference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+
+        elif model_type == 'Florence':
+            model = FlorenceInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
 
         return model
 
@@ -189,11 +212,20 @@ class InferenceApp:
         
         self._display_instructions()
 
-        self._dropdown()
+        #####################
+        # Handle Model Inputs
+        #####################
+
+        model_type = st.sidebar.selectbox('Type of model', self.options.keys())
+        alias = st.sidebar.selectbox('Model Alias', self.options.get(model_type).keys())
 
         files = st.sidebar.file_uploader(label='Upload File', accept_multiple_files=True, type=['jpg', 'jpeg', 'png', 'mp4'])
 
         confidence = float(st.sidebar.slider("Confidence", 25, 100, 50)) / 100
+
+        ###########################
+        # End Handling Model Inputs
+        ###########################
 
         self.app_files.extend(files)
        
@@ -204,11 +236,11 @@ class InferenceApp:
     
         if st.sidebar.button("Run Model"):
             try:
+                model = self._get_model(model_type, self.options.get(model_type).get(alias), confidence=confidence)
+
                 col1, col2 = st.columns([4, 1], gap='medium')
 
                 is_video = self.app_files[0].name.endswith('.mp4') and random_frames == 'No' # True for video, false for image
-
-                model = self._get_model(self.model, confidence)
 
                 if is_video:
                     out, cap, length = self.file.write_video(self.app_files[0])
@@ -253,7 +285,9 @@ class InferenceApp:
                 self.file.clear()
 
             except Exception as e:
+                print(e)
                 st.error(f"Error. Most Likely you didn't upload a file before running. {e}")
+                self.file.clear()
         
         self._css_styling()
 
