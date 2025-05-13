@@ -2,9 +2,9 @@ import os
 from typing import Dict, List, Optional, Union
 from baseballcv.functions.utils import check_import 
 from baseballcv.model.utils import ModelFunctionUtils
-from yolov9 import detect_dual as detect, train_dual as train, val_dual as val
 from pkg_resources import resource_filename
 from baseballcv.utilities import BaseballCVLogger
+
 class YOLOv9:
     def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c') -> None: 
         """
@@ -16,6 +16,7 @@ class YOLOv9:
             cfg_path (str, optional): Path to model config. Defaults to 'models/detect/yolov9-c.yaml'.
             name (str, optional): Name of the model. Defaults to 'yolov9-c'.
         """
+        from yolov9 import detect_dual as detect, train_dual as train, val_dual as val #lazy load to prevent wandb message on module import
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)
         self.logger.info("Initializing YOLOv9 model...")
 
@@ -27,6 +28,9 @@ class YOLOv9:
         if not os.path.exists(cfg_path):
             cfg_path = resource_filename('yolov9', cfg_path)
         self.cfg_path = cfg_path
+        self.detect = detect
+        self.train = train
+        self.val = val
 
         self.logger.info(f"Model initialized: {self.name}")
     
@@ -84,7 +88,7 @@ class YOLOv9:
             bbox_interval (int, optional): Bbox interval. Defaults to -1.
         """
 
-        results = train.run(data=data_path, name=self.name, weights=self.model_weights, cfg=self.cfg_path, epochs=epochs, batch_size=batch_size,
+        results = self.train.run(data=data_path, name=self.name, weights=self.model_weights, cfg=self.cfg_path, epochs=epochs, batch_size=batch_size,
                           imgsz=imgsz, rect=rect, resume=resume, nosave=nosave, noval=noval, noautoanchor=noautoanchor,
                           noplots=noplots, evolve=evolve, bucket=bucket, cache=cache, image_weights=image_weights,
                           device=self.device, multi_scale=multi_scale, single_cls=single_cls, optimizer=optimizer,
@@ -125,7 +129,7 @@ class YOLOv9:
             half (bool, optional): Half precision. Defaults to True.
             dnn (bool, optional): DNN. Defaults to False.
         """
-        results = val.run(weights=self.model_weights, data=data_path, name=self.name, batch_size=batch_size, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres,
+        results = self.val.run(weights=self.model_weights, data=data_path, name=self.name, batch_size=batch_size, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres,
                          max_det=max_det, workers=workers, single_cls=single_cls, augment=augment, verbose=verbose,
                          save_txt=save_txt, save_hybrid=save_hybrid, save_conf=save_conf, save_json=save_json,
                          project=project, exist_ok=exist_ok, half=half, dnn=dnn, device=self.device)
@@ -169,7 +173,7 @@ class YOLOv9:
         Returns:
             List[Dict]: List of dictionaries containing detection results
         """
-        results = detect.run(weights=self.model_weights, name=self.name, source=source, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det,
+        results = self.detect.run(weights=self.model_weights, name=self.name, source=source, imgsz=imgsz, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det,
                            device=self.device, view_img=view_img, save_txt=save_txt, save_conf=save_conf,
                            save_crop=save_crop, nosave=nosave, classes=classes, agnostic_nms=agnostic_nms,
                            augment=augment, visualize=visualize, update=update, project=project,
