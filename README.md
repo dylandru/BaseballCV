@@ -367,7 +367,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### Important Licensing Clarification for Major League Baseball (MLB) Entities
 
 1.  **For MLB Teams:**
-    The use, modification, deployment, or distribution of this software (or any derivative works based upon it) directly by, or for the operational, analytical, or developmental purposes of, a **Major League Baseball (MLB) team** (including its directly owned and operated affiliates) is subject to the terms of the GNU Affero General Public License v3.0 (AGPLv3). A copy of the AGPLv3 is included in this repository as `LICENSE-MLB-AGPL.md` for review.
+    The use, modification, deployment, or distribution of this software (or any derivative works based upon it) directly by, or for the operational, analytical, or developmental purposes of, a **Major League Baseball (MLB) team** (including its directly owned and operated affiliates) is subject to the terms of the GNU Affero General Public License v3.0 (AGPLv3). A copy of the AGPLv3 is included in this repository as `LICENSE-MLB-AGPL.txt` for review.
 
     MLB **teams** (or entities acting directly on a team's behalf for such purposes) intending to use this software under these conditions must contact Dylan Drummey or Carlos Marcano at the contact information below to ensure understanding and compliance with the AGPLv3 terms.
 
