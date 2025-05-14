@@ -26,7 +26,7 @@ class RFDETR:
     def __init__(self, device: str = "cpu", model_path: str = None, imgsz: int = 560, model_type: str = "base", labels: List[str] = None, project_path: str = "rfdetr_runs"):
         self.device = device
         self.imgsz = imgsz
-        self.model = RFDETRBase(device=device, pretrained_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=device, pretrained_weights=model_path if model_path else None)
+        self.model = RFDETRBase(device=device, pretrain_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=device, pretrain_weights=model_path if model_path else None)
         self.model_name = "rfdetr"
 
         self.model_run_path = os.path.join(os.getcwd(), project_path)
