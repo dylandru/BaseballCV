@@ -363,16 +363,33 @@ Our main need is for data annotation. With our new annotation app, you can help 
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. **Note: Please double check the folder for any additional licenses.**
 
+### Important Licensing Clarification for Major League Baseball (MLB) Entities
+
+1.  **For MLB Teams:**
+    The use, modification, deployment, or distribution of this software (or any derivative works based upon it) directly by, or for the operational, analytical, or developmental purposes of, a **Major League Baseball (MLB) team** (including its directly owned and operated affiliates) is subject to the terms of the GNU Affero General Public License v3.0 (AGPLv3). A copy of the AGPLv3 is included in this repository as `LICENSE-MLB-AGPL.md` for review.
+
+    MLB **teams** (or entities acting directly on a team's behalf for such purposes) intending to use this software under these conditions must contact Dylan Drummey or Carlos Marcano at the contact information below to ensure understanding and compliance with the AGPLv3 terms.
+
+2.  **Exclusion for MLB Contractors and League Employees (acting in individual or general league capacities):**
+    To clarify, the specific AGPLv3 licensing requirement mentioned above for MLB **teams** **does not** apply to individuals who are MLB contractors / MLB league employees when they are using this software for their own individual projects, personal education, or for general league operational tasks not specific to the competitive baseball operations of a particular MLB team. In such cases, these individuals are covered by the MIT License.
+
+3.  **Overriding Principle for Team Use:**
+    Notwithstanding the above, if any software derived from this project is ultimately used, deployed by, or operated for the direct benefit and under the control of an **MLB team** for its team-specific purposes, that **team's** use and distribution of such software (regardless of who performed the modifications) falls under the AGPLv3 obligations.
+
+4. **Failure to adhere to these terms may result in license revocation.**
+
 ## 📞 Contact
 
 <div align="center">
 
-**Dylan Drummey**  
-[![Twitter](https://img.shields.io/twitter/follow/drummeydylan?style=social)](https://x.com/DrummeyDylan)  
+**Dylan Drummey** 
+
+[![Twitter](https://img.shields.io/twitter/follow/drummeydylan?style=social)](https://x.com/DrummeyDylan) [![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:dylandrummey22@gmail.com)    
 dylandrummey22@gmail.com
 
 **Carlos Marcano**  
-[![Twitter](https://img.shields.io/twitter/follow/camarcano?style=social)](https://x.com/camarcano)  
+
+[![Twitter](https://img.shields.io/twitter/follow/camarcano?style=social)](https://x.com/camarcano) [![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:c.marcano@balldatalab.com)   
 c.marcano@balldatalab.com
 
 </div>
