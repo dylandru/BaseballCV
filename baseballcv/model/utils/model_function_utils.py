@@ -326,7 +326,7 @@ class ModelFunctionUtils:
         return quant_config
     
     @staticmethod
-    def setup_yolo_weights(model_file: str, output_dir: str = None) -> str:
+    def setup_yolo_weights(model_file: str = None, output_dir: str = None, custom_weights: bool = False) -> str:
         """
         Retrieve YOLO model weights files.
 
@@ -340,17 +340,23 @@ class ModelFunctionUtils:
         if not output_dir:
             output_dir = os.getcwd()
         
-        os.makedirs(os.path.join(output_dir, "weights"), exist_ok=True)
-        output = os.path.join(output_dir, "weights", os.path.basename(model_file))
-        if not os.path.exists(output):
-            try:
-                script = resource_filename("yolov9", "scripts/get_model_weights.sh")
-                subprocess.run(["chmod", "+x", script], check=True)
-                subprocess.run(["bash", script, model_file, output_dir], check=True)
-            except Exception as e:
-                print(f"Error downloading weights: {e}")
-                print("Please download weights manually from: https://github.com/WongKinYiu/yolov9/releases")
+        if custom_weights is False:
+            os.makedirs(os.path.join(output_dir, "weights"), exist_ok=True)
+            output = os.path.join(output_dir, "weights", os.path.basename(model_file))
+            if not os.path.exists(output):
+                try:
+                    script = resource_filename("yolov9", "scripts/get_model_weights.sh")
+                    subprocess.run(["chmod", "+x", script], check=True)
+                    subprocess.run(["bash", script, model_file, output_dir], check=True)
+                except Exception as e:
+                    print(f"Error downloading weights: {e}")
+                    print("Please download weights manually from: https://github.com/WongKinYiu/yolov9/releases")
+            else:
+                print(f"Model weights file found at {output}.")
         else:
+            output = output_dir
+            if not os.path.exists(output):
+                raise FileNotFoundError(f"Model weights file not found at {output}")
             print(f"Model weights file found at {output}.")
 
         return output

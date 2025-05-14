@@ -67,7 +67,7 @@ class LoadTools:
             'detr_baseball_v2': 'hf:dyland222/detr-coco-baseball_v2'
         }
         self.rfdetr_model_aliases = {
-            'rfdetr_glove_tracking': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt'
+            'glove_tracking_rfd': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt'
         }
 
         self.dataset_aliases = {
@@ -231,6 +231,9 @@ class LoadTools:
         is_hf_model = model_txt_path.startswith("hf:")
         if model_type == 'YOLO':
             model_weights_path = f"{base_dir}/{base_name}.pt"
+        elif model_type == 'RFDETR':
+            model_weights_path = f"{base_dir}/{base_name}.pth"
+            os.makedirs(base_dir, exist_ok=True)
         else:
             model_weights_path = f"{base_name}" if is_hf_model else f"{base_dir}/{base_name}"
             os.makedirs(model_weights_path, exist_ok=True)
@@ -255,7 +258,7 @@ class LoadTools:
             
         else: 
             url = self._get_url(model_alias, model_txt_path, use_bdl_api, self.BDL_MODEL_API)
-            self._download_files(url, model_weights_path, is_folder=(model_type=='FLORENCE2' or model_type=='PALIGEMMA2' or model_type=='DETR'))
+            self._download_files(url, model_weights_path, is_folder=(model_type in ['FLORENCE2', 'PALIGEMMA2', 'DETR']))
         
         return model_weights_path
 

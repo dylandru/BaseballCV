@@ -25,7 +25,7 @@ class InferenceApp:
                 'Glove Tracking' : 'glove_tracking'
             },
             'RF-DETR': {
-                'Glove Tracking' : 'rfdetr_glove_tracking'
+                'Glove Tracking' : 'glove_tracking_rfd'
             },
             'YOLOv9': {
                 'Homeplate Tracking' : 'homeplate_tracking'
