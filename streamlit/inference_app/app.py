@@ -11,11 +11,15 @@ import zipfile
 import io
 from PIL import Image
 
-# TODO: Check to see what file types we want to use for inference
-# Need to go fix the model implementation and possibly file management
-
 class InferenceApp:
-    def __init__(self):
+    """
+    Class that handles the inference streamlit app.
+    """
+    def __init__(self) -> None:
+        """
+        Initializes the `InferenceApp` class with model options, session handled files, 
+        session handled click counts, and the temporary session file structure.
+        """
         self.options = {
             'YOLO': {
                 'Pitcher Hitter Catcher Detector': 'phc_detector',
@@ -24,17 +28,8 @@ class InferenceApp:
                 'Ball Tracking v4' : 'ball_trackingv4',
                 'Glove Tracking' : 'glove_tracking'
             },
-            'RF-DETR': {
-                'Glove Tracking' : 'glove_tracking_rfd'
-            },
             'YOLOv9': {
                 'Homeplate Tracking' : 'homeplate_tracking'
-            },
-            'Paligemma': {
-                'Ball Tracking' : 'paligemma2_ball_tracking'
-            },
-            'Florence': {
-                'Ball Tracking' : 'florence_ball_tracking'
             }
         }
 
@@ -44,12 +39,18 @@ class InferenceApp:
             st.session_state.click_count = 0
         
         self.file = File()
-        self.dataset_creator = DatasetCreator()
         
-    def _create_random_video(self):
+    def _create_random_video(self, dataset_creator: DatasetCreator) -> None:
+        """
+        Generates a random video for the user if they don't have one to use. Also, handles
+        clicks for each session to limit the number of times the button is used. (Limited to 4)
+
+        Args:
+            dataset_creator (DatasetCreator): A object that called for the `generate_video` function.
+        """
         if st.session_state.click_count < 4:
             try:
-                self.dataset_creator.generate_video(self.file.videos_dir)
+                dataset_creator.generate_video(self.file.videos_dir)
                 st.session_state.click_count += 1
 
                 video_file = self.file.videos_dir
@@ -66,6 +67,10 @@ class InferenceApp:
             st.error("Sorry, Max Downloads exceeded")
         
     def _css_styling(self) -> None:
+        """
+        Applies custom CSS styling to the Streamlit application for a
+        dark theme with orange accents.
+        """
         st.markdown("""
         <style>
             [data-testid='stFileUploader'] {
@@ -133,6 +138,9 @@ class InferenceApp:
         """, unsafe_allow_html=True)
 
     def _display_instructions(self) -> None:
+        """
+        Generates a markdown of instructions to enhance the user experience. 
+        """
         with st.expander("How to use this App"):
             st.markdown("""
                         Welcome to the **Baseball Inference Tool**. This is an app dedicated to 
@@ -162,27 +170,53 @@ class InferenceApp:
                         minute so please be patient when running an inference. 
                         """)
 
-    def _get_model(self, model_type, alias, **kwargs):
+    def _get_model(self, model_type: str, alias: str, **kwargs) -> (YOLOInference | RFDETRInference | PaligemmaInference | YOLOv9Inference | FlorenceInference | None):
+        """
+        Extracts the desired model based on the user input and instantiates it.
+
+        Args:
+            model_type (str): The type of model the user wants to use.
+            alias (str): The alias of the respective model. Each alias is unique to each model. 
+            **kwargs: Additional arguments that can be used to enhance the model experience.
+            For example, confidence can be used for annotations. Hopefully, more arguments can
+            be used in the future. 
+        
+        Returns:
+            The respective instantiated model used for inferencing. 
+        """
         model = None
 
         if model_type == 'YOLO':
-            model = YOLOInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+            model = YOLOInference(alias, self.file.models_dir_path, self._css_styling, 
+                                  confidence=kwargs.get('confidence'))
 
         elif model_type == 'RF-DETR':
-            model = RFDETRInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+            model = RFDETRInference(alias, self.file.models_dir_path, self._css_styling, 
+                                    confidence=kwargs.get('confidence'))
 
         elif model_type == 'Paligemma':
-            model = PaligemmaInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+            model = PaligemmaInference(alias, self.file.models_dir_path, self._css_styling, 
+                                       confidence=kwargs.get('confidence'))
         
         elif model_type == 'YOLOv9':
-            model = YOLOv9Inference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+            model = YOLOv9Inference(alias, self.file.models_dir_path, self._css_styling, 
+                                    confidence=kwargs.get('confidence'))
 
         elif model_type == 'Florence':
-            model = FlorenceInference(alias, self.file.models_dir_path, confidence=kwargs.get('confidence'))
+            model = FlorenceInference(alias, self.file.models_dir_path, self._css_styling, 
+                                      confidence=kwargs.get('confidence'))
 
         return model
 
-    def _check_structure(self):
+    def _check_structure(self) -> None:
+        """
+        Checks the structure of the file uploads. What this is looking for:
+        * All files are either images or videos
+        * The length of the uploaded videos must be 1 (It will take forevor to do more than 1).
+        * The length of the uploaded images must be less than 10.
+
+        This is done to limit computational resources and time. 
+        """
         all_images = all(file.name.endswith(('.jpg', '.jpeg', '.png')) for file in self.app_files)
         all_videos = all(file.name.endswith('.mp4') for file in self.app_files)
 
@@ -196,19 +230,24 @@ class InferenceApp:
             st.warning("We are only supporting 10 images")
             self.app_files = self.app_files[:10]
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Sets up the Streamlit page configuration and orchestrates the display
+        and interaction logic of the application.
+        """
         st.set_page_config(
         layout="wide",
         page_title="Baseball Inference Tool",
         page_icon=":baseball:"
         )
 
+        dataset_creator = DatasetCreator(self._css_styling)
         st.title("Baseball Inference Tool")
 
         st.sidebar.header("Model Configuration")
 
         if st.sidebar.button("Download Random Video"):
-            self._create_random_video()
+            self._create_random_video(dataset_creator)
         
         self._display_instructions()
 
@@ -221,7 +260,7 @@ class InferenceApp:
 
         files = st.sidebar.file_uploader(label='Upload File', accept_multiple_files=True, type=['jpg', 'jpeg', 'png', 'mp4'])
 
-        confidence = float(st.sidebar.slider("Confidence", 25, 100, 50)) / 100
+        confidence = float(st.sidebar.slider("Confidence", 0, 100, 50)) / 100
 
         ###########################
         # End Handling Model Inputs
@@ -244,7 +283,7 @@ class InferenceApp:
 
                 if is_video:
                     out, cap, length = self.file.write_video(self.app_files[0])
-                    model.infer_video(out, cap, length, self._css_styling)
+                    model.infer_video(out, cap, length)
                     video_file = self.file.annot_video_path
                     col1.video(video_file)
 
@@ -257,7 +296,7 @@ class InferenceApp:
                 else:
                     if random_frames == 'Yes':
                         _, cap, length = self.file.write_video(self.app_files[0], False)
-                        self.dataset_creator.generate_example_images(self.file.imgs_dir, cap, length, self._css_styling)
+                        dataset_creator.generate_example_images(self.file.imgs_dir, cap, length)
                         self.app_files.clear() # Clear out the .mp4 file
 
                         self.app_files = [os.path.join(self.file.imgs_dir, item) 
@@ -285,7 +324,6 @@ class InferenceApp:
                 self.file.clear()
 
             except Exception as e:
-                print(e)
                 st.error(f"Error. Most Likely you didn't upload a file before running. {e}")
                 self.file.clear()
         

@@ -17,6 +17,16 @@ A Streamlit-based app for managing and annotating baseball image and video using
     - Built-in BaseballCV models for predicted annotations to quicken annotation process
     - See detailed instructions in `/annotation_app/README.md`
 
+### 2. Gemini Annotation App (`/gemini_annotating_app`)
+
+### 3. Inference App (`/inference_app`)
+
+A Streamlit-based app for implementing inference models on baseball video or image feed without using code.
+
+    - Designed to elimate using code to make inferences on images and videos
+    - Ability to download the annotated inferences to show off on friends, social media, etc.
+    - See detailed instructions in `/inference_app/README.md`
+
 ## Common Features
 
 All Streamlit applications in this directory (will) share:

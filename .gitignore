@@ -30,5 +30,6 @@ myenv/
 events.out.tfevents.*
 
 
-# Ignore pytorch files
+# Ignore pytorch and path files if models are loaded
 *.pt
+*.pth
