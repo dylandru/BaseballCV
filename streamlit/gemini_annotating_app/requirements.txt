@@ -1,0 +1,6 @@
+streamlit==1.44.1
+streamlit-image-coordinates==0.2.1
+streamlit-drawable-canvas==0.9.3
+google-generativeai>=0.8.5
+google-api-core>=2.17.1
+baseballcv>=0.1.22
