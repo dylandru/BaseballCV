@@ -37,7 +37,7 @@ The Gemini Baseball Annotation App is a Streamlit web application designed for a
     ```
     Install the required Python packages using the `requirements.txt` file.
     ```bash
-    pip install -r requirements.txt
+    pip install -r streamlit/gemini_annotating_app/requirements.txt
     ```
 
 

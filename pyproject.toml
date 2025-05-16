@@ -41,8 +41,8 @@ mediapipe = "0.10.21"
 supervision = "0.26.0rc7" 
 coco-eval = "0.0.4"
 pytorch-lightning = "2.5.0"
-rfdetr = "1.0.8"
 dotenv = "^0.9.9"
+rfdetr = "~1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.3.2"

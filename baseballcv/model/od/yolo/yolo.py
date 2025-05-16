@@ -6,7 +6,7 @@ from pkg_resources import resource_filename
 from baseballcv.utilities import BaseballCVLogger
 
 class YOLOv9:
-    def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c') -> None: 
+    def __init__(self, device: str | int = "cuda", model_path: str = '', cfg_path: str = 'models/detect/yolov9-c.yaml', name: str = 'yolov9-c', custom_weights: bool = False) -> None: 
         """
         Initialize YOLOv9 model.
 
@@ -24,7 +24,7 @@ class YOLOv9:
         self.device = device
         self.name = name
         self.model_path = model_path
-        self.model_weights = ModelFunctionUtils.setup_yolo_weights(model_file=f"{name}.pt", output_dir=model_path)
+        self.model_weights = ModelFunctionUtils.setup_yolo_weights(model_file=f"{name}.pt", output_dir=model_path, custom_weights=custom_weights)
         if not os.path.exists(cfg_path):
             cfg_path = resource_filename('yolov9', cfg_path)
         self.cfg_path = cfg_path

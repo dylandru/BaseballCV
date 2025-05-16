@@ -37,3 +37,14 @@ Choose a section from the navigation menu to begin learning about BaseballCV:
 - [GitHub Repository](https://github.com/dylandru/BaseballCV)
 - [Issue Tracker](https://github.com/dylandru/BaseballCV/issues)
 - [Contributors Guide](contributing/)
+
+##
+
+
+
+
+<div align="center">
+
+**Created By: Dylan Drummey and Carlos Marcano**
+
+<div>
