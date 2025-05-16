@@ -542,3 +542,48 @@ class BaseballTools:
             **kwargs
         )
         return results
+    
+    def cut_video_on_pitcher_mechanic(self,
+                                     video_path: str,
+                                     output_path: str, # Directory for output
+                                     primary_model_alias: str = 'glove_tracking', # For ball release anchoring
+                                     pitcher_model_alias: str = 'phc_detector',   # For pitcher detection
+                                     pre_mechanic_padding_frames: int = 20, # More padding before mechanic starts
+                                     post_mechanic_padding_frames: int = 5, # Less padding after (e.g., up to release)
+                                     confidence_pitcher: float = 0.5,
+                                     confidence_ball: float = 0.3, # if primary model used for ball
+                                     # confidence_glove is not directly used by mechanic but good to have if primary model is glove_tracking
+                                     **kwargs) -> Dict:
+        self.logger.info(f"Initializing pitcher mechanic detection for video: {video_path}")
+
+        if not os.path.exists(video_path):
+            self.logger.error(f"Input video not found: {video_path}")
+            return {"error": "Input video not found", "cropped_video_path": None}
+
+        try:
+            event_detector_tool = EventDetector(
+                primary_model_alias=primary_model_alias,
+                pitcher_model_alias=pitcher_model_alias,
+                logger=self.logger,
+                verbose=self.verbose,
+                device=self.device,
+                confidence_pitcher=confidence_pitcher,
+                confidence_ball=confidence_ball
+                # confidence_glove will be set in EventDetector if primary_model_alias implies it
+            )
+        except ValueError as e: # Catch model loading errors from EventDetector
+            self.logger.error(f"Failed to initialize EventDetector: {e}")
+            return {"error": f"Failed to initialize EventDetector: {e}", "cropped_video_path": None}
+        except Exception as e_gen: # Catch any other init error
+            self.logger.error(f"General error initializing EventDetector: {e_gen}")
+            return {"error": f"General error initializing EventDetector: {e_gen}", "cropped_video_path": None}
+
+
+        results = event_detector_tool.extract_pitcher_mechanic_segment(
+            video_path=video_path,
+            output_path_dir=output_path, # Pass directory here
+            pre_mechanic_padding_frames=pre_mechanic_padding_frames,
+            post_mechanic_padding_frames=post_mechanic_padding_frames,
+            **kwargs
+        )
+        return results
