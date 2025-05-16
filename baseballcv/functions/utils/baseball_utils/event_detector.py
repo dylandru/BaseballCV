@@ -28,7 +28,7 @@ class EventDetector:
         self.logger = logger if logger else BaseballCVLogger.get_logger(self.__class__.__name__)
         self.verbose = verbose
         self.device = device
-        self.load_tools = LoadTools(logger_instance=self.logger)
+        self.load_tools = LoadTools()
 
         # Load primary model (for ball, glove)
         self.primary_model_path = self.load_tools.load_model(primary_model_alias)
