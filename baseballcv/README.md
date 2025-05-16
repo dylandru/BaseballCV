@@ -10,7 +10,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 **Created By: Dylan Drummey ([@drummeydylan](https://x.com/DrummeyDylan)) and Carlos Marcano ([@camarcano](https://x.com/camarcano))**  
-**Maintained By: Carlos Marcano**
+**Maintained By: Carlos Marcano and Eddie Dew**
 
 ![BaseballCV Logo](assets/baseballcvlogo.png)
 
@@ -391,5 +391,10 @@ dylandrummey22@gmail.com
 
 [![Twitter](https://img.shields.io/twitter/follow/camarcano?style=social)](https://x.com/camarcano) [![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:c.marcano@balldatalab.com)   
 c.marcano@balldatalab.com
+
+**Eddie Dew**
+
+[![Twitter](https://img.shields.io/twitter/follow/da_mountain_dew?style=social)](https://x.com/da_mountain_dew) [![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:edew4502@gmail.com)  
+  edew4502@gmail.com
 
 </div>

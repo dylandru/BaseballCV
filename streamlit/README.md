@@ -6,8 +6,6 @@ This directory contains various Streamlit applications for BaseballCV. Each app 
 
 ### 1. Annotation App (`/annotation_app`)
 
-Run the App on your browser: [Annotation App](https://balldatalab.com/streamlit/baseballcv_annotation_app/)
-
 A Streamlit-based app for managing and annotating baseball image and video using BaseballCV's computer vision models.
 
     - Open-source project designed to crowdsource baseball annotations for training of models
@@ -18,6 +16,16 @@ A Streamlit-based app for managing and annotating baseball image and video using
     - See detailed instructions in `/annotation_app/README.md`
 
 ### 2. Gemini Annotation App (`/gemini_annotating_app`)
+
+A Streamlit-bassed app for implementing automated annotation using Google AI Studio and Gemini.
+
+    - Open-source implementation of a use-case for model distillation using large LLM API calls to create datasets for supervised CV models.
+    - Use own photos for annotation
+    - Allows for multiple CV annotation formats (including YOLO and COCO)
+    - Generates complete dataset with uploaded photos into a downloadable ZIP file.
+    - Previews results for user with the annotations shown on image and actual model output
+    - See detailed instructions in `/gemini_annotating_app/README.md`
+
 
 ### 3. Inference App (`/inference_app`)
 
