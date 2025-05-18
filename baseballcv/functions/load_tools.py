@@ -67,7 +67,8 @@ class LoadTools:
             'detr_baseball_v2': 'hf:dyland222/detr-coco-baseball_v2'
         }
         self.rfdetr_model_aliases = {
-            'glove_tracking_rfd': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt'
+            'glove_tracking_rfd': 'models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt',
+            'baseball_rubber_home_rfd': 'models/od/RFDETR/baseball_rubber_home/model_weights/rfdetr_baseball_rubber_home.txt'
         }
 
         self.dataset_aliases = {
