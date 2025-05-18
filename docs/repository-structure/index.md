@@ -62,6 +62,10 @@ BaseballCV/
 │   └── vlm/
 │       ├── Florence2/
 │       └── PaliGemma2/
+├── streamlit/
+│   ├── annotation_app/
+│   ├── inference_app/
+│   └── gemini_annotating_app/
 ├── notebooks/
 ├── tests/
 ├── docs/

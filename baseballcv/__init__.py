@@ -1,6 +1,6 @@
 """BaseballCV - A collection of tools and models designed to aid in the use of Computer Vision in baseball."""
 
-__version__ = "0.1.22"
+__version__ = "0.1.23"
 
 try:
     from .utilities.dependencies.git_dependency_installer import check_and_install_dependencies
