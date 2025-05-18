@@ -114,18 +114,21 @@ class RFDETR:
             return detections, output_path if save_viz else detections
             
 
-    def finetune(self, data_path: str, epochs: int = 50, batch_size: int = 4, 
+    def finetune(self, data_path: str, output_dir: str = 'output', epochs: int = 50, batch_size: int = 4, 
                  lr: float = 0.0001, lr_encoder: float = 0.00015, weight_decay: float = 0.0001,
                  lr_drop: int = 100, clip_max_norm: float = 0.1, lr_vit_layer_decay: float = 0.8,
                  lr_component_decay: float = 0.7, grad_accum_steps: int = 4, amp: bool = True,
                  dropout: float = 0, drop_path: float = 0.0,
                  checkpoint_interval: int = 10, use_ema: bool = True, ema_decay: float = 0.993,
-                 ema_tau: int = 100, num_workers: int = 2, warmup_epochs: int = 0) -> RFDETRBase | RFDETRLarge:
+                 ema_tau: int = 100, num_workers: int = 2, warmup_epochs: int = 0,
+                 early_stopping_rounds: bool = False, gradient_checkpointing: bool = False,
+                 resume: str = '') -> RFDETRBase | RFDETRLarge:
         """
         Finetune the RF DETR model.
         
         Args:
             data_path (str): Path to the dataset directory
+            output_dir (str): Path to the model output directory
             epochs (int): Number of training epochs
             batch_size (int): Batch size for training
             lr (float): Learning rate
@@ -146,6 +149,12 @@ class RFDETR:
             ema_tau (int): EMA tau parameter
             num_workers (int): Number of workers for data loading
             warmup_epochs (int): Number of warmup epochs
+            early_stopping_rounds (bool): mAP parameter that halts training as model converges, reducing computational cost
+            gradient_checkpointing (bool): Reduced peak model memory usage for larger models
+            resume (str): The resume path file where the model weights are stored
+        
+        Returns:
+            (RFDETRBase | RFDETRLarge): The trained base or large model class
         """
 
         # Check if the dataset is already organized
@@ -158,6 +167,7 @@ class RFDETR:
         
         self.model.train(
             dataset_dir=str(data_path),
+            output_dir=str(output_dir),
             epochs=epochs,
             batch_size=batch_size,
             lr=lr,
@@ -176,8 +186,26 @@ class RFDETR:
             ema_decay=ema_decay,
             ema_tau=ema_tau,
             num_workers=num_workers,
-            warmup_epochs=warmup_epochs
+            warmup_epochs=warmup_epochs,
+            early_stopping_rounds=early_stopping_rounds,
+            gradient_checkpointing=gradient_checkpointing,
+            resume=resume
         )
 
         self.logger.info("Finetuning completed.")
         return self.model
+    
+
+# No idea if this works, but would like to see if we can get a size method that shows the number of parameters trained
+    def __size__(self):
+        """
+        Extracts the number of parameters trained on the model
+
+        Returns:
+            int: The total number of parameterts used on the trained model
+        """
+        model = self.model.model.model
+
+        if isinstance(model, tuple):
+            model = model[0]
+            return sum(p.numel() for p in model.parameters() if p.requires_grad)
