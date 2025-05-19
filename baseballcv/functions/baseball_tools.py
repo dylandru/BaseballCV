@@ -526,7 +526,7 @@ class BaseballTools:
             return {"error": "Input video not found", "cropped_video_path": None}
 
         event_detector_tool = EventDetector(
-            model_alias=model_alias,
+            primary_model_alias=model_alias,
             logger=self.logger,
             verbose=self.verbose,
             device=self.device,
