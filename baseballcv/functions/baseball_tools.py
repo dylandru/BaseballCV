@@ -536,10 +536,10 @@ class BaseballTools:
 
         results = event_detector_tool.extract_pitch_flight_segment(
             video_path=video_path,
-            output_path=output_path,
+            output_path_dir=output_path,  # Explicitly pass output_path as output_path_dir
             pre_release_padding_frames=pre_release_padding_frames,
             post_arrival_padding_frames=post_arrival_padding_frames,
-            **kwargs
+            **kwargs  # Any other relevant kwargs will still be passed
         )
         return results
     
