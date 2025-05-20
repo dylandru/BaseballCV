@@ -4,6 +4,7 @@ from scipy.fft import set_workers
 mp.set_start_method('spawn', force=True)
 
 import os
+import torch
 from typing import Tuple, List
 from rfdetr import RFDETRBase, RFDETRLarge
 from baseballcv.model.utils import ModelVisualizationTools, ModelFunctionUtils
@@ -23,10 +24,11 @@ class RFDETR:
     RF DETR Class Implementation
     """
 
-    def __init__(self, device: str = "cpu", model_path: str = None, imgsz: int = 560, model_type: str = "base", labels: List[str] = None, project_path: str = "rfdetr_runs"):
-        self.device = device
+    def __init__(self, model_path: str = None, imgsz: int = 560, model_type: str = "base", labels: List[str] = None, project_path: str = "rfdetr_runs"):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         self.imgsz = imgsz
-        self.model = RFDETRBase(device=device, pretrain_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=device, pretrain_weights=model_path if model_path else None)
+        self.model = RFDETRBase(device=self.device, pretrain_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=self.device, pretrain_weights=model_path if model_path else None)
         self.model_name = "rfdetr"
 
         self.model_run_path = os.path.join(os.getcwd(), project_path)
@@ -37,8 +39,6 @@ class RFDETR:
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
         self.logger.info("Initializing RF DETR model...")
         self.labels = labels
-
-        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1" # Enable MPS fallback as implementation buggy
 
 
     def inference(self, source_path: str, conf: float = 0.2, save_viz: bool = True) -> Tuple[List[sv.Detections], str]:
@@ -54,7 +54,6 @@ class RFDETR:
             detections (list): A list of detections.
             output_path (str): The path to the output file (image or video).
         """
-        
         is_video = os.path.isfile(source_path) and os.path.splitext(source_path)[1].lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
         class_mapping = {str(i): label for i, label in enumerate(self.labels)}
         if is_video:
@@ -114,18 +113,21 @@ class RFDETR:
             return detections, output_path if save_viz else detections
             
 
-    def finetune(self, data_path: str, epochs: int = 50, batch_size: int = 4, 
+    def finetune(self, data_path: str, output_dir: str = 'output', epochs: int = 50, batch_size: int = 4, 
                  lr: float = 0.0001, lr_encoder: float = 0.00015, weight_decay: float = 0.0001,
                  lr_drop: int = 100, clip_max_norm: float = 0.1, lr_vit_layer_decay: float = 0.8,
                  lr_component_decay: float = 0.7, grad_accum_steps: int = 4, amp: bool = True,
                  dropout: float = 0, drop_path: float = 0.0,
                  checkpoint_interval: int = 10, use_ema: bool = True, ema_decay: float = 0.993,
-                 ema_tau: int = 100, num_workers: int = 2, warmup_epochs: int = 0) -> RFDETRBase | RFDETRLarge:
+                 ema_tau: int = 100, num_workers: int = 2, warmup_epochs: int = 0,
+                 early_stopping: bool = False, gradient_checkpointing: bool = False,
+                 resume: str = '') -> RFDETRBase | RFDETRLarge:
         """
         Finetune the RF DETR model.
         
         Args:
             data_path (str): Path to the dataset directory
+            output_dir (str): Path to the model output directory
             epochs (int): Number of training epochs
             batch_size (int): Batch size for training
             lr (float): Learning rate
@@ -146,6 +148,12 @@ class RFDETR:
             ema_tau (int): EMA tau parameter
             num_workers (int): Number of workers for data loading
             warmup_epochs (int): Number of warmup epochs
+            early_stopping (bool): mAP parameter that halts training as model converges, reducing computational cost
+            gradient_checkpointing (bool): Reduced peak model memory usage for larger models
+            resume (str): The resume path file where the model weights are stored
+        
+        Returns:
+            (RFDETRBase | RFDETRLarge): The trained base or large model class
         """
 
         # Check if the dataset is already organized
@@ -158,6 +166,7 @@ class RFDETR:
         
         self.model.train(
             dataset_dir=str(data_path),
+            output_dir=str(output_dir),
             epochs=epochs,
             batch_size=batch_size,
             lr=lr,
@@ -176,7 +185,10 @@ class RFDETR:
             ema_decay=ema_decay,
             ema_tau=ema_tau,
             num_workers=num_workers,
-            warmup_epochs=warmup_epochs
+            warmup_epochs=warmup_epochs,
+            early_stopping=early_stopping,
+            gradient_checkpointing=gradient_checkpointing,
+            resume=resume
         )
 
         self.logger.info("Finetuning completed.")

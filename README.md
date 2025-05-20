@@ -5,18 +5,31 @@
 [![BaseballCV Core Functionality](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/pytest.yml)
 [![Package Build](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml/badge.svg)](https://github.com/dylandru/BaseballCV/actions/workflows/build.yml)
 [![codecov](https://codecov.io/github/dylandru/BaseballCV/graph/badge.svg?token=86UGAREPSB)](https://codecov.io/github/dylandru/BaseballCV)
-[![PyPI version](https://badge.fury.io/py/baseballcv.svg)](https://pypi.org/project/baseballcv/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+![Discord](https://img.shields.io/discord/1295073049087053874?style=flat&logo=discord&label=Join%20Our%20Discord!&color=green&link=https%3A%2F%2Fdiscord.com%2Fchannels%2F1295073049087053874%2F)
 
-**Created By: Dylan Drummey ([@drummeydylan](https://x.com/DrummeyDylan)) and Carlos Marcano ([@camarcano](https://x.com/camarcano))**  
-**Maintained By: Carlos Marcano and Eddie Dew**
+![PyPI Downloads](https://img.shields.io/pypi/dm/baseballcv?logo=pypi&label=Package%20Downloads)
+![PyPI - Version](https://img.shields.io/pypi/v/baseballcv?logo=pypi&label=Version&color=green&link=https%3A%2F%2Fpypi.org%2Fproject%2Fbaseballcv%2F)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg?logo=python)](https://www.python.org/downloads/)
 
 ![BaseballCV Logo](baseballcv/assets/baseballcvlogo.png)
 
 **A collection of tools and models designed to aid in the use of Computer Vision in baseball.**
 
+
 </div>
+
+
+## 👥 Acknowledgement
+
+<div align="center">
+
+**Created By:** *Dylan Drummey* ([@drummeydylan](https://x.com/DrummeyDylan)) and *Carlos Marcano* ([@camarcano](https://x.com/camarcano))
+
+**Maintained By:** *Carlos Marcano* and *Eddie Dew*
+
+</div>
+
 
 ## 📋 Table of Contents
 - [Goals](#-goals)
@@ -64,7 +77,7 @@ pip install baseballcv
 
 - Imports vary from using package to using local files; every import from the package is prefixed with `baseballcv.`
 - The package is currently in development and may not be fully functional. 
-- While available on PyPI, the package is still not completely stable and may not work as expected. For reliable results, we recommend using the local files (for the time being).
+- While we recommend developers clone the actual repository, the package should still function well for new users.
 
 ## 🤝 Partnerships
 
