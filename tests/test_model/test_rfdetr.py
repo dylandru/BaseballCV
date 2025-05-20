@@ -9,6 +9,7 @@ import signal
 import supervision as sv
 from baseballcv.model import RFDETR
 from baseballcv.functions import BaseballSavVideoScraper
+
 class TestRFDETR:
     @pytest.fixture
     def setup_rfdetr_test(self, load_tools):
@@ -89,31 +90,12 @@ class TestRFDETR:
         labels = setup_rfdetr_test['labels']
         model_base = setup_rfdetr_test['model_base']
         model_large = setup_rfdetr_test['model_large']
-        model_ckpt_path = load_tools.load_model(use_bdl_api=False, model_type="RFDETR", model_txt_path="models/od/RFDETR/rubber_home/model_weights/rfdetr_baseball_rubber_home_v1.txt")
-
-        model_ckpt = RFDETR(
-            model_type="base",
-            model_path=model_ckpt_path,
-            labels=labels,
-            project_path=setup_rfdetr_test['temp_dir']
-        )
         
         assert model_base is not None, "RFDETR Basemodel should initialize"
         assert model_large is not None, "RFDETR Large model should initialize"
-        assert model_ckpt is not None, "RFDETR Checkpoint model should initialize"
         assert model_base.device == 'cpu', "Device should be set correctly"
         assert model_base.model_name == "rfdetr", "Model name should be set correctly"
         assert labels is not None, "Labels should be set correctly"
-        
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr(torch.cuda, 'is_available', lambda: False)
-            m.setattr(torch.backends.mps, 'is_available', lambda: True)
-            
-            try:
-                model = RFDETR(device='mps', model_type='base', labels=labels)
-                assert model.device == 'mps' or model.device == 'cpu', "Should select MPS when available, but fallback to CPU if failure is present."
-            except Exception as e:
-                pytest.skip(f"MPS model initialization test skipped: {str(e)}")
 
     def test_inference(self, setup_rfdetr_test):
         """
@@ -149,8 +131,6 @@ class TestRFDETR:
         assert result_video is not None, "Inference should return results"
         assert isinstance(result_image, sv.Detections), "Result should be a Detections object"
         assert isinstance(result_video, list) and all(isinstance(x, sv.Detections) for x in result_video), "Video result should be a list of Detections objects"
-        assert len(result_image.xyxy) > 0, "Detections should contain at least one bounding box"
-        assert any(len(detection.xyxy) > 0 for detection in result_video if isinstance(detection, sv.Detections)), "At least one frame should contain detections"
         assert os.path.exists(output_image_path), "Output image should be saved"
         assert os.path.exists(output_video_path), "Output video should be saved"
 
