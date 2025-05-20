@@ -158,7 +158,7 @@ answer  = model.inference(
 The `YOLOv9` class provides a similar functionality to the Ultralytics YOLO class with a more permissive license. It acts as a wrapper for this forked repo: [https://github.com/dylandru/yolov9](https://github.com/dylandru/yolov9)
 
 ```python
-from baseballcv.model.od import YOLOv9
+from baseballcv.model import YOLOv9
 
 # Initialize model
 model = YOLOv9(
@@ -197,13 +197,12 @@ The class automatically handles:
 A better version of DETR, available to be used for inference and finetuning. The `RFDETR` class is a wrapper for the `rfdetr` package, available to be used for inference and finetuning.
 
 ```python
-from baseballcv.model.od import RFDETR
+from baseballcv.model import RFDETR
 
 # Initialize model
 model = RFDETR(
-    device="cpu",
     model_type="large",
-    model_path="models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt"
+    model_path="models/od/RFDETR/glove_tracking/model_weights/rfdetr_baseball_rubber_home_v1.txt"
 )
 
 # Run inference on single image

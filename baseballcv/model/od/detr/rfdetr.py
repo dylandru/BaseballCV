@@ -4,6 +4,7 @@ from scipy.fft import set_workers
 mp.set_start_method('spawn', force=True)
 
 import os
+import torch
 from typing import Tuple, List
 from rfdetr import RFDETRBase, RFDETRLarge
 from baseballcv.model.utils import ModelVisualizationTools, ModelFunctionUtils
@@ -23,10 +24,11 @@ class RFDETR:
     RF DETR Class Implementation
     """
 
-    def __init__(self, device: str = "cpu", model_path: str = None, imgsz: int = 560, model_type: str = "base", labels: List[str] = None, project_path: str = "rfdetr_runs"):
-        self.device = device
+    def __init__(self, model_path: str = None, imgsz: int = 560, model_type: str = "base", labels: List[str] = None, project_path: str = "rfdetr_runs"):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         self.imgsz = imgsz
-        self.model = RFDETRBase(device=device, pretrain_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=device, pretrain_weights=model_path if model_path else None)
+        self.model = RFDETRBase(device=self.device, pretrain_weights=model_path if model_path else None) if model_type == "base" else RFDETRLarge(device=self.device, pretrain_weights=model_path if model_path else None)
         self.model_name = "rfdetr"
 
         self.model_run_path = os.path.join(os.getcwd(), project_path)
@@ -37,8 +39,6 @@ class RFDETR:
         self.ModelVisualizationTools = ModelVisualizationTools(self.model_name, self.model_run_path, self.logger)
         self.logger.info("Initializing RF DETR model...")
         self.labels = labels
-
-        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1" # Enable MPS fallback as implementation buggy
 
 
     def inference(self, source_path: str, conf: float = 0.2, save_viz: bool = True) -> Tuple[List[sv.Detections], str]:
@@ -54,7 +54,6 @@ class RFDETR:
             detections (list): A list of detections.
             output_path (str): The path to the output file (image or video).
         """
-        
         is_video = os.path.isfile(source_path) and os.path.splitext(source_path)[1].lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']
         class_mapping = {str(i): label for i, label in enumerate(self.labels)}
         if is_video:
@@ -121,7 +120,7 @@ class RFDETR:
                  dropout: float = 0, drop_path: float = 0.0,
                  checkpoint_interval: int = 10, use_ema: bool = True, ema_decay: float = 0.993,
                  ema_tau: int = 100, num_workers: int = 2, warmup_epochs: int = 0,
-                 early_stopping_rounds: bool = False, gradient_checkpointing: bool = False,
+                 early_stopping: bool = False, gradient_checkpointing: bool = False,
                  resume: str = '') -> RFDETRBase | RFDETRLarge:
         """
         Finetune the RF DETR model.
@@ -149,7 +148,7 @@ class RFDETR:
             ema_tau (int): EMA tau parameter
             num_workers (int): Number of workers for data loading
             warmup_epochs (int): Number of warmup epochs
-            early_stopping_rounds (bool): mAP parameter that halts training as model converges, reducing computational cost
+            early_stopping (bool): mAP parameter that halts training as model converges, reducing computational cost
             gradient_checkpointing (bool): Reduced peak model memory usage for larger models
             resume (str): The resume path file where the model weights are stored
         
@@ -187,25 +186,10 @@ class RFDETR:
             ema_tau=ema_tau,
             num_workers=num_workers,
             warmup_epochs=warmup_epochs,
-            early_stopping_rounds=early_stopping_rounds,
+            early_stopping=early_stopping,
             gradient_checkpointing=gradient_checkpointing,
             resume=resume
         )
 
         self.logger.info("Finetuning completed.")
         return self.model
-    
-
-# No idea if this works, but would like to see if we can get a size method that shows the number of parameters trained
-    def __size__(self):
-        """
-        Extracts the number of parameters trained on the model
-
-        Returns:
-            int: The total number of parameterts used on the trained model
-        """
-        model = self.model.model.model
-
-        if isinstance(model, tuple):
-            model = model[0]
-            return sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -7,7 +7,7 @@ import torch
 import cv2
 import signal
 import supervision as sv
-from baseballcv.model.od import RFDETR
+from baseballcv.model import RFDETR
 from baseballcv.functions import BaseballSavVideoScraper
 class TestRFDETR:
     @pytest.fixture
@@ -41,19 +41,18 @@ class TestRFDETR:
             "0": "baseball",
             "1": "bat",
             "2": "glove",
-            "3": "homeplate"
+            "3": "homeplate",
+            "4": "rubber"
         }
         
         # Initialize model
         model_base = RFDETR(
-            device="cpu",
             model_type="base",
             labels=labels,
             project_path=temp_dir
         )
 
         model_large = RFDETR(
-            device="cpu",
             model_type="large",
             labels=labels,
             project_path=temp_dir
@@ -74,6 +73,7 @@ class TestRFDETR:
         
         finally:
             shutil.rmtree(temp_dir)
+            shutil.rmtree(dataset_path)
     
     def test_model_initialization(self, setup_rfdetr_test, load_tools):
         """
@@ -89,11 +89,10 @@ class TestRFDETR:
         labels = setup_rfdetr_test['labels']
         model_base = setup_rfdetr_test['model_base']
         model_large = setup_rfdetr_test['model_large']
-        model_ckpt_path = load_tools.load_model(use_bdl_api=False, model_txt_path="models/od/RFDETR/glove_tracking/model_weights/rfdetr_glove_tracking.txt")
+        model_ckpt_path = load_tools.load_model(use_bdl_api=False, model_type="RFDETR", model_txt_path="models/od/RFDETR/rubber_home/model_weights/rfdetr_baseball_rubber_home_v1.txt")
 
         model_ckpt = RFDETR(
-            device="cpu",
-            model_type="large",
+            model_type="base",
             model_path=model_ckpt_path,
             labels=labels,
             project_path=setup_rfdetr_test['temp_dir']
@@ -135,14 +134,14 @@ class TestRFDETR:
         # Test image inference
         result_image, output_image_path = model.inference(
             source_path=test_image_path,
-            conf=0.5,
+            conf=0.1,
             save_viz=True
         )
         
         # Test video inference
         result_video, output_video_path = model.inference(
             source_path=test_video_path,
-            conf=0.5,
+            conf=0.1,
             save_viz=True
         )
         
@@ -156,7 +155,6 @@ class TestRFDETR:
         assert os.path.exists(output_video_path), "Output video should be saved"
 
     def test_finetune(self, setup_rfdetr_test):
-        
         """
         Downloads RHG COCO-format dataset and verifies that the model
         can begin the training process successfully.
