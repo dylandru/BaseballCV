@@ -8,6 +8,9 @@ import os
 from datetime import datetime, timedelta
 
 def main():
+    """
+    Main function to run the Streamlit app.
+    """
     st.set_page_config(page_title="Savant Data Tool", layout="wide")
     st.title("⚾ Baseball Savant Data & Video Tool")
 
@@ -16,7 +19,7 @@ def main():
     player_id_map_df = load_player_id_map()
     query_mode, params = display_search_interface(player_id_map_df)
 
-    # Initialize session state variables
+    # FIX: Initialize all session state variables at the start
     if 'results_df' not in st.session_state:
         st.session_state.results_df = pd.DataFrame()
     if 'zip_buffers' not in st.session_state:
@@ -27,7 +30,9 @@ def main():
     perform_search = False
 
     if search_pressed:
-        st.session_state.clear()
+        # Clear previous search results and download states on new search
+        st.session_state.results_df = pd.DataFrame()
+        st.session_state.zip_buffers = []
         if query_mode == 'filters':
             _, _, start_date, end_date = params
             if (end_date - start_date) > timedelta(days=5):
