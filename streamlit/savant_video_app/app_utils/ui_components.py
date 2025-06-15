@@ -52,6 +52,7 @@ def display_search_filters(player_df):
     params['game_date_lt'] = [end_date.strftime('%Y-%m-%d')]
     
     st.sidebar.markdown("##### Player & Team")
+    # ... Player and Team selection remains the same
     selected_pitchers = st.sidebar.multiselect("Pitcher(s)", player_names)
     selected_batters = st.sidebar.multiselect("Batter(s)", player_names)
     pitcher_ids = [int(player_df[player_df['name'] == name].iloc[0]['id']) for name in selected_pitchers]
@@ -62,22 +63,33 @@ def display_search_filters(player_df):
         params['batters_lookup[]'] = batter_ids
 
     st.sidebar.markdown("##### Pitch, PA & Team")
+    # ... Pitch, PA, and Team selection remains the same
     params['hfPT'] = [PITCH_TYPES[p] for p in st.sidebar.multiselect("Pitch Type(s)", list(PITCH_TYPES.keys()))]
     params['hfAB'] = [PA_RESULTS[p] for p in st.sidebar.multiselect("PA Result(s)", list(PA_RESULTS.keys()))]
     params['hfTeam'] = [TEAMS[t] for t in st.sidebar.multiselect("Team(s)", list(TEAMS.keys()))]
     
     st.sidebar.markdown("##### Advanced Metric Filters")
-    selected_metrics = st.sidebar.multiselect("Select up to 6 metrics", options=list(METRIC_FILTERS.keys()), max_selections=6, key="metric_selector")
+    selected_metrics = st.sidebar.multiselect("Select up to 6 metrics", options=list(METRIC_FILTERS.keys()), max_selections=6)
     
     metric_counter = 1
     for metric_name in selected_metrics:
         metric_info = METRIC_FILTERS[metric_name]
         min_val, max_val = metric_info["min"], metric_info["max"]
-        val_range = st.sidebar.slider(f"{metric_name}", min_value=min_val, max_value=max_val, value=(min_val, max_val), key=f"slider_{metric_info['param']}")
-        if val_range != (min_val, max_val):
+        
+        # FIX: Add number inputs for precise range control
+        st.sidebar.write(metric_name)
+        col1, col2 = st.sidebar.columns(2)
+        
+        with col1:
+            lower_bound = st.number_input("Min", min_value=min_val, max_value=max_val, value=min_val, key=f"num_min_{metric_info['param']}")
+        with col2:
+            upper_bound = st.number_input("Max", min_value=min_val, max_value=max_val, value=max_val, key=f"num_max_{metric_info['param']}")
+
+        # Add to params if the range is not the default full range
+        if lower_bound > min_val or upper_bound < max_val:
             params[f'metric_{metric_counter}'] = [metric_info['param']]
-            params[f'metric_{metric_counter}_gt'] = [val_range[0]]
-            params[f'metric_{metric_counter}_lt'] = [val_range[1]]
+            params[f'metric_{metric_counter}_gt'] = [lower_bound]
+            params[f'metric_{metric_counter}_lt'] = [upper_bound]
             metric_counter += 1
 
     st.sidebar.markdown("##### Other")
