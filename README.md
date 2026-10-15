@@ -109,6 +109,7 @@ We provide open-source datasets containing images and corresponding annotations 
 - Baseball
 - Pitcher's Glove
 - Bat
+- Bases
 - Other objects of interest
 
 Datasets are available in common formats like YOLO, allowing for easy integration with computer vision pipelines. Our current datasets include:
@@ -130,6 +131,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
 - `baseball.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for solely baseballs.
 - `amateur_pitcher_hitter.txt`: An amateur baseball-based YOLO-format annotated dataset with annotations for pitchers and hitters.
+- `base_detect_dataset.zip`: A MLB broadcast-based YOLO-format annotated dataset with annotations for the bases.
 
 **Available Raw Photos Datasets**: 
 - `broadcast_10k_frames.txt`: A collection of 10,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
@@ -141,6 +143,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 **Available COCO-format Datasets**:
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
+- `base_detector_coco.zip`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for the bases.
 
 **Available Video Datasets**:
 - `international_amateur_baseball_game_video`: A collection of 205 unannotated international amateur baseball game videos. Video provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_game_videos)).
@@ -172,6 +175,7 @@ We offer pre-trained YOLO models for object detection. The models are trained to
 - `pitcher_hitter_catcher.pt`: Trained to detect the pitcher, hitter and catcher from a broadcast feed.
 - `glove_tracking.pt`: Trained to detect and track the catcher's glove, the ball, homeplate, and the pitcher's rubber from a broadcast feed.
 - `ball_trackingv4`: Trained to track ONLY the baseball from pitcher's hand to home plate.
+- `base_detector_model.pt`: Trained to detect the bases from a broadcast feed.
 
 **Available Florence2 Models**:
 - `florence_ball_tracking`: Trained to track the baseball from pitcher's hand to home plate among other VLM tasks.
@@ -205,6 +209,10 @@ https://github.com/user-attachments/assets/7f56df7e-2bdb-4057-a1d7-d4d50d81708e
 https://github.com/user-attachments/assets/fa104a6d-ac26-460c-b096-7f20e2821c20
 
 https://github.com/user-attachments/assets/962973c8-514b-4f39-ac02-ca9f82bf2b59
+
+https://github.com/user-attachments/assets/962973c8-514b-4f39-ac02-ca9f82bf2b59
+
+![Base Detection](assets/NunezSteal.mp4)
 
 These videos showcase our models' ability to track multiple objects, including the ball, glove, and other elements in real-time.
 
