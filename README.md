@@ -212,9 +212,7 @@ https://github.com/user-attachments/assets/962973c8-514b-4f39-ac02-ca9f82bf2b59
 
 https://github.com/user-attachments/assets/962973c8-514b-4f39-ac02-ca9f82bf2b59
 
-https://github.com/user-attachments/assets/NunezSteal.mp4
-
-![Base Detection](assets/NunezSteal.mp4)
+https://github.com/WhoCaresAboutStats/BaseballCV/blob/e03d5a46bb622459b07ce089b78d68fe5b194a9c/assets/NunezSteal.mp4
 
 These videos showcase our models' ability to track multiple objects, including the ball, glove, and other elements in real-time.
 
