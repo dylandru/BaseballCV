@@ -131,7 +131,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 - `baseball_rubber_home.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for baseballs, the rubber, and the catcher's mitt.
 - `baseball.txt`: An MLB broadcast-based YOLO-format annotated dataset with annotations for solely baseballs.
 - `amateur_pitcher_hitter.txt`: An amateur baseball-based YOLO-format annotated dataset with annotations for pitchers and hitters.
-- `base_detect_dataset.zip`: A MLB broadcast-based YOLO-format annotated dataset with annotations for the bases.
+- `base_detect_dataset.txt`: A MLB broadcast-based YOLO-format annotated dataset with annotations for the bases.
 
 **Available Raw Photos Datasets**: 
 - `broadcast_10k_frames.txt`: A collection of 10,000 unannotated MLB broadcast images that can be used for creating custom datasets or annotations.
@@ -143,7 +143,7 @@ Datasets are available in common formats like YOLO, allowing for easy integratio
 **Available COCO-format Datasets**:
 - `baseball_rubber_home_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, and homeplate.
 - `baseball_rubber_home_glove_COCO.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for baseballs, the rubber, homeplate, and the catcher's mitt.
-- `base_detector_coco.zip`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for the bases.
+- `base_detector_coco.txt`: A comprehensive MLB broadcast-based COCO-format annotated dataset with annotations for the bases.
 
 **Available Video Datasets**:
 - `international_amateur_baseball_game_video`: A collection of 205 unannotated international amateur baseball game videos. Video provided by Alfredo Harp Helú Baseball Academy (accessible via [Hugging Face](https://huggingface.co/datasets/dyland222/international_amateur_baseball_game_videos)).
