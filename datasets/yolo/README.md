@@ -148,3 +148,22 @@ This is the dictionary of available classes:
 This is a test dataset for testing the model classes functionality.
 
 Contents: Sample of images from baseball dataset.
+
+## base_detect_dataset.txt dataset.
+
+This is a dataset for detecting the bases in MLB broadcast feeds.
+
+Contents: `images/train/`, `labels/`, `data.yaml`, and a single `train.txt` split file.
+
+- train: 660 images, 553 label files.
+- test: none.
+- valid: none.
+
+This is the dictionary of available classes: 
+
+{0: 'base'}
+
+### Known Issues
+
+- 107 of the 660 images have no corresponding label file. They may serve as background (negative) samples, but this is not confirmed yet — pending annotation or explicit designation.
+- No validation/test split exists yet, so no metrics can be reported for this dataset.
