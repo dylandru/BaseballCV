@@ -9,6 +9,7 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 - `pitcher_hitter_catcher_detector`: Utilizes YOLOv8 Detection model to detect the pitcher, hitter, and catcher in broadcast feeds (model in PyTorch).
 - `glove_tracking`: Utilizes YOLOv9 Detection model to detect the catcher's glove, the ball, the rubber, and home plate (model in PyTorch).
 - `ball_trackingv4`: Utilizes YOLOv11 Detection model to track ONLY the baseball from pitcher's hand to home plate (model in PyTorch).
+- `base_detector`: Utilizes a YOLOv11s Detection model to detect the bases in broadcast feeds (model in PyTorch).
 
 ## Available Florence2 Models
 
@@ -36,6 +37,7 @@ The model weights can be downloaded directly from the links below:
 - Ball Tracking v4: [ball_tracking_v4-YOLOv11.pt](https://data.balldatalab.com/index.php/s/cfoxjLS5BiZAgKs/download/ball_tracking_v4-YOLOv11.pt)
 - Amateur Pitcher Hitter: [amateur_pitcher_hitter_v1.pt](https://data.balldatalab.com/index.php/s/bqQZG5Gz7qsMq9X/download/amateur_pitcher_hitter_v1.pt)
 - Homeplate Tracking: [homeplate_tracking.pt](https://data.balldatalab.com/index.php/s/fgTr8w9ASc6XJpS/download/homeplate_tracking.pt)
+- Base Detector: [BaseDetectorModel.pt](https://data.balldatalab.com/index.php/s/gg3Pnqa2WWdTsTL/download/BaseDetectorModel.pt)
 
 ### Florence2 Models
 

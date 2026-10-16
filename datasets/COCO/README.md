@@ -129,3 +129,29 @@ This is the category distribution in the annotations files for the available cla
 | baseball     |     400 |
 | homeplate    |     390 |
 | rubber       |     367 |
+
+---
+## base_detector_coco.txt dataset.
+
+Contents: `images/` (660 images) and `annotations/` with a single `instances_default.json` annotation file. No train/test/val split — a single flat set.
+
+- images: 660
+- annotations: 668
+
+This is the category distribution in the annotations file for the available classes: 
+
+    "categories": [
+        {
+            "id": 0,
+            "name": "base",
+            "supercategory": ""
+        }
+    ]
+
+### Annotations
+
+| Class Name   |   Count |
+|--------------|---------|
+| base         |    668  |
+
+Note: the category id was normalized from 1 to 0 to match the repository's COCO convention.

@@ -54,7 +54,8 @@ class LoadTools:
             'glove_tracking': 'models/od/YOLO/glove_tracking/model_weights/glove_tracking.txt',
             'ball_trackingv4': 'models/od/YOLO/ball_tracking/model_weights/ball_trackingv4.txt',
             'amateur_pitcher_hitter': 'models/od/YOLOv9/amateur_pitcher_hitter/model_weights/amateur_pitcher_hitter.txt',
-            'homeplate_tracking': 'models/od/YOLOv9/homeplate_tracking/model_weights/homeplate_tracking.txt'
+            'homeplate_tracking': 'models/od/YOLOv9/homeplate_tracking/model_weights/homeplate_tracking.txt',
+            'base_detector': 'models/od/YOLO/base_detector/model_weights/base_detector.txt'
         }
         self.florence_model_aliases = {
             'ball_tracking': 'models/vlm/FLORENCE2/ball_tracking/model_weights/florence_ball_tracking.txt',
@@ -89,7 +90,9 @@ class LoadTools:
             'international_amateur_baseball_game_video': 'hf:dyland222/international_amateur_baseball_game_videos',
             'international_amateur_baseball_bp_video': 'hf:dyland222/international_amateur_baseball_bp_videos',
             'international_amateur_pitcher_photo': 'hf:dyland222/international_amateur_pitcher_photo_dataset',
-            'mlb_glove_tracking_april_2024': 'hf:camarcano/glove_tracking_MLB_april_2024/resolve/main/glove_tracking_april_2024_csv.zip'
+            'mlb_glove_tracking_april_2024': 'hf:camarcano/glove_tracking_MLB_april_2024/resolve/main/glove_tracking_april_2024_csv.zip',
+            'base_detect_dataset': 'datasets/yolo/base_detect_dataset.txt',
+            'base_detector_coco': 'datasets/COCO/base_detector_coco.txt'
         }
 
         self.logger = BaseballCVLogger.get_logger(self.__class__.__name__)

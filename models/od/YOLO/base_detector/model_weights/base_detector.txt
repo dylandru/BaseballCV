@@ -1,0 +1,1 @@
+https://data.balldatalab.com/index.php/s/gg3Pnqa2WWdTsTL/download/BaseDetectorModel.pt
