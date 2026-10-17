@@ -21,6 +21,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set up Git
         shell: bash
         run: |
@@ -85,7 +88,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ steps.bump.outputs.new_tag }}"
-          RECENT_CHANGES=$(git log "$VERSION"..HEAD --merges  --pretty=format:"- %s (%h) — by %an")
+          RECENT_CHANGES=$(git log "${{ steps.get_tag.outputs.old_tag }}"..HEAD --merges  --pretty=format:"- %s (%h) — by %an")
           VERSION="${VERSION#v}"   # removes leading 'v' if present
          
           export RECENT_CHANGES
