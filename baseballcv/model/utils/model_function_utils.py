@@ -10,7 +10,7 @@ from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
 from transformers import BitsAndBytesConfig
 from baseballcv.datasets import JSONLDetection
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 class ModelFunctionUtils:
     def __init__(self, model_name: str, model_run_path: str, batch_size: int, 
@@ -345,7 +345,7 @@ class ModelFunctionUtils:
             output = os.path.join(output_dir, "weights", os.path.basename(model_file))
             if not os.path.exists(output):
                 try:
-                    script = resource_filename("yolov9", "scripts/get_model_weights.sh")
+                    script = str(files("yolov9") / "scripts/get_model_weights.sh")
                     subprocess.run(["chmod", "+x", script], check=True)
                     subprocess.run(["bash", script, model_file, output_dir], check=True)
                 except Exception as e:

@@ -3,7 +3,7 @@ import sys
 import subprocess
 from typing import Dict, List, Optional, Union
 from baseballcv.model.utils import ModelFunctionUtils
-from pkg_resources import resource_filename
+from importlib.resources import files
 from baseballcv.utilities import BaseballCVLogger
 
 def check_import(install_path: str, package_name: str) -> bool:
@@ -49,7 +49,7 @@ class YOLOv9:
         self.model_path = model_path
         self.model_weights = ModelFunctionUtils.setup_yolo_weights(model_file=f"{name}.pt", output_dir=model_path, custom_weights=custom_weights)
         if not os.path.exists(cfg_path):
-            cfg_path = resource_filename('yolov9', cfg_path)
+            cfg_path = str(files('yolov9') / cfg_path)
         self.cfg_path = cfg_path
         self.detect = detect
         self.train = train
@@ -115,7 +115,7 @@ class YOLOv9:
                           imgsz=imgsz, rect=rect, resume=resume, nosave=nosave, noval=noval, noautoanchor=noautoanchor,
                           noplots=noplots, evolve=evolve, bucket=bucket, cache=cache, image_weights=image_weights,
                           device=self.device, multi_scale=multi_scale, single_cls=single_cls, optimizer=optimizer,
-                          sync_bn=sync_bn, workers=num_workers, project=project, exist_ok=exist_ok, quad=quad, hyp=resource_filename("yolov9", "data/hyps/hyp.scratch-high.yaml"),
+                          sync_bn=sync_bn, workers=num_workers, project=project, exist_ok=exist_ok, quad=quad, hyp=str(files("yolov9") / "data/hyps/hyp.scratch-high.yaml"),
                           cos_lr=cos_lr, flat_cos_lr=flat_cos_lr, fixed_lr=fixed_lr, label_smoothing=label_smoothing,
                           patience=patience, freeze=freeze, save_period=save_period, seed=seed, local_rank=local_rank,
                           min_items=min_items, close_mosaic=close_mosaic, entity=entity, upload_dataset=upload_dataset,

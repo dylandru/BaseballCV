@@ -1,6 +1,6 @@
 import pytest
 import subprocess
-import pkg_resources
+from importlib.metadata import PackageNotFoundError
 from unittest.mock import patch, MagicMock
 from baseballcv.utilities.dependencies.git_dependency_installer import (
     is_package_installed,
@@ -22,8 +22,8 @@ class TestGitDependencyInstaller:
 
     @pytest.fixture
     def mock_pkg_resources(self):
-        """Mock pkg_resources for testing package installation status."""
-        with patch('pkg_resources.get_distribution') as mock_get_dist:
+        """Mock importlib.metadata.distribution for testing package installation status."""
+        with patch('baseballcv.utilities.dependencies.git_dependency_installer.distribution') as mock_get_dist:
             yield mock_get_dist
 
     @pytest.mark.parametrize("package_name,expected_name,is_installed", [
@@ -39,7 +39,7 @@ class TestGitDependencyInstaller:
         if is_installed:
             mock_pkg_resources.return_value = MagicMock()
         else:
-            mock_pkg_resources.side_effect = pkg_resources.DistributionNotFound("Package not found")
+            mock_pkg_resources.side_effect = PackageNotFoundError("Package not found")
 
         result = is_package_installed(package_name)
         assert result is is_installed

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "baseballcv"
-version = "0.1.25"
+version = "0.1.26"
 authors = [
     { name="Dylan Drummey", email="dylandrummey22@gmail.com" },
     { name="Carlos Marcano", email="c.marcano@balldatalab.com" }
@@ -33,13 +33,18 @@ pandas = "^2.2.3"
 polars = "^1.27.1"
 datasets = "3.4.0"
 ultralytics = "^8.3.116"
-mediapipe = "0.10.21"
+mediapipe = {version = "0.10.21", python = "<3.13", optional = true}
 coco-eval = "0.0.4"
 pytorch-lightning = "2.5.0"
 dotenv = "^0.9.9"
 rfdetr = "~1.1.0"
 torch = ">=2.6.1"
 supervision = "^0.26.1"
+
+[tool.poetry.extras]
+# DistanceToZone uses MediaPipe's legacy `solutions` API, which only exists in
+# mediapipe <= 0.10.21 (Python <= 3.12, numpy < 2). Opt in with `baseballcv[pose]`.
+pose = ["mediapipe"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.3.2"

@@ -9,7 +9,6 @@ import io
 from contextlib import redirect_stdout
 from baseballcv.functions.load_tools import LoadTools
 import math
-import mediapipe as mp
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
 
 class DistanceToZone:
@@ -54,7 +53,15 @@ class DistanceToZone:
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
         self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
-        # Initialize MediaPipe pose for 3D pose detection
+        # Initialize MediaPipe pose for 3D pose detection (optional dependency, legacy solutions API)
+        try:
+            import mediapipe as mp
+            mp.solutions.pose
+        except (ImportError, AttributeError) as e:
+            raise ImportError(
+                "DistanceToZone requires mediapipe<=0.10.21 (Python <= 3.12). "
+                "Install it with: pip install 'baseballcv[pose]'"
+            ) from e
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles

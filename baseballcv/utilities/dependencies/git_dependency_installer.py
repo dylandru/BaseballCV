@@ -2,7 +2,7 @@ import subprocess
 import sys
 import logging
 from pathlib import Path
-import pkg_resources
+from importlib.metadata import distribution, PackageNotFoundError
 
 logger = logging.getLogger("BaseballCV - Git Dependency Installer")
 
@@ -19,9 +19,9 @@ def is_package_installed(package_name: str) -> bool:
     try:
         if package_name.startswith('git+'):
             package_name = package_name.split('/')[-1].split('.git')[0]
-        pkg_resources.get_distribution(package_name)
+        distribution(package_name)
         return True
-    except pkg_resources.DistributionNotFound:
+    except PackageNotFoundError:
         return False
 
 def install_package(package_name: str) -> bool:
