@@ -167,3 +167,74 @@ class TestSavantScraper:
         with pytest.raises(ValueError):
             _get_team(team='MAN', player=None, season=2025)
             _get_team(player=12345, team=None, season=2025)
+    def test_from_play_ids(self, tmp_path):
+        """
+        Tests the `from_play_ids` class alternate constructor.
+
+        This tests the following:
+        - Play IDs are passed through to the DataFrame untouched
+        - A mismatched `game_pks` list raises a ValueError
+        """
+        scraper = BaseballSavVideoScraper.from_play_ids(['abc-123', 'def-456'],
+                                                        download_folder=str(tmp_path))
+
+        assert list(scraper.play_ids_df['play_id']) == ['abc-123', 'def-456'], 'The play IDs should match the input'
+        assert scraper.play_ids_df['game_pk'].isna().all(), 'game_pk should be empty when not provided'
+
+        scraper = BaseballSavVideoScraper.from_play_ids(['abc-123'], game_pks=[776990],
+                                                        download_folder=str(tmp_path))
+        assert list(scraper.play_ids_df['game_pk']) == [776990], 'The game pks should match the input'
+
+        with pytest.raises(ValueError):
+            BaseballSavVideoScraper.from_play_ids(['abc-123'], game_pks=[1, 2], download_folder=str(tmp_path))
+
+    def test_download_video_session(self, tmp_path):
+        """
+        Regression test for the sporty-clips hotlink protection (#180).
+
+        The video page and the mp4 must be fetched through the same session (cookies +
+        Referer), otherwise the mp4 host rejects the request with a 403.
+        """
+        page_html = ('<html><body><div class="video-box"><video>'
+                     '<source src="https://sporty-clips.mlb.com/fake.mp4" type="video/mp4">'
+                     '</video></div></body></html>')
+        page_response = Mock(status_code=200, content=page_html)
+        clip_response = Mock(status_code=200)
+        clip_response.iter_content.return_value = [b'fake', b'bytes']
+
+        session = MagicMock()
+        session.get.side_effect = [page_response, clip_response]
+
+        # The scraper's session is created in `__init__`, so the patch must wrap construction
+        with patch('requests.Session', return_value=session):
+            scraper = BaseballSavVideoScraper.from_play_ids(['abc-123'], game_pks=[776990],
+                                                            download_folder=str(tmp_path))
+            scraper._download_video(776990, 'abc-123')
+
+        assert session.get.call_count == 2, 'Both the page and the mp4 should be requested through the session'
+
+        page_url = session.get.call_args_list[0].args[0]
+        clip_url = session.get.call_args_list[1].args[0]
+        assert 'sporty-videos?playId=abc-123' in page_url, 'The first request should be the video page'
+        assert clip_url == 'https://sporty-clips.mlb.com/fake.mp4', 'The second request should be the mp4 URL'
+
+        assert os.path.exists(os.path.join(str(tmp_path), '776990_abc-123.mp4')), 'The video should be written'
+
+    def test_download_video_no_game_pk(self, tmp_path):
+        """
+        Videos scraped without a `game_pk` (via `from_play_ids`) should be named by play ID only.
+        """
+        page_html = '<html><body><video><source src="https://sporty-clips.mlb.com/fake.mp4" type="video/mp4"></video></body></html>'
+        page_response = Mock(status_code=200, content=page_html)
+        clip_response = Mock(status_code=200)
+        clip_response.iter_content.return_value = [b'fake']
+
+        session = MagicMock()
+        session.get.side_effect = [page_response, clip_response]
+
+        with patch('requests.Session', return_value=session):
+            scraper = BaseballSavVideoScraper.from_play_ids(['abc-123'], download_folder=str(tmp_path))
+            scraper._download_video(None, 'abc-123')
+
+        # Fallback path: no video-box container, source found directly
+        assert os.path.exists(os.path.join(str(tmp_path), 'abc-123.mp4')), 'The video should be named by play ID only'

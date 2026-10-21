@@ -83,7 +83,7 @@ def generate_date_range(start_dt: date, stop: date, step: int = 1) -> Generator[
 
         low +=timedelta(days=step)
 
-def requests_with_retry(url: str, stream: bool = False) -> (requests.Response | None):
+def requests_with_retry(url: str, stream: bool = False, session: requests.Session = None) -> (requests.Response | None):
     """
     Function that retries a request on a url if it fails. It re-attempts up to 5
     times with a 10 second timeout if it takes a while to load the page. If the request is
@@ -92,6 +92,9 @@ def requests_with_retry(url: str, stream: bool = False) -> (requests.Response | 
     Args:
         url (str): The url to make the request on.
         stream (bool): If it's a video stream, it's set to True. Default to False.
+        session (requests.Session, optional): An existing session to make the request on,
+            preserving cookies and headers across calls. Defaults to None, which uses a
+            bare `requests.get`.
 
     Returns:
         Response: A response to the request if successful, else None.
@@ -106,7 +109,8 @@ def requests_with_retry(url: str, stream: bool = False) -> (requests.Response | 
 
     while attempts < retries:
         try:
-            response = requests.get(url, stream=stream, timeout=10)
+            requester = session.get if session is not None else requests.get
+            response = requester(url, stream=stream, timeout=10)
             if response.status_code == 200:
                 return response
         except Exception as e:
