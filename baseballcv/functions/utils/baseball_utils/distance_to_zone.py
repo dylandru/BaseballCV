@@ -2,6 +2,8 @@ import logging
 import cv2
 import numpy as np
 import os
+import requests
+from types import SimpleNamespace
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
 from ultralytics import YOLO
@@ -10,6 +12,19 @@ from contextlib import redirect_stdout
 from baseballcv.functions.load_tools import LoadTools
 import math
 from baseballcv.utilities import BaseballCVLogger, ProgressBar
+
+
+class _PoseLandmarksShim:
+    """
+    Makes a MediaPipe Tasks API landmark list (`PoseLandmarkerResult.pose_landmarks[i]`,
+    a plain `list[NormalizedLandmark]`) look like the legacy `solutions.pose` API's
+    `pose_landmarks.landmark` so downstream code (`landmarks.landmark[25]`, etc.) is unchanged.
+    """
+    __slots__ = ("landmark",)
+
+    def __init__(self, landmark_list: list) -> None:
+        self.landmark = landmark_list
+
 
 class DistanceToZone:
     """
@@ -53,19 +68,43 @@ class DistanceToZone:
         self.ball_model = YOLO(self.load_tools.load_model(ball_model))
         self.homeplate_model = YOLO(self.load_tools.load_model(homeplate_model))
         
-        # Initialize MediaPipe pose for 3D pose detection (optional dependency, legacy solutions API)
+        self.logger = logger if logger is not None else BaseballCVLogger.get_logger(__name__)
+
+        # Initialize MediaPipe pose for 3D pose detection (optional dependency, Tasks API)
         try:
             import mediapipe as mp
-            mp.solutions.pose
-        except (ImportError, AttributeError) as e:
+            from mediapipe.tasks.python import vision as mp_vision
+            from mediapipe.tasks.python.core.base_options import BaseOptions
+        except ImportError as e:
             raise ImportError(
-                "DistanceToZone requires mediapipe<=0.10.21 (Python <= 3.12). "
-                "Install it with: pip install 'baseballcv[pose]'"
+                "DistanceToZone requires mediapipe. Install it with: pip install 'baseballcv[pose]'"
             ) from e
-        self.mp_pose = mp.solutions.pose
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_drawing_styles = mp.solutions.drawing_styles
-        self.logger = logger if logger is not None else BaseballCVLogger.get_logger(__name__)
+
+        self._mp_image_cls = mp.Image
+        self._mp_image_format = mp.ImageFormat
+        self.mp_drawing = mp_vision.drawing_utils
+        self.mp_drawing_styles = mp_vision.drawing_styles
+        self.mp_pose_connections = mp_vision.PoseLandmarksConnections.POSE_LANDMARKS
+
+        pose_model_path = self._ensure_pose_landmarker_model(verbose)
+        # Two landmarkers at different confidence thresholds, mirroring the fallback the
+        # legacy solutions.Pose() path used (strict first pass, looser retry).
+        self._pose_landmarker = mp_vision.PoseLandmarker.create_from_options(
+            mp_vision.PoseLandmarkerOptions(
+                base_options=BaseOptions(model_asset_path=pose_model_path),
+                running_mode=mp_vision.RunningMode.IMAGE,
+                num_poses=1,
+                min_pose_detection_confidence=0.4,
+            )
+        )
+        self._pose_landmarker_lowconf = mp_vision.PoseLandmarker.create_from_options(
+            mp_vision.PoseLandmarkerOptions(
+                base_options=BaseOptions(model_asset_path=pose_model_path),
+                running_mode=mp_vision.RunningMode.IMAGE,
+                num_poses=1,
+                min_pose_detection_confidence=0.3,
+            )
+        )
         
         if verbose:
             self.logger.info(f"Models loaded: {catcher_model}, {glove_model}, {ball_model}, {homeplate_model}")
@@ -76,7 +115,44 @@ class DistanceToZone:
         self.verbose = verbose
         self.device = device
         self.zone_vertical_adjustment = zone_vertical_adjustment  # Store the adjustment factor
-    
+
+    POSE_LANDMARKER_MODEL_URL = (
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+        "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
+    )
+
+    def _ensure_pose_landmarker_model(self, verbose: bool = True) -> str:
+        """
+        Download MediaPipe's pose_landmarker .task model to a local cache if not already
+        present, following the same `models/` relative-path convention LoadTools uses.
+
+        Args:
+            verbose (bool): Whether to log the download.
+
+        Returns:
+            str: Path to the cached .task model file.
+        """
+        model_dir = os.path.join("models", "pose", "mediapipe")
+        model_path = os.path.join(model_dir, "pose_landmarker_full.task")
+
+        if os.path.exists(model_path):
+            return model_path
+
+        os.makedirs(model_dir, exist_ok=True)
+        if verbose:
+            self.logger.info("Downloading MediaPipe pose landmarker model...")
+
+        response = requests.get(self.POSE_LANDMARKER_MODEL_URL, stream=True, timeout=60)
+        response.raise_for_status()
+        with open(model_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        if verbose:
+            self.logger.info(f"Pose landmarker model saved to {model_path}")
+
+        return model_path
+
     def analyze(
         self, 
         start_date: str, 
@@ -1065,41 +1141,35 @@ class DistanceToZone:
                 print("Invalid hitter region for 3D pose (empty)")
             return None
         
-        # Configure MediaPipe Pose with higher detection confidence
-        with self.mp_pose.Pose(
-            static_image_mode=True,
-            model_complexity=1,  # Medium complexity for balance
-            enable_segmentation=False,
-            min_detection_confidence=0.4
-        ) as pose:
-            # Process only the region of interest
-            results = pose.process(cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB))
-        
-        if not results.pose_landmarks:
+        # Run MediaPipe's PoseLandmarker (Tasks API) on the region of interest
+        mp_image = self._mp_image_cls(
+            image_format=self._mp_image_format.SRGB,
+            data=cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB)
+        )
+        detection = self._pose_landmarker.detect(mp_image)
+
+        if not detection.pose_landmarks:
             if self.verbose:
                 print("MediaPipe couldn't detect 3D pose in hitter region")
-            
+
             # Try with a lower detection threshold as fallback
-            with self.mp_pose.Pose(
-                static_image_mode=True,
-                model_complexity=1,
-                enable_segmentation=False,
-                min_detection_confidence=0.3
-            ) as pose:
-                # Still only process the hitter region
-                results = pose.process(cv2.cvtColor(hitter_region, cv2.COLOR_BGR2RGB))
-            
-            if not results.pose_landmarks:
+            detection = self._pose_landmarker_lowconf.detect(mp_image)
+
+            if not detection.pose_landmarks:
                 if self.verbose:
                     print("MediaPipe couldn't detect 3D pose even with lower threshold")
                 return None
-            
+
             if self.verbose:
                 print("Successfully detected 3D pose with lower threshold")
         else:
             if self.verbose:
                 print("Successfully detected 3D pose for hitter with MediaPipe")
-        
+
+        # Wrap in a shim so downstream code's `results.pose_landmarks.landmark[i]`
+        # access (written for the legacy solutions API) keeps working unchanged.
+        results = SimpleNamespace(pose_landmarks=_PoseLandmarksShim(detection.pose_landmarks[0]))
+
         # Store the ROI offset to adjust landmarks when drawing
         offset = (x1_margin, y1_margin)
         return {"results": results, "offset": offset}
@@ -2286,8 +2356,8 @@ class DistanceToZone:
                 temp_overlay = annotated_frame.copy()
                 self.mp_drawing.draw_landmarks(
                     temp_overlay,
-                    mp_results.pose_landmarks,
-                    self.mp_pose.POSE_CONNECTIONS,
+                    mp_results.pose_landmarks.landmark,
+                    self.mp_pose_connections,
                     landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style())
                 
                 # Apply the mask to limit drawing to hitter box region

@@ -33,3 +33,4 @@ events.out.tfevents.*
 # Ignore pytorch and path files if models are loaded
 *.pt
 *.pth
+*.task

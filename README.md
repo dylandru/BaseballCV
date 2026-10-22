@@ -73,7 +73,7 @@ The package can be installed from Github with the required dependencies using th
 pip install baseballcv
 ```
 
-`DistanceToZone` depends on MediaPipe's legacy pose API, which requires Python <= 3.12. Install it with the optional `pose` extra:
+`DistanceToZone` depends on MediaPipe's pose landmarker. Install it with the optional `pose` extra:
 
 ```bash
 pip install "baseballcv[pose]"

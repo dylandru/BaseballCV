@@ -33,7 +33,7 @@ pandas = "^2.2.3"
 polars = "^1.27.1"
 datasets = "3.4.0"
 ultralytics = "^8.3.116"
-mediapipe = {version = "0.10.21", python = "<3.13", optional = true}
+mediapipe = {version = "^1.1.1", optional = true}
 coco-eval = "0.0.4"
 pytorch-lightning = "2.5.0"
 dotenv = "^0.9.9"
@@ -42,8 +42,7 @@ torch = ">=2.6.1"
 supervision = "^0.26.1"
 
 [tool.poetry.extras]
-# DistanceToZone uses MediaPipe's legacy `solutions` API, which only exists in
-# mediapipe <= 0.10.21 (Python <= 3.12, numpy < 2). Opt in with `baseballcv[pose]`.
+# DistanceToZone uses MediaPipe's Tasks API (PoseLandmarker). Opt in with `baseballcv[pose]`.
 pose = ["mediapipe"]
 
 [tool.poetry.group.dev.dependencies]
