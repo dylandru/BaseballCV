@@ -46,7 +46,7 @@ supervision = "^0.26.1"
 pose = ["mediapipe"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "8.3.2"
+pytest = "^9.0.3"
 streamlit = "^1.44.1"
 streamlit-image-coordinates = "^0.2.1"
 streamlit-drawable-canvas = "^0.9.3"
