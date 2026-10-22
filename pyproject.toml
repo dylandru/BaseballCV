@@ -35,11 +35,11 @@ datasets = "^5.0.1"
 ultralytics = "^8.3.116"
 mediapipe = {version = "^1.1.1", optional = true}
 coco-eval = "0.0.4"
-pytorch-lightning = "2.5.0"
+pytorch-lightning = ">=2.6.4,<3"
 dotenv = "^0.9.9"
-rfdetr = "~1.1.0"
+rfdetr = {version = "^1.9.4", extras = ["train"]}
 torch = ">=2.6.1"
-supervision = "^0.26.1"
+supervision = "^0.29.0"
 
 [tool.poetry.extras]
 # DistanceToZone uses MediaPipe's Tasks API (PoseLandmarker). Opt in with `baseballcv[pose]`.

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import multiprocessing as mp
 
 from scipy.fft import set_workers
@@ -160,10 +162,17 @@ class RFDETR:
         msg = ModelFunctionUtils.setup_rfdetr_dataset(data_path)
         self.logger.info(msg)
 
-        # Multiprocessing on CPU addressed. 
+        # Parameters removed from the rfdetr train API in >=1.9; accepted for
+        # backward compatibility but no longer forwarded.
+        removed = {"amp": amp, "lr_drop": lr_drop, "dropout": dropout, "gradient_checkpointing": gradient_checkpointing}
+        for name, value in removed.items():
+            if value not in (None, False, '', 0):
+                self.logger.warning(f"finetune parameter '{name}' is no longer supported by rfdetr >=1.9 and will be ignored.")
+
+        # Multiprocessing on CPU addressed.
         if self.device == "cpu" and num_workers > 0:
             self.logger.warning(f"Running on CPU with num_workers={num_workers}. This might cause issues. Consider setting num_workers=0 or wrapping in if __name__ == '__main__'.")
-        
+
         self.model.train(
             dataset_dir=str(data_path),
             output_dir=str(output_dir),
@@ -172,13 +181,10 @@ class RFDETR:
             lr=lr,
             lr_encoder=lr_encoder,
             weight_decay=weight_decay,
-            lr_drop=lr_drop,
             clip_max_norm=clip_max_norm,
             lr_vit_layer_decay=lr_vit_layer_decay,
             lr_component_decay=lr_component_decay,
             grad_accum_steps=grad_accum_steps,
-            amp=amp,
-            dropout=dropout,
             drop_path=drop_path,
             checkpoint_interval=checkpoint_interval,
             use_ema=use_ema,
@@ -187,7 +193,6 @@ class RFDETR:
             num_workers=num_workers,
             warmup_epochs=warmup_epochs,
             early_stopping=early_stopping,
-            gradient_checkpointing=gradient_checkpointing,
             resume=resume
         )
 
