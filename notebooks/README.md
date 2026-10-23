@@ -14,6 +14,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `Florence_2_example.ipynb`: Demonstrates how to use the Florence2 class to custom train a Florence 2 model using the BaseballCV pipeline
 - `PaliGemma2_demo.ipynb`: Demonstrates how to use the PaliGemma2 class for computer vision tasks, specifically using the ball dataset
 - `DETR_example.ipynb`: Demonstrates baseball detection using DETR (Detection Transformer) model with PyTorch Lightning integration
+- `base_detector_example.ipynb`: Demonstrates the base detector model (YOLOv11s) and the base detection datasets (YOLO and COCO formats), including running inference on your own footage
 
 ## Usage
 

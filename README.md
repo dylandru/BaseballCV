@@ -28,6 +28,8 @@
 
 **Maintained By:** *Carlos Marcano* and *Eddie Dew*
 
+**Contributors:** *Evan Arey* — annotated the base detection dataset and trained the base detector model while in high school
+
 </div>
 
 
@@ -552,5 +554,10 @@ c.marcano@balldatalab.com
 
 [![Twitter](https://img.shields.io/twitter/follow/da_mountain_dew?style=social)](https://x.com/da_mountain_dew) [![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:edew4502@gmail.com)  
 edew4502@gmail.com
+
+**Evan Arey** (Contributor — base detection dataset & model)
+
+[![Email Badge](https://img.shields.io/badge/Gmail-Contact_Me-green?style=flat-square&logo=gmail&logoColor=FFFFFF&labelColor=3A3B3C&color=62F1CD)](mailto:nitrocoding16@gmail.com)  
+nitrocoding16@gmail.com
 
 </div>
