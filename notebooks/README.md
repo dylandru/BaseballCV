@@ -15,6 +15,7 @@ The notebooks directory contains Jupyter notebooks demonstrating various functio
 - `PaliGemma2_demo.ipynb`: Demonstrates how to use the PaliGemma2 class for computer vision tasks, specifically using the ball dataset
 - `DETR_example.ipynb`: Demonstrates baseball detection using DETR (Detection Transformer) model with PyTorch Lightning integration
 - `base_detector_example.ipynb`: Demonstrates the base detector model (YOLOv11s) and the base detection datasets (YOLO and COCO formats), including running inference on your own footage
+- `base_detector_retraining.ipynb`: Retrains the base detector on the curated v2 labels (`datasets/yolo/base_detect_dataset_v2/`) with a train/val split, and compares against the production model (#183)
 
 ## Usage
 

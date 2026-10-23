@@ -1,0 +1,8 @@
+# base_detect_dataset v2 — curated labels for the base detection dataset (#183)
+# Images are NOT stored here: download them via LoadTools ('base_detect_dataset')
+# or the BallDataLab vault, then point `path:` at the folder that contains images/.
+train: images/train
+val: images/val
+names:
+  0: base
+  1: distractor
