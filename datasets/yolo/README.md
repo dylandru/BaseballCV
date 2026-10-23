@@ -168,3 +168,4 @@ This is the dictionary of available classes:
 - 107 of the 660 images have no corresponding label file. They may serve as background (negative) samples, but this is not confirmed yet — pending annotation or explicit designation.
 - No validation/test split exists yet, so no metrics can be reported for this dataset.
 - Unlabeled white objects (pitching rubber, foul lines) appear in many frames. A model trained on this data can false-positive on them at low confidence — downstream users should filter with conf >= 0.5 and box aspect ratio <= 4.2 (see the base detector notebook).
+- A curated v2 label set exists at [`base_detect_dataset_v2/`](./base_detect_dataset_v2/) with 80 recovered base annotations, 3 verified distractor negatives, and a 90/10 train/val split — use it for (re)training (see `notebooks/base_detector_retraining.ipynb`).
