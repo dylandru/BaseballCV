@@ -155,3 +155,5 @@ This is the category distribution in the annotations file for the available clas
 | base         |    668  |
 
 Note: the category id was normalized from 1 to 0 to match the repository's COCO convention.
+
+Note: unlabeled white objects (pitching rubber, foul lines) appear in many frames. A model trained on this data can false-positive on them at low confidence — downstream users should filter with conf >= 0.5 and box aspect ratio <= 4.2 (see the base detector notebook).

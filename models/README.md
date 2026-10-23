@@ -10,6 +10,7 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 - `glove_tracking`: Utilizes YOLOv9 Detection model to detect the catcher's glove, the ball, the rubber, and home plate (model in PyTorch).
 - `ball_trackingv4`: Utilizes YOLOv11 Detection model to track ONLY the baseball from pitcher's hand to home plate (model in PyTorch).
 - `base_detector`: Utilizes a YOLOv11s Detection model to detect the bases in broadcast feeds (model in PyTorch).
+  - **Known limitation:** can false-positive on other white field objects — the pitching rubber, foul lines, and players' legs/uniforms at shallow slide angles. Recommended mitigations: confidence threshold ≥ 0.5 and a box aspect-ratio (width/height) filter ≤ 4.2; see the [base detector notebook](../notebooks/base_detector_example.ipynb) for a worked example.
 
 ## Available Florence2 Models
 

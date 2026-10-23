@@ -167,3 +167,4 @@ This is the dictionary of available classes:
 
 - 107 of the 660 images have no corresponding label file. They may serve as background (negative) samples, but this is not confirmed yet — pending annotation or explicit designation.
 - No validation/test split exists yet, so no metrics can be reported for this dataset.
+- Unlabeled white objects (pitching rubber, foul lines) appear in many frames. A model trained on this data can false-positive on them at low confidence — downstream users should filter with conf >= 0.5 and box aspect ratio <= 4.2 (see the base detector notebook).
