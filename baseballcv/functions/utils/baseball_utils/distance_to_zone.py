@@ -1170,9 +1170,10 @@ class DistanceToZone:
         # access (written for the legacy solutions API) keeps working unchanged.
         results = SimpleNamespace(pose_landmarks=_PoseLandmarksShim(detection.pose_landmarks[0]))
 
-        # Store the ROI offset to adjust landmarks when drawing
+        # Store the ROI offset and size to adjust landmarks when drawing
         offset = (x1_margin, y1_margin)
-        return {"results": results, "offset": offset}
+        roi_size = (x2_margin - x1_margin, y2_margin - y1_margin)
+        return {"results": results, "offset": offset, "roi_size": roi_size}
         
     def _detect_homeplate(self, video_path: str, reference_frame: int = None) -> Tuple[Optional[Tuple[int, int, int, int]], float, int]:
         """
@@ -2341,22 +2342,38 @@ class DistanceToZone:
                 # Draw the 3D pose
                 mp_results = hitter_pose_3d["results"]
                 offset_x, offset_y = hitter_pose_3d["offset"]
-                
+                roi_w, roi_h = hitter_pose_3d["roi_size"]
+
                 # Create a copy for semi-transparent overlay
                 pose_overlay = annotated_frame.copy()
-                
+
                 # Get hitter box coordinates to draw the pose only within the box
                 x1, y1, x2, y2 = hitter_box
-                
+
                 # Create a mask for the hitter region
                 mask = np.zeros_like(annotated_frame)
                 cv2.rectangle(mask, (x1, y1), (x2, y2), (255, 255, 255), -1)
-                
+
+                # MediaPipe landmarks are normalized to the hitter ROI crop;
+                # remap them into full-frame normalized coordinates before
+                # drawing so the skeleton lines up with the hitter (issue #182).
+                frame_h, frame_w = annotated_frame.shape[:2]
+                remapped_landmarks = [
+                    SimpleNamespace(
+                        x=(offset_x + lm.x * roi_w) / frame_w,
+                        y=(offset_y + lm.y * roi_h) / frame_h,
+                        z=lm.z,
+                        visibility=getattr(lm, "visibility", 1.0),
+                        presence=getattr(lm, "presence", 1.0),
+                    )
+                    for lm in mp_results.pose_landmarks.landmark
+                ]
+
                 # Draw the pose landmarks and connections on a temporary image
                 temp_overlay = annotated_frame.copy()
                 self.mp_drawing.draw_landmarks(
                     temp_overlay,
-                    mp_results.pose_landmarks.landmark,
+                    remapped_landmarks,
                     self.mp_pose_connections,
                     landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style())
                 
