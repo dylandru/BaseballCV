@@ -12,6 +12,7 @@ This directory contains pre-trained models (only in YOLO, as of now)for various 
 - `base_detector`: Utilizes a YOLOv11s Detection model to detect the bases in broadcast feeds (model in PyTorch).
   - **Known limitation:** can false-positive on other white field objects — the pitching rubber, foul lines, and players' legs/uniforms at shallow slide angles (see [#183](https://github.com/BaseballCV/BaseballCV/issues/183)).
   - **Mitigation:** use the `BaseDetector` class (`from baseballcv.model import BaseDetector`), which applies confidence ≥ 0.5 and a box aspect-ratio (width/height) ≤ 4.2 filter by default. The [base detector notebook](../notebooks/base_detector_example.ipynb) shows both the class and the underlying manual filtering.
+- `base_detector_v2`: Retrained YOLOv11s on [dataset v2](../datasets/yolo/base_detect_dataset_v2/README.md) (recovered annotations + a distractor class). Matches `base_detector` on base mAP50 (0.965 vs 0.970) and no longer false-positives on the pitching rubber ([#183](https://github.com/BaseballCV/BaseballCV/issues/183)). Classes: `base`, `distractor`; use the [retraining notebook](../notebooks/base_detector_retraining.ipynb) for provenance and evaluation.
 
 ## Available Florence2 Models
 
