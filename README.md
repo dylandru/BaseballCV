@@ -28,7 +28,7 @@
 
 **Maintained By:** *Carlos Marcano* and *Eddie Dew*
 
-**Contributors:** *Evan Arey* — annotated the base detection dataset and trained the base detector model while in high school
+**Contributors:** *Evan Arey* — annotated the base detection dataset and trained the base detector model
 
 </div>
 
